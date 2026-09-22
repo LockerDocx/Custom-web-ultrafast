@@ -106,6 +106,8 @@ uv run --env-file .env jev-firefox        # start the local bridge host
 # Firefox → about:debugging → Load Temporary Add-on → extension/manifest.json
 ```
 
+**No terminal?** Double-click `start-host.bat` (Windows), `start-host.command` (macOS), or `start-host.sh` (Linux) — the first run prepares everything and opens the `.env` settings file for your keys. Full point-and-click walkthrough, including how to publish your own copy on GitHub from the web UI: [getting-started-gui.md](docs/getting-started-gui.md).
+
 The sidebar shows the plan checklist with ✓ progress, live screenshots, every executed action, and a Stop button. Setup and architecture: [firefox-extension.md](docs/firefox-extension.md).
 
 ## Use the library
