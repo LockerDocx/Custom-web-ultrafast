@@ -62,6 +62,10 @@ async function handleHostMessage(message) {
     browser.runtime.sendMessage(message).catch(() => {});
     return;
   }
+  if (message.type === "models" || message.type === "approval_request") {
+    browser.runtime.sendMessage(message).catch(() => {});
+    return;
+  }
   if (Number.isInteger(message.id)) {
     try {
       const result = await runCommand(message);
@@ -162,6 +166,41 @@ browser.runtime.onMessage.addListener((message) => {
   if (message.cmd === "stop") {
     try {
       send({ type: "stop" });
+      return Promise.resolve({ ok: true });
+    } catch (error) {
+      return Promise.resolve({ error: String(error.message || error) });
+    }
+  }
+  if (message.cmd === "models") {
+    try {
+      send({ type: "models", refresh: !!message.refresh });
+      return Promise.resolve({ ok: true });
+    } catch (error) {
+      return Promise.resolve({ error: String(error.message || error) });
+    }
+  }
+  if (message.cmd === "select-model") {
+    try {
+      send({ type: "models.select", role: message.role, provider: message.provider, model: message.model });
+      return Promise.resolve({ ok: true });
+    } catch (error) {
+      return Promise.resolve({ error: String(error.message || error) });
+    }
+  }
+  if (message.cmd === "params") {
+    try {
+      const payload = message.preset
+        ? { type: "params.set", preset: message.preset }
+        : { type: "params.set", role: message.role, params: message.params || {} };
+      send(payload);
+      return Promise.resolve({ ok: true });
+    } catch (error) {
+      return Promise.resolve({ error: String(error.message || error) });
+    }
+  }
+  if (message.cmd === "approval") {
+    try {
+      send({ type: "approval_response", id: message.id, approved: !!message.approved });
       return Promise.resolve({ ok: true });
     } catch (error) {
       return Promise.resolve({ error: String(error.message || error) });

@@ -108,6 +108,7 @@ ROLE_ENV = {
         "model": "PLANNER_MODEL",
         "reasoning": "PLANNER_REASONING",
         "json_mode": "PLANNER_JSON_MODE",
+        "temperature": "PLANNER_TEMPERATURE",
     },
     "policy": {
         "provider": "POLICY_PROVIDER",
@@ -116,6 +117,7 @@ ROLE_ENV = {
         "model": "POLICY_MODEL",
         "reasoning": "POLICY_REASONING",
         "json_mode": "POLICY_JSON_MODE",
+        "temperature": "POLICY_TEMPERATURE",
     },
     "text": {
         "provider": "TEXT_MODEL_PROVIDER",
@@ -124,6 +126,7 @@ ROLE_ENV = {
         "model": "TEXT_MODEL",
         "reasoning": "TEXT_MODEL_REASONING",
         "json_mode": "TEXT_MODEL_JSON_MODE",
+        "temperature": "TEXT_MODEL_TEMPERATURE",
     },
 }
 
@@ -217,6 +220,13 @@ def resolve(role):
         json_mode = True
     elif flag in {"off", "false", "0", "no"}:
         json_mode = False
+    temperature = None
+    raw_temperature = (os.environ.get(env["temperature"]) or "").strip()
+    if raw_temperature:
+        try:
+            temperature = round(min(2.0, max(0.0, float(raw_temperature))), 2)
+        except ValueError:
+            raise ValueError(f"{env['temperature']} must be a number between 0 and 2.") from None
     return {
         "name": name or "custom",
         "dialect": dialect,
@@ -224,6 +234,7 @@ def resolve(role):
         "key": key,
         "model": model,
         "reasoning": (os.environ.get(env["reasoning"]) or "none").strip().lower(),
+        "temperature": temperature,
         "json_mode": json_mode,
         "headers": (preset or {}).get("headers", {}),
     }
@@ -251,6 +262,8 @@ def build_request(provider, system, user, max_tokens, omit=()):
         body["max_tokens"] = max_tokens
     if "reasoning" not in omit:
         body.update(reasoning_params(provider["reasoning"], provider["name"], provider["dialect"]))
+    if provider.get("temperature") is not None and "temperature" not in omit:
+        body["temperature"] = provider["temperature"]
     if provider["dialect"] == "anthropic":
         headers = {"x-api-key": provider["key"], "anthropic-version": "2023-06-01"}
         body["system"] = system
@@ -291,50 +304,45 @@ def chat(provider, system, user, max_tokens=1024):
     """Send one chat request; adaptively drop params a strict endpoint rejects.
 
     OpenAI-compatible providers disagree on response_format, reasoning controls,
-    and max_tokens vs max_completion_tokens. Instead of failing, retry without
-    the rejected parameter so a model change never breaks a run.
+    temperature, and max_tokens vs max_completion_tokens. Instead of failing,
+    retry without the rejected parameter so a model change never breaks a run.
     """
     from . import model  # one shared HTTP seam; tests patch model.post_json
 
-    ladder = (
-        (),
-        ("response_format",),
-        ("response_format", "reasoning"),
-        ("response_format", "reasoning", "max_tokens"),
-    )
-    index = 0
+    dropped = set()
     while True:
-        url, headers, body = build_request(provider, system, user, max_tokens, omit=ladder[index])
-        if headers is None:
-            try:
+        url, headers, body = build_request(provider, system, user, max_tokens, omit=dropped)
+        try:
+            if headers is None:
                 result = model.post_json(url, provider["key"], body)
-            except RuntimeError as error:
-                index = _next_attempt(index, str(error), provider["dialect"])
-                if index is None:
-                    raise
-                continue
-        else:
-            try:
+            else:
                 result = model.post_json(url, provider["key"], body, headers=headers)
-            except RuntimeError as error:
-                index = _next_attempt(index, str(error), provider["dialect"])
-                if index is None:
-                    raise
-                continue
+        except RuntimeError as error:
+            drop = _droppable_param(str(error), dropped, provider["dialect"])
+            if drop is None:
+                raise
+            dropped.add(drop)
+            continue
         return parse_response(provider, result)
 
 
-def _next_attempt(index, error, dialect):
-    """The next adaptive retry for a rejected parameter, or None to give up."""
+def _droppable_param(error, dropped, dialect):
+    """The canonical parameter to drop next for a rejected request, or None."""
     if dialect == "anthropic":
         return None
     lowered = error.lower()
-    if index < 1 and "response_format" in lowered:
-        return 1
-    if index < 2 and ("reasoning" in lowered or "unsupported parameter" in lowered or "unexpected" in lowered):
-        return 2
-    if index < 3 and ("max_tokens" in lowered or "max_completion_tokens" in lowered):
-        return 3
+    if "response_format" in lowered and "response_format" not in dropped:
+        return "response_format"
+    if ("reasoning_effort" in lowered or "'reasoning'" in lowered) and "reasoning" not in dropped:
+        return "reasoning"
+    if "temperature" in lowered and "temperature" not in dropped:
+        return "temperature"
+    if "max_tokens" in lowered and "max_tokens" not in dropped:
+        return "max_tokens"
+    if "unsupported parameter" in lowered or "unexpected keyword" in lowered:
+        for param in ("response_format", "reasoning", "temperature", "max_tokens"):
+            if param not in dropped:
+                return param
     return None
 
 

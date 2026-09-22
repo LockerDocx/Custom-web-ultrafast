@@ -13,18 +13,50 @@
 
     <main>
       <section class="composer">
-        <label for="goal">What do you want to do on this page?</label>
-        <textarea id="goal" rows="4" placeholder="Find one-way flights from Zurich to London on September 20, 2026…"></textarea>
+        <label for="goal">What do you want to do?</label>
+        <textarea id="goal" rows="4" placeholder="Find one-way flights from Zurich to London on September 20, 2026… or: research, download, create files, run commands…"></textarea>
         <div class="row">
           <button id="run" class="primary">Run</button>
           <button id="stop" hidden>Stop</button>
           <button id="check" title="Check every model connection and show the exact error if one fails">Test setup</button>
         </div>
-        <span class="hint">The agent drives the tab you are on; if it can't (new tab page), it opens DuckDuckGo.</span>
+        <span class="hint">Browser missions drive the tab you are on. Missions that need search, files, documents, or the terminal use the tools automatically.</span>
       </section>
+
+      <div id="approval" role="alert" hidden>
+        <div class="approval-title">🔐 The agent wants to run a command</div>
+        <code id="approval-command"></code>
+        <div class="row">
+          <button id="approval-yes" class="primary">Approve</button>
+          <button id="approval-no">Deny</button>
+        </div>
+        <span class="hint">Runs only if you approve. Denied automatically after 2 minutes.</span>
+      </div>
 
       <div id="error" role="alert" hidden></div>
       <div id="providers" class="providers" hidden></div>
+
+      <details id="models-panel" class="panel">
+        <summary>⚙️ Models &amp; parameters</summary>
+        <div class="presets-label hint">Presets (apply to every role):</div>
+        <div class="presets" id="presets"></div>
+        <div id="model-roles"></div>
+        <div class="row">
+          <button id="refresh-models" title="Fetch the live model list from every provider">Refresh catalogue</button>
+          <span class="hint" id="registry-status"></span>
+        </div>
+      </details>
+
+      <section id="task" hidden>
+        <div class="status-line">
+          <span id="task-status">running</span>
+          <span id="task-meta"></span>
+        </div>
+        <div id="task-skills" class="chips"></div>
+        <h3>Steps</h3>
+        <div id="task-log" class="task-log"></div>
+        <div id="task-final" class="final" hidden></div>
+      </section>
 
       <section id="live" hidden>
         <div class="status-line">

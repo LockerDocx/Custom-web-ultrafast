@@ -48,7 +48,10 @@ The agent attaches to the tab you are on, observes its elements, plans (if `PLAN
 | Element indexing | `extension/snapshot.js` | Verbatim copy of `jev_ultrafast/snapshot.js` (a test fails if they drift). |
 | WebSocket server | `jev_ultrafast/firefox.py` | Stdlib-only RFC 6455 server on 127.0.0.1; command/response with ids, broadcasts state. |
 | Browser driver | `jev_ultrafast/firefox.py` `FirefoxBrowser` | Same `observe/act/fresh/close` contract as the Chrome `Browser`. |
-| Task runner | `jev_ultrafast/firefox.py` `TaskRunner` | One task at a time, broadcasts every agent state to the sidebar. |
+| Task runner | `jev_ultrafast/firefox.py` `TaskRunner` | One task at a time, broadcasts every agent state to the sidebar. Routes browser missions to the fast loop; tool missions to the orchestrator. |
+| Orchestrator | `jev_ultrafast/orchestrator.py` + `tools.py` | JSON-protocol tool loop over nine workspace-scoped tools; the planner model drives it. |
+| Skills | `skills/*/skill.json` | Keyword-selected procedural instructions appended to the orchestrator prompt. |
+| Approvals | `firefox.py` `ApprovalGate` | Sensitive `run_command` calls broadcast `approval_request`; no answer in 120 s = denied. |
 
 Configuration: `FIREFOX_BRIDGE_PORT` (default 8767), `FIREFOX_BRIDGE_TOKEN` (optional shared secret; the extension sends it during hello). All model roles (`PLANNER_*`, `POLICY_*`, `TEXT_MODEL_*`) follow [providers.md](providers.md) — e.g. planner on NVIDIA NIM and executor on Groq at the same time.
 
@@ -58,6 +61,14 @@ Configuration: `FIREFOX_BRIDGE_PORT` (default 8767), `FIREFOX_BRIDGE_TOKEN` (opt
 - Optional token (`FIREFOX_BRIDGE_TOKEN`) compared in constant time during hello.
 - API keys never leave the host process; the sidebar only ever sees model names.
 - The content script executes **only** the model-chosen operation on an **observed** node id — the same no-selectors, no-code contract as the Chrome path. Freshness guards (document key, form values, target guard) are re-checked before every click/select.
+- Tool files are jailed to the per-task `workspace/` directory (path traversal rejected); downloads cap at 25 MB; every tool result is size-capped.
+- Terminal commands follow a three-way policy: read-only allow-list (`ls`, `git status`, …) runs, destructive patterns (`sudo`, `rm -rf`, `curl | sh`, …) are denied, and anything else — including redirects and compound commands — requires an explicit sidebar approval. Unanswered approvals fail closed.
+
+## Bridge protocol (extension ⇄ host)
+
+Extension → host: `hello`, `run {goal, url, tabId}`, `stop`, `check`, `models {refresh}`, `models.select {role, provider, model}`, `params.set {preset}` or `params.set {role, params}`, `approval_response {id, approved}`.
+
+Host → extension: command/response pairs with ids (`open`, `observe`, `act`, `fresh`); broadcasts `welcome`, `state` (carries `mode`, `selection`, `schema`, `presets`, `providers`, and for orchestrated tasks `log`/`final`/`skills` plus the live browser sub-state under `browser`), `models {registry}`, `approval_request {id, command}`, `error`.
 
 ## Known limitations (MVP)
 

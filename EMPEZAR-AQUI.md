@@ -124,6 +124,43 @@ Acabas de ver las dos IAs trabajando: el **planificador** (si pusiste clave NVID
 
 ---
 
+## 🆕 NUEVO: el agente también busca, crea archivos y usa la terminal
+
+El panel ya no solo mueve la página. Ahora hay 3 funciones nuevas:
+
+### 1️⃣ Cambiar de modelo SIN tocar el `.env` (panel "⚙️ Models & parameters")
+
+1. En el panel, haz clic en la línea **"⚙️ Models & parameters"** → se despliega.
+2. Verás: botones redondos (*Fast*, *Balanced*…) y 3 desplegables: **Planner**, **Executor**, **Text writer**.
+3. Haz clic en el desplegable de **Planner** → verás la lista de modelos del proveedor (la primera vez tarda unos segundos en cargarla; si no sale nada, pulsa **"Refresh catalogue"**).
+4. Elige otro modelo → verás que el panel parpadea y abajo los chips se ponen 🟢 (o 🔴 si el modelo no vale: prueba otro).
+5. Listo: el cambio **se guarda solo** (en `artifacts/model-config.json`) y se mantiene al reiniciar.
+
+> Los botones *Fast / Balanced / Deep / Browser / Coding* son "ajustes rápidos" para todo el conjunto: Fast = respuestas más veloces, Deep = más pensamiento para misiones difíciles. *advanced* dentro de cada rol deja afinar "reasoning" y "temperature".
+
+### 2️⃣ Misiones con herramientas: búsqueda, archivos, PDF y terminal
+
+Ya NO hace falta que la misión sea solo "en esta página". Escribe en el mismo cuadro de siempre, por ejemplo:
+
+- *"Busca en la web el precio del euro hoy y guárdalo en un archivo llamado euro.txt"*
+- *"Descarga un PDF sobre cambio climático y resúmelo"* (necesita la instalación del PASO 3 ya hecha con el starter nuevo)
+- *"Crea un script de python que diga hola y ejecútalo"*
+
+Qué verás: en vez de la captura de la página, aparece la sección **"Steps"** con el paso a paso (🔧 la herramienta usada, 🏁 la respuesta final). Si el agente necesita navegar, verás también la vista del navegador en directo.
+
+### 3️⃣ El candado 🔐: aprobación de comandos
+
+Cuando el agente quiera ejecutar un comando de terminal "con efectos" (instalar algo, crear, ejecutar), aparecerá un aviso amarillo arriba del panel con el comando exacto y dos botones:
+
+- **Approve** = permitir (se ejecuta solo eso)
+- **Deny** = no permitir
+
+Si no respondes en 2 minutos, se considera **Deny** (máxima seguridad). Los comandos de solo lectura (`ls`, `git status`…) no preguntan, y los peligrosos (`sudo`, borrar carpetas…) se bloquean solos.
+
+> Todo lo que el agente crea o descarga va a la carpeta `workspace/` dentro del proyecto. No puede salir de ahí ni borrar nada fuera.
+
+---
+
 ## 🔧 Problemas comunes
 
 | Veo esto… | Solución |
@@ -140,7 +177,11 @@ Acabas de ver las dos IAs trabajando: el **planificador** (si pusiste clave NVID
 | `Python 3.12 or newer is required` | Instala Python desde python.org y repite el PASO 3 |
 | La ventana negra se cierra al instante | En el instalador de Python marca **"Add python.exe a PATH"**, reinstala y repite |
 | Solo tengo clave de NVIDIA, no de Groq | Abre `.env` con el Bloc de notas y cambia la línea `POLICY_PROVIDER=groq` por `POLICY_PROVIDER=nvidia` y `POLICY_MODEL=openai/gpt-oss-20b` por un modelo de NVIDIA (míralos en build.nvidia.com/models). Guarda y arranca |
-| Quiero cambiar el modelo | Todo está explicado en `docs/providers.md` |
+| Quiero cambiar el modelo | Panel **⚙️ Models & parameters** → desplegable → elegir (se guarda solo). Sin panel: `docs/providers.md` |
+| El desplegable de modelos sale **vacío** | Pulsa **"Refresh catalogue"**. Si sigue vacío: falta la clave de ese proveedor en `.env` (cada desplegable solo lista proveedores con clave) |
+| *"Missing library for .pdf files"* al analizar un PDF | Cierra la ventana negra y vuelve a arrancar con el **starter nuevo** (instala el soporte de PDF/Word/Excel solo). Si persiste: en la carpeta del proyecto ejecuta `pip install -e ".[documents]"` y reinicia |
+| No aparece el aviso 🔐 pero el comando no se ejecuta | Es lo esperado: sin respuesta en 2 minutos se considera "Deny". Vuelve a lanzar la misión y pulsa **Approve** cuando aparezca |
+| La sección **Steps** se queda mucho en "working…" | Las misiones con búsqueda web tardan más (varias llamadas al modelo). El botón **Stop** funciona igual |
 
 ## ❓ Preguntas rápidas
 

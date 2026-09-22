@@ -113,6 +113,27 @@ uv run --env-file .env jev-firefox        # start the local bridge host
 
 The sidebar shows the plan checklist with ✓ progress, live screenshots, every executed action, and a Stop button. Setup and architecture: [firefox-extension.md](docs/firefox-extension.md).
 
+## Beyond the browser: catalogue, tools, and approvals
+
+The sidebar has grown three more capabilities:
+
+**⚙️ Models & parameters (no `.env` editing).** Open the *Models & parameters* panel: it fetches the live model list from every provider you have a key for (24 h cached registry, `Refresh catalogue` to force it), renders one picker per role — planner, executor, text writer — plus presets (*Fast / Balanced / Deep / Browser / Coding*) and per-role *advanced* controls for reasoning effort and temperature. Selections persist in `artifacts/model-config.json` and override `.env` on the next start (`JEV_MODEL_CONFIG` moves that file). A picker switch re-runs **Test setup** automatically, so a broken model id shows up as 🔴 immediately.
+
+**🛠 Tools & skills.** Missions that need more than the tab don't go through the fast browser loop — they run through an orchestrator (your planner model) with nine tools:
+
+| Tool | What it does |
+|---|---|
+| `web_search` / `read_page` | DuckDuckGo search and readable page text |
+| `download_file` | saves a file into the per-task workspace (25 MB cap) |
+| `write_file` / `read_file` / `list_files` | text files inside the sandboxed workspace |
+| `parse_document` | extracts text from PDF / DOCX / XLSX (`pip install -e ".[documents]"` — the starters do it for you) |
+| `run_command` | shell command in the workspace under a permission policy |
+| `browser_task` | hands a browser step back to the fast JEV loop on your live tab |
+
+Keyword-matched **skills** (`skills/` directories with a manifest + instructions) add procedural guidance for browser missions, web research, documents, and coding. Try: *"Download the Wikipedia page on Barcelona as a file, then write a summary"* or *"Create a python script that prints hello and run it"*.
+
+**🔐 Command approvals.** The terminal policy is: read-only commands (`ls`, `git status`, …) run; destructive ones (`sudo`, `rm -rf`, `curl | sh`, …) are blocked; everything else — including any redirect or compound command — asks first. The sidebar shows the exact command with **Approve / Deny**; no answer in 2 minutes means denied. Files can never leave the task workspace (`workspace/`), and every tool result is size-capped.
+
 ## Use the library
 
 ```python

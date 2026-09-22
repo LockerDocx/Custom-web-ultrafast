@@ -16,7 +16,7 @@ if [ ! -d ".venv" ]; then
   echo "First run: preparing the agent. About one minute, internet needed..."
   python3 -m venv .venv || exit 1
   .venv/bin/python -m pip install --quiet --upgrade pip
-  if ! .venv/bin/python -m pip install --quiet -e .; then
+  if ! .venv/bin/python -m pip install --quiet -e ".[documents]"; then
     echo ""
     echo " [!] Installation failed. Check your internet connection and run this file again."
     exit 1

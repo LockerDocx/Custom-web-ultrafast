@@ -4,8 +4,12 @@ const escape = (value) =>
     /[&<>"']/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
   );
+const trunc = (text, n) => (String(text ?? "").length > n ? `${String(text).slice(0, n)}…` : String(text ?? ""));
 
 let state = null;
+let registry = null; // model catalogue from the host ("models" messages)
+let approvalId = null;
+let modelsSignature = "";
 
 function setConnection(connected) {
   $("connection").classList.toggle("on", connected);
@@ -13,37 +17,52 @@ function setConnection(connected) {
   $("run").disabled = !connected;
 }
 
+/* ── main render ─────────────────────────────────────────────────── */
+
 function render() {
   if (!state) return;
-  const live = state.page && !["done", "blocked"].includes(state.status);
-  $("stop").hidden = !live;
-  $("live").hidden = !state.page;
+  const mode = state.mode || "browser";
+  const live = mode === "orchestrated" ? state.browser || null : state;
+  const running = !["done", "blocked", "idle", "stopped", "error"].includes(state.status);
+  $("stop").hidden = !running;
+  $("live").hidden = !(live && live.page);
+  $("task").hidden = mode !== "orchestrated";
+  if (mode === "orchestrated") renderTask(state);
+  if (live && live.page) renderLive(live);
+  const footer = [state.planner && `planner · ${state.planner}`, state.policy && `policy · ${state.policy}`]
+    .filter(Boolean)
+    .join("   ·   ") || "no models configured";
+  $("models").textContent = footer;
+  renderModelsPanel();
+  renderProviders(state.providers);
+  renderError(state.error);
+}
+
+function renderLive(live) {
   const labels = {
-    idle: state.error ? "stopped — see the error below" : "idle",
+    idle: "idle",
     ready: "page observed · ready",
     predicted: "choice ready",
     done: "done ✓",
     blocked: "blocked",
   };
-  $("status").textContent = labels[state.status] || state.status || "";
+  $("status").textContent = labels[live.status] || live.status || "";
   $("step-count").textContent =
-    state.history && state.history.length
-      ? `${state.history.length} actions · ${(state.elapsed_ms / 1000).toFixed(1)} s`
+    live.history && live.history.length
+      ? `${live.history.length} actions · ${(live.elapsed_ms / 1000).toFixed(1)} s`
       : "";
-  if (state.page) {
-    if (state.page.screenshot) $("screenshot").src = `data:image/jpeg;base64,${state.page.screenshot}`;
-    $("screenshot").alt = state.page.title || state.page.url;
-  }
-  const plan = state.plan || [];
+  if (live.page.screenshot) $("screenshot").src = `data:image/jpeg;base64,${live.page.screenshot}`;
+  $("screenshot").alt = live.page.title || live.page.url;
+  const plan = live.plan || [];
   $("plan").innerHTML = plan.length
     ? plan
         .map((step, i) => {
-          const cls = i < state.plan_index ? "done" : i === state.plan_index ? "current" : "";
-          return `<li class="${cls}"><span>${i < state.plan_index ? "✓" : i + 1}</span>${escape(step)}</li>`;
+          const cls = i < live.plan_index ? "done" : i === live.plan_index ? "current" : "";
+          return `<li class="${cls}"><span>${i < live.plan_index ? "✓" : i + 1}</span>${escape(step)}</li>`;
         })
         .join("")
     : '<li class="done"><span></span>Single-goal run</li>';
-  const history = state.history || [];
+  const history = live.history || [];
   $("history").innerHTML = history.length
     ? history
         .slice(-12)
@@ -55,12 +74,182 @@ function render() {
         )
         .join("")
     : '<div><span class="number">—</span><span>No actions yet</span></div>';
-  $("models").textContent = [state.planner && `planner · ${state.planner}`, state.policy && `policy · ${state.policy}`]
-    .filter(Boolean)
-    .join("   ·   ") || "no models configured";
-  renderProviders(state.providers);
-  renderError(state.error);
 }
+
+function renderTask(task) {
+  const labels = { running: "working…", done: "done ✓", stopped: "stopped", error: "failed", idle: "idle" };
+  $("task-status").textContent = labels[task.status] || task.status || "";
+  const usage = task.usage || {};
+  const tokens = [usage.input_tokens || usage.prompt_tokens, usage.output_tokens || usage.completion_tokens]
+    .filter(Boolean)
+    .reduce((a, b) => a + b, 0);
+  $("task-meta").textContent = [
+    (task.log || []).length ? `${task.log.length} steps` : "",
+    task.latency_ms ? `${(task.latency_ms / 1000).toFixed(1)} s` : "",
+    tokens ? `${tokens} tokens` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const skills = task.skills || [];
+  $("task-skills").innerHTML = skills.length
+    ? skills.map((s) => `<span class="chip" title="Skill guiding this mission">🧩 ${escape(s)}</span>`).join("")
+    : "";
+  const log = task.log || [];
+  $("task-log").innerHTML = log.length
+    ? log
+        .map((s) => {
+          const head = s.tool
+            ? `🔧 <code>${escape(s.tool)}(${escape(compactArgs(s.args))})</code>`
+            : s.final
+              ? "🏁 final answer"
+              : `⚠️ ${escape(s.error || "step")}`;
+          const body = [
+            s.error && !s.final ? `<span class="err">${escape(s.error)}</span>` : "",
+            s.result ? `<span class="res">${escape(trunc(s.result, 240))}</span>` : "",
+          ]
+            .filter(Boolean)
+            .join("");
+          return `<div class="task-step${s.error && !s.final ? " bad" : ""}"><div class="head"><span class="number">${String(s.step).padStart(2, "0")}</span><span>${head}</span></div>${body}</div>`;
+        })
+        .join("")
+    : '<div class="task-step"><div class="head"><span class="number">—</span><span>No steps yet</span></div></div>';
+  $("task-log").scrollTop = $("task-log").scrollHeight;
+  if (task.final) {
+    $("task-final").textContent = task.final;
+    $("task-final").hidden = false;
+  } else {
+    $("task-final").hidden = true;
+  }
+}
+
+function compactArgs(args) {
+  if (!args || typeof args !== "object") return "";
+  const parts = Object.entries(args).map(([k, v]) => `${k}=${trunc(typeof v === "string" ? v : JSON.stringify(v), 60)}`);
+  return parts.join(", ");
+}
+
+/* ── models panel (MVP-1) ────────────────────────────────────────── */
+
+function modelOptions(roleKey, selection, registryData) {
+  const current = `${selection.provider || ""}::${selection.model || ""}`;
+  let html = "";
+  if (roleKey === "policy" && state && state.policy_builtin) {
+    const active = !selection.provider || selection.provider === "typesafe";
+    html += `<option value="builtin:jev"${active ? " selected" : ""}>TypeSafe Jev (built-in)</option>`;
+  }
+  const groups = [];
+  if (registryData && registryData.providers) {
+    for (const [provider, report] of Object.entries(registryData.providers)) {
+      if (!report || !report.ok || !report.models || !report.models.length) continue;
+      const opts = report.models
+        .map((m) => {
+          const value = `${provider}::${m.id}`;
+          const caps = m.capabilities
+            ? [m.capabilities.vision ? "👁" : "", m.capabilities.reasoning ? "🧠" : ""].filter(Boolean).join("")
+            : "";
+          return `<option value="${escape(value)}"${value === current ? " selected" : ""}>${escape(m.displayName)}${caps ? " " + caps : ""}</option>`;
+        })
+        .join("");
+      groups.push(`<optgroup label="${escape(provider)}">${opts}</optgroup>`);
+    }
+  }
+  const inCatalogue = groups.some((g) => g.includes(`value="${escape(current)}"`)) || html.includes('value="builtin:jev"');
+  if (current && !current.endsWith("::") && !inCatalogue) {
+    const label = selection.display && selection.display !== "—" ? selection.display : `${selection.provider}:${selection.model}`;
+    groups.push(`<optgroup label="current">${`<option value="${escape(current)}" selected>${escape(label)} (current)</option>`}</optgroup>`);
+  }
+  return html + groups.join("");
+}
+
+function renderModelsPanel() {
+  if (!state || !state.selection || !state.schema) return;
+  const signature = JSON.stringify([state.selection, state.presets, state.schema, registry]);
+  if (signature === modelsSignature) return; // don't rebuild while the user interacts
+  modelsSignature = signature;
+  const roles = state.schema.roles || [];
+  const params = state.schema.parameters || {};
+  const presets = state.presets || {};
+  $("presets").innerHTML = Object.entries(presets)
+    .map(
+      ([key, p]) =>
+        `<button class="chip" data-preset="${escape(key)}" title="${escape(p.description || "")}">${escape(p.label)}</button>`,
+    )
+    .join("");
+  $("model-roles").innerHTML = roles
+    .map((role) => {
+      const sel = state.selection[role.key] || {};
+      const controls = Object.entries(params)
+        .map(([name, schema]) => {
+          if (schema.type === "enum") {
+            const options = [`<option value=""${!sel.params || !sel.params[name] ? " selected" : ""}>Default</option>`]
+              .concat(
+                (schema.values || []).map(
+                  (v) =>
+                    `<option value="${escape(v)}"${sel.params && sel.params[name] === v ? " selected" : ""}>${escape((schema.labels && schema.labels[v]) || v)}</option>`,
+                ),
+              )
+              .join("");
+            return `<label>${escape(name)}</label><select data-param="${escape(name)}" data-role="${escape(role.key)}">${options}</select>`;
+          }
+          return `<label>${escape(name)}</label><input type="number" data-param="${escape(name)}" data-role="${escape(role.key)}" min="${schema.min}" max="${schema.max}" step="${schema.step}" placeholder="default" value="${sel.params && sel.params[name] ? escape(sel.params[name]) : ""} />`;
+        })
+        .join("");
+      return `<div class="role-row">
+        <div class="role-head"><b>${escape(role.label)}</b><span class="hint">${escape(role.hint || "")}</span></div>
+        <select class="model-select" data-role="${escape(role.key)}">${modelOptions(role.key, sel, registry)}</select>
+        <details class="adv"><summary>advanced</summary><div class="param-grid">${controls}</div></details>
+      </div>`;
+    })
+    .join("");
+  renderRegistryStatus();
+  wireModelsPanel();
+}
+
+function renderRegistryStatus() {
+  const box = $("registry-status");
+  if (!registry) {
+    box.textContent = "catalogue not loaded";
+    return;
+  }
+  const providers = Object.values(registry.providers || {});
+  const ok = providers.filter((p) => p && p.ok);
+  const models = ok.reduce((sum, p) => sum + (p.models ? p.models.length : 0), 0);
+  const failed = providers.length - ok.length;
+  box.textContent = `${models} models · ${ok.length} providers${failed ? ` · ${failed} failed` : ""}`;
+}
+
+function wireModelsPanel() {
+  document.querySelectorAll(".model-select").forEach((select) => {
+    select.addEventListener("change", async () => {
+      const role = select.dataset.role;
+      let provider = "";
+      let model = "";
+      if (select.value !== "builtin:jev") {
+        [provider, model] = select.value.split("::");
+      }
+      const reply = await browser.runtime.sendMessage({ cmd: "select-model", role, provider, model });
+      if (reply && reply.error) showError(reply.error);
+    });
+  });
+  document.querySelectorAll("[data-param]").forEach((input) => {
+    const handler = async () => {
+      const value = input.value === "" ? null : input.value;
+      const params = { [input.dataset.param]: value };
+      const reply = await browser.runtime.sendMessage({ cmd: "params", role: input.dataset.role, params });
+      if (reply && reply.error) showError(reply.error);
+    };
+    if (input.tagName === "SELECT") input.addEventListener("change", handler);
+    else input.addEventListener("change", handler);
+  });
+  document.querySelectorAll("[data-preset]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const reply = await browser.runtime.sendMessage({ cmd: "params", preset: button.dataset.preset });
+      if (reply && reply.error) showError(reply.error);
+    });
+  });
+}
+
+/* ── providers / error ───────────────────────────────────────────── */
 
 function renderProviders(providers) {
   const box = $("providers");
@@ -81,13 +270,32 @@ function renderProviders(providers) {
     .join("");
 }
 
-function renderError(error) {
-  const box = $("error");
-  if (error) {
-    box.textContent = error;
-    box.hidden = false;
-  }
+function showError(message) {
+  $("error").textContent = message;
+  $("error").hidden = false;
 }
+
+function renderError(error) {
+  if (error) showError(error);
+}
+
+/* ── approvals (MVP-4) ───────────────────────────────────────────── */
+
+function showApproval(message) {
+  approvalId = message.id;
+  $("approval-command").textContent = message.command || "";
+  $("approval").hidden = false;
+}
+
+async function answerApproval(approved) {
+  if (!approvalId) return;
+  const id = approvalId;
+  approvalId = null;
+  $("approval").hidden = true;
+  await browser.runtime.sendMessage({ cmd: "approval", id, approved });
+}
+
+/* ── messages ────────────────────────────────────────────────────── */
 
 browser.runtime.onMessage.addListener((message) => {
   if (message.type === "status") setConnection(message.connected);
@@ -97,13 +305,19 @@ browser.runtime.onMessage.addListener((message) => {
   }
   if (message.type === "error") {
     // The next state broadcast carries the same error persistently; show it now.
-    $("error").textContent = message.message;
-    $("error").hidden = false;
+    showError(message.message);
   }
   if (message.type === "checking") {
     $("providers").hidden = false;
     $("providers").innerHTML = '<div class="provider">⏳ Checking the model connections…</div>';
   }
+  if (message.type === "models") {
+    registry = message.registry || null;
+    modelsSignature = ""; // force a rebuild with the fresh catalogue
+    if (message.error) showError(message.error);
+    if (state) render();
+  }
+  if (message.type === "approval_request") showApproval(message);
 });
 
 $("run").addEventListener("click", async () => {
@@ -113,24 +327,27 @@ $("run").addEventListener("click", async () => {
   $("error").textContent = "";
   if (state) state.error = null;
   const reply = await browser.runtime.sendMessage({ cmd: "run", goal });
-  if (reply && reply.error) {
-    $("error").textContent = reply.error;
-    $("error").hidden = false;
-  }
+  if (reply && reply.error) showError(reply.error);
 });
 
 $("check").addEventListener("click", async () => {
   $("error").hidden = true;
   const reply = await browser.runtime.sendMessage({ cmd: "check" });
-  if (reply && reply.error) {
-    $("error").textContent = reply.error;
-    $("error").hidden = false;
-  }
+  if (reply && reply.error) showError(reply.error);
 });
 
 $("stop").addEventListener("click", () => {
   browser.runtime.sendMessage({ cmd: "stop" });
 });
+
+$("refresh-models").addEventListener("click", async () => {
+  $("registry-status").textContent = "refreshing…";
+  const reply = await browser.runtime.sendMessage({ cmd: "models", refresh: true });
+  if (reply && reply.error) showError(reply.error);
+});
+
+$("approval-yes").addEventListener("click", () => answerApproval(true));
+$("approval-no").addEventListener("click", () => answerApproval(false));
 
 (async () => {
   const status = await browser.runtime.sendMessage({ cmd: "status" });
@@ -138,5 +355,8 @@ $("stop").addEventListener("click", () => {
   if (status.state) {
     state = status.state;
     render();
+  }
+  if (status.connected) {
+    browser.runtime.sendMessage({ cmd: "models" }).catch(() => {}); // ask for the catalogue
   }
 })();

@@ -14,9 +14,21 @@ import socket
 import struct
 import threading
 import time
+from pathlib import Path
 
 from .browser import StalePage, fingerprint
 from .model import policy_description
+from .parameters import (
+    PARAMETER_SCHEMA,
+    PRESETS,
+    apply_model,
+    apply_params,
+    apply_preset,
+    apply_saved_config,
+    current_selection,
+    load_config,
+    save_config,
+)
 
 
 def check_providers():
@@ -77,6 +89,36 @@ COMMAND_TIMEOUT = 60.0
 
 class BridgeError(RuntimeError):
     """The extension is unreachable or rejected a command."""
+
+
+class ApprovalGate:
+    """Asks the sidebar to approve a sensitive tool action; denies on timeout."""
+
+    def __init__(self, bridge, timeout=120.0):
+        self.bridge = bridge
+        self.timeout = timeout
+        self._pending = {}
+
+    def request(self, command):
+        approval_id = secrets.token_hex(8)
+        entry = {"event": threading.Event(), "approved": False}
+        self._pending[approval_id] = entry
+        try:
+            self.bridge.broadcast({"type": "approval_request", "id": approval_id, "command": command})
+        except Exception:  # noqa: BLE001 - no sidebar connected: fail closed
+            self._pending.pop(approval_id, None)
+            return False
+        answered = entry["event"].wait(self.timeout)
+        self._pending.pop(approval_id, None)
+        return bool(answered and entry["approved"])
+
+    def respond(self, approval_id, approved):
+        entry = self._pending.get(approval_id)
+        if entry is None:
+            return False
+        entry["approved"] = bool(approved)
+        entry["event"].set()
+        return True
 
 
 def _read_exact(sock, count):
@@ -255,6 +297,18 @@ class BridgeServer:
                 self.runner.stop_task()
         elif kind == "state":
             self.send({"type": "state", "state": self.runner.current_state() if self.runner else None})
+        elif kind == "models":
+            if self.runner:
+                self.runner.handle_models(message.get("refresh"))
+        elif kind == "models.select":
+            if self.runner:
+                self.runner.handle_model_select(message)
+        elif kind == "params.set":
+            if self.runner:
+                self.runner.handle_params_set(message)
+        elif kind == "approval_response":
+            if self.runner and self.runner.approvals:
+                self.runner.approvals.respond(message.get("id", ""), message.get("approved"))
         else:
             self.send({"type": "error", "message": f"Unknown message type: {kind}"})
 
@@ -362,29 +416,58 @@ def server():
 
 
 class TaskRunner:
-    """Runs one Agent task at a time on the extension's tab and broadcasts each state."""
+    """Runs one task at a time on the extension's tab and broadcasts each state.
 
-    def __init__(self, bridge):
+    Two routes per the product spec: plain browser missions go straight to the
+    fast JEV loop (Agent), while missions that need search, files, documents,
+    or the terminal run through the orchestrator — which can still delegate
+    browser steps back to the Agent as the `browser_task` tool.
+    """
+
+    def __init__(self, bridge, workspace=None):
         self.bridge = bridge
         self.agent = None
         self.stopped = False
         self.last_error = None
         self.provider_check = None
+        self.approvals = None
+        self.mode = "browser"
+        self.orchestrated = None
+        self._typesafe_key = os.environ.get("TYPESAFE_API_KEY")  # kept so the UI can switch back
+        self._workspace = Path(workspace) if workspace else Path.cwd() / "workspace"
         self._lock = threading.Lock()
+        try:
+            apply_saved_config()
+        except Exception:  # noqa: BLE001 - a broken config file must never block startup
+            pass
 
     def current_state(self):
+        selection = current_selection()
+        typesafe = bool(self._typesafe_key or os.environ.get("TYPESAFE_API_KEY"))
+        common = {
+            "mode": self.mode,
+            "policy": policy_description(),
+            "error": self.last_error,
+            "providers": self.provider_check,
+            "selection": selection,
+            "schema": PARAMETER_SCHEMA,
+            "presets": PRESETS,
+            "policy_builtin": typesafe,
+        }
+        if self.mode == "orchestrated":
+            # The orchestrated view; the live browser sub-view rides under "browser".
+            current = {"status": "idle", "history": [], "plan": [], "page": None, **common}
+            current.update(self.orchestrated or {})
+            if self.agent is not None:
+                snap = self.agent.snapshot()
+                current["browser"] = snap
+                current["planner"] = snap.get("planner")
+            return current
         if self.agent is None:
             state = {"status": "idle", "history": [], "plan": [], "page": None}
         else:
             state = self.agent.snapshot()
-        planner = self.agent.state.get("planner") if self.agent else None
-        return {
-            **state,
-            "policy": policy_description(),
-            "planner": planner,
-            "error": self.last_error,
-            "providers": self.provider_check,
-        }
+        return {**state, **common, "planner": self.agent.state.get("planner") if self.agent else None}
 
     def run_provider_check(self):
         """Self-test in the background; the result is carried in every state broadcast."""
@@ -404,10 +487,21 @@ class TaskRunner:
             raise ValueError("A task is already running; stop it first")
         self.stopped = False
         self.last_error = None
-        threading.Thread(target=self._run, args=(goal, url, tab_id), daemon=True).start()
+        self.approvals = None
+        from .orchestrator import route_task
+
+        self.mode = route_task(goal)
+        if self.mode == "orchestrated":
+            self.orchestrated = {"status": "running", "log": [], "final": None, "skills": []}
+            threading.Thread(target=self._run_orchestrated, args=(goal, url, tab_id), daemon=True).start()
+        else:
+            self.orchestrated = None
+            threading.Thread(target=self._run, args=(goal, url, tab_id), daemon=True).start()
 
     def stop_task(self):
         self.stopped = True
+
+    # ── browser mode (the original fast path) ─────────────────────────────────
 
     def _run(self, goal, url, tab_id):
         from .agent import Agent  # imported here to keep the module import-light
@@ -428,6 +522,132 @@ class TaskRunner:
             self.agent = None
             self._broadcast()
             self._lock.release()
+
+    # ── orchestrated mode (MVP-3) ─────────────────────────────────────────────
+
+    def _run_orchestrated(self, goal, url, tab_id):
+        from .agent import Agent
+        from .orchestrator import run_orchestration
+        from .skills import select_skills
+        from .tools import ToolBox
+
+        def on_step(step):
+            if self.orchestrated is not None:
+                self.orchestrated["log"] = (self.orchestrated.get("log") or [])[-40:]
+                self.orchestrated["log"].append(step)
+            self._broadcast()
+
+        def browser_runner(browser_goal, browser_url=None):
+            """Delegates a browser step to the fast JEV Agent on the live tab."""
+            target = browser_url or url or "about:blank"
+            try:
+                browser = FirefoxBrowser(target, tab_id=tab_id, bridge=self.bridge)
+                self.agent = Agent(target, str(browser_goal), screenshots=True, browser=browser)
+                self._broadcast()
+                for _state in self.agent.run():
+                    self._broadcast()
+                    if self.stopped:
+                        break
+                snap = self.agent.snapshot()
+            except (ValueError, RuntimeError, BridgeError, StalePage) as error:
+                self.agent = None
+                self.last_error = str(error)
+                return f"BROWSER ERROR: {error}"
+            finally:
+                self.agent = None
+            self.last_error = None
+            page = snap.get("page") or {}
+            history = [str(item.get("action") or item.get("decision") or item) for item in snap.get("history", [])[-5:]]
+            summary = "BROWSER RESULT: status={}, url={}\nRecent actions: {}".format(
+                snap.get("status"), page.get("url"), "; ".join(history) or "(none)"
+            )
+            text = (page.get("text") or "")[:1200]
+            return summary + "\nPage excerpt:\n" + text if text else summary
+
+        try:
+            gate = ApprovalGate(self.bridge)
+            self.approvals = gate
+            toolbox = ToolBox(self._workspace, request_approval=gate.request, browser_runner=browser_runner)
+            selected = select_skills(goal, available_tools=toolbox.registry)
+            self.orchestrated["skills"] = [skill["id"] for skill in selected]
+            self._broadcast()
+            result = run_orchestration(goal, toolbox, on_step=on_step)
+            self.orchestrated.update(
+                status="done" if not self.stopped else "stopped",
+                final=result["final"],
+                usage=result.get("usage"),
+                latency_ms=result.get("latency_ms"),
+            )
+        except (ValueError, RuntimeError, BridgeError, StalePage) as error:
+            self.last_error = str(error)
+            if self.orchestrated is not None:
+                self.orchestrated["status"] = "error"
+            self.bridge.broadcast({"type": "error", "message": str(error)})
+        finally:
+            self.approvals = None
+            self.orchestrated = self.orchestrated or {}
+            self.orchestrated.setdefault("log", [])
+            self.orchestrated["status"] = self.orchestrated.get("status") or "stopped"
+            self._broadcast()
+            self._lock.release()
+
+    # ── sidebar model/parameter handlers (MVP-1) ──────────────────────────────
+
+    def handle_models(self, refresh=False):
+        from . import discovery
+
+        cached = discovery._load_registry()
+
+        def send_registry():
+            try:
+                registry = discovery.discover(refresh=bool(refresh) or cached is None)
+                self.bridge.send({"type": "models", "registry": registry})
+            except Exception as error:  # noqa: BLE001 - report, never crash the bridge
+                self.bridge.send({"type": "models", "registry": cached, "error": str(error)[:300]})
+
+        if cached:
+            self.bridge.send({"type": "models", "registry": cached})
+        else:
+            self.bridge.send({"type": "models", "registry": None, "loading": True})
+        threading.Thread(target=send_registry, daemon=True).start()
+
+    def handle_model_select(self, message):
+        role = message.get("role", "")
+        provider_name = str(message.get("provider", "")).strip()
+        model_id = str(message.get("model", "")).strip()
+        if role == "policy" and not model_id:
+            # the sidebar's built-in option: return to the TypeSafe Jev policy
+            if self._typesafe_key:
+                os.environ["TYPESAFE_API_KEY"] = self._typesafe_key
+            os.environ.pop("POLICY_PROVIDER", None)
+            os.environ.pop("POLICY_MODEL", None)
+            config = load_config()
+            (config.get("models") or {}).pop("policy", None)
+            save_config(config)
+            self._broadcast()
+            threading.Thread(target=self.run_provider_check, daemon=True).start()
+            return
+        if role == "policy" and self._typesafe_key:
+            os.environ.pop("TYPESAFE_API_KEY", None)  # an explicit UI switch overrides the .env default
+        try:
+            apply_model(role, provider_name, model_id)
+        except (ValueError, KeyError) as error:
+            self.bridge.send({"type": "error", "message": f"Could not switch model: {error}"})
+            return
+        self._broadcast()
+        threading.Thread(target=self.run_provider_check, daemon=True).start()
+
+    def handle_params_set(self, message):
+        preset = message.get("preset")
+        try:
+            if preset:
+                apply_preset(str(preset))
+            else:
+                apply_params(str(message.get("role", "")), message.get("params") or {})
+        except (ValueError, KeyError) as error:
+            self.bridge.send({"type": "error", "message": f"Could not apply parameters: {error}"})
+            return
+        self._broadcast()
 
     def _broadcast(self):
         self.bridge.broadcast({"type": "state", "state": self.current_state()})

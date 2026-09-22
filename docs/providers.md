@@ -137,6 +137,26 @@ The provider policy preserves the loop's core contract: **one request per decisi
   - Effort levels map to `reasoning_effort` (OpenAI) and `reasoning.effort` (OpenRouter). Unverified combinations are omitted rather than sent.
 - `POLICY_JSON_MODE` / `TEXT_MODEL_JSON_MODE`: `on`/`off` override. JSON mode (OpenAI `response_format`) is enabled only for presets that honor it across their catalog; everywhere else the reply is parsed robustly (fences and prose tolerated). Set it to `off` if your endpoint rejects the parameter.
 
+## The sidebar catalogue and parameters (MVP-1)
+
+The Firefox sidebar's **⚙️ Models & parameters** panel replaces `.env` editing for everyday changes:
+
+- **Catalogue**: `GET {base_url}/models` is fetched for every provider that has a key, filtered to chat models (embed/rerank/image/audio families excluded), and cached for 24 h in `artifacts/model-registry.json` (`JEV_MODEL_REGISTRY` moves it). `Refresh catalogue` forces a refetch. A rejected key (401/403) shows a message pointing at the provider's key page.
+- **Pickers**: one per role; choosing a model updates the environment and the config file, then re-runs the setup self-test so a bad id is caught immediately. The executor picker also offers the built-in **TypeSafe Jev** policy when `TYPESAFE_API_KEY` is set; picking it back restores the built-in policy without a restart.
+- **Presets**: *Fast / Balanced / Deep / Browser / Coding* — bundles of per-role parameters.
+- **Advanced**: per-role reasoning effort and temperature.
+
+Persistence: `artifacts/model-config.json` (`JEV_MODEL_CONFIG` moves it). At startup the saved selection is re-applied over `.env`, so the sidebar always wins once you have used it. Delete the file to fall back to `.env` only.
+
+Related environment variables (all optional):
+
+| Variable | Effect |
+|---|---|
+| `PLANNER_TEMPERATURE`, `POLICY_TEMPERATURE`, `TEXT_MODEL_TEMPERATURE` | per-role temperature, 0–2, sent only when set |
+| `JEV_MODEL_CONFIG` | where the sidebar's model/parameter choices persist |
+| `JEV_MODEL_REGISTRY` | where the model catalogue cache persists |
+| `JEV_SKILLS_DIR` | override the `skills/` directory (default: next to the package) |
+
 ## Troubleshooting
 
 - **`POLICY_API_KEY is not set or one of OPENROUTER_API_KEY...`** — provide the key in either form.

@@ -99,3 +99,97 @@ footer {
 .provider b { color: var(--text); font-weight: 600; }
 .provider small { display: block; color: var(--warn); font-size: 11px; margin-top: 2px; word-break: break-word; }
 .provider.ok small { color: var(--muted); }
+
+/* ── approvals (MVP-4) ─────────────────────────────────────────────── */
+#approval {
+  background: #3a2e15;
+  border: 1px solid #7a642b;
+  color: #ffd79b;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+#approval .approval-title { font-weight: 600; }
+#approval code {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: 11px/1.4 ui-monospace, Consolas, monospace;
+  word-break: break-all;
+  white-space: pre-wrap;
+  color: var(--text);
+}
+
+/* ── models panel (MVP-1) ──────────────────────────────────────────── */
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; }
+.panel > summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text);
+  list-style: none;
+  user-select: none;
+}
+.panel > summary::before { content: "▸ "; color: var(--muted); }
+.panel[open] > summary::before { content: "▾ "; }
+.panel > *:not(summary) { margin-bottom: 10px; }
+.presets-label { margin-top: 2px; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--text);
+}
+.chip:hover { border-color: var(--accent); }
+.role-row { border-top: 1px dashed var(--line); padding: 10px 0 4px; display: flex; flex-direction: column; gap: 6px; }
+.role-head { display: flex; align-items: baseline; gap: 8px; }
+.role-head b { font-size: 12px; }
+select, input[type="number"] {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12px;
+  width: 100%;
+}
+select:focus, input[type="number"]:focus { outline: 1px solid var(--accent); }
+.adv summary { cursor: pointer; color: var(--muted); font-size: 11px; user-select: none; }
+.adv .param-grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; margin-top: 6px; }
+.adv .param-grid label { color: var(--muted); font-size: 11px; }
+#registry-status { margin-left: auto; }
+
+/* ── orchestrated task view (MVP-3) ────────────────────────────────── */
+#task { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+#task-status { color: var(--text); font-weight: 600; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chips .chip { cursor: default; background: transparent; color: var(--muted); padding: 2px 10px; }
+.task-log { display: flex; flex-direction: column; gap: 6px; font-size: 12px; max-height: 260px; overflow-y: auto; }
+.task-step { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; }
+.task-step .head { display: flex; gap: 8px; align-items: baseline; }
+.task-step .number { color: var(--muted); font-size: 11px; }
+.task-step .head code { font: 11px ui-monospace, Consolas, monospace; color: var(--accent); word-break: break-all; }
+.task-step .res { color: var(--muted); font-size: 11px; word-break: break-word; }
+.task-step .err { color: #ffb3c1; font-size: 11px; word-break: break-word; }
+.task-step.bad { border-color: #7a2b3f; }
+.final {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow-y: auto;
+}

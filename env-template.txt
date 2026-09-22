@@ -27,3 +27,11 @@ PLANNER_MODEL=z-ai/glm-5.3
 TEXT_MODEL_PROVIDER=groq
 TEXT_MODEL=openai/gpt-oss-20b
 TEXT_MODEL_REASONING=low
+
+# ---- Model panel (sidebar) - no changes needed ----
+# The "Models & parameters" panel in the sidebar saves your picks to
+# artifacts/model-config.json (they win over this file on the next start).
+# Optional file locations / fine-tuning:
+# JEV_MODEL_CONFIG=artifacts/model-config.json
+# JEV_MODEL_REGISTRY=artifacts/model-registry.json
+# PLANNER_TEMPERATURE=0.5
