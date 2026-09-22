@@ -1,47 +1,84 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title Jev Ultrafast - Firefox bridge host
+title Jev Agent - local host
 
-rem Double-clickable starter: prepares a private Python environment and runs
-rem the Firefox bridge host. First run also creates the .env settings file.
+rem ============================================================
+rem  Double-click starter. Prepares everything and runs the host.
+rem ============================================================
 
 python -c "import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)" >nul 2>nul
 if errorlevel 1 (
-  echo Python 3.12 or newer is required.
-  echo Install it from https://www.python.org/downloads/ and double-click this file again.
+  echo.
+  echo  [!] Python 3.12 or newer is required.
+  echo      Install it from https://www.python.org/downloads/
+  echo      IMPORTANT: tick "Add python.exe to PATH" in the installer.
+  echo      Then double-click this file again.
+  echo.
   pause
   exit /b 1
 )
 
 if not exist ".venv" (
-  echo Preparing the host for the first run. This can take a minute...
+  echo.
+  echo  First run: preparing the agent. About one minute, internet needed...
   python -m venv .venv
   ".venv\Scripts\python" -m pip install --quiet --upgrade pip
   ".venv\Scripts\python" -m pip install --quiet -e .
   if errorlevel 1 (
-    echo Installation failed. Check your internet connection and run this file again.
+    echo.
+    echo  [!] Installation failed. Check your internet connection and try again.
+    echo.
     pause
     exit /b 1
   )
 )
 
 if not exist ".env" (
-  copy ".env.example" ".env" >nul
+  copy /y "env-template.txt" ".env" >nul
   echo.
-  echo A settings file .env was just created.
-  echo Add your API keys ^(GROQ_API_KEY, NVIDIA_API_KEY, ...^) and double-click this file again.
-  echo See docs\providers.md for every option.
+  echo  Settings file created: .env  -  opening it in Notepad now.
+  echo.
+  echo  NEXT - paste ONE API key. Easiest option, free, 2 minutes:
+  echo    1. Open  https://console.groq.com/keys  and log in
+  echo    2. Click "Create API Key" and copy it
+  echo    3. In Notepad, replace  PASTE-YOUR-GROQ-KEY-HERE  with your key
+  echo    4. Save with Ctrl+S and close Notepad
+  echo    5. Double-click this file again
+  echo.
   start notepad ".env"
   pause
   exit /b 0
 )
 
+findstr /C:"PASTE-YOUR-GROQ-KEY-HERE" ".env" >nul 2>nul
+if not errorlevel 1 (
+  findstr /C:"PASTE-YOUR-NVIDIA-KEY-HERE" ".env" >nul 2>nul
+  if not errorlevel 1 (
+    echo.
+    echo  [!] No API key configured yet.
+    echo      The file .env is opening in Notepad.
+    echo      Paste at least one key - free Groq key: https://console.groq.com/keys
+    echo      Save, close, and double-click this file again.
+    echo.
+    start notepad ".env"
+    pause
+    exit /b 1
+  )
+)
+
 echo.
-echo Host starting. Keep this window open while you use the sidebar.
-echo Firefox: about:debugging -^> This Firefox -^> Load Temporary Add-on -^> extension\manifest.json
+echo  Host starting. KEEP THIS WINDOW OPEN while you use the sidebar.
+echo.
+echo  Now in Firefox:
+echo    1. Type  about:debugging  in the address bar and press Enter
+echo    2. Click "This Firefox"  then  "Load Temporary Add-on..."
+echo    3. Open this folder, then the "extension" folder, pick "manifest.json"
+echo    4. Open the Jev sidebar with the toolbar button
 echo.
 ".venv\Scripts\jev-firefox"
 echo.
-echo The host stopped.
+echo  The host stopped.
+echo.
 pause
+exit /b 0

@@ -1,0 +1,28 @@
+# ============================================================
+#  JEV AGENT - SETTINGS / CONFIGURACION
+#
+#  1) Paste your API key below - ONE key is enough to start.
+#       Groq (free):   https://console.groq.com/keys
+#       NVIDIA (free): https://build.nvidia.com
+#  2) Save this file (Ctrl+S on Windows/Linux, Cmd+S on macOS) and close it.
+#  3) Double-click the starter again.
+# ============================================================
+
+GROQ_API_KEY=PASTE-YOUR-GROQ-KEY-HERE
+NVIDIA_API_KEY=PASTE-YOUR-NVIDIA-KEY-HERE
+
+# ---- Everything below is preconfigured - no changes needed ----
+
+# Fast executor: picks each action. Needs the Groq key.
+POLICY_PROVIDER=groq
+POLICY_MODEL=openai/gpt-oss-20b
+POLICY_REASONING=low
+
+# Planner: breaks your mission into a checklist. Needs the NVIDIA key. Optional.
+PLANNER_PROVIDER=nvidia
+PLANNER_MODEL=zai/glm-5.3
+
+# Text writer: fills text fields. Needs the NVIDIA key.
+TEXT_MODEL_PROVIDER=nvidia
+TEXT_MODEL=zai/glm-5.3-flash
+TEXT_MODEL_REASONING=none

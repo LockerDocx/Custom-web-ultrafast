@@ -1,5 +1,7 @@
 # Getting started without a console (GUI-only guide)
 
+> 🇪🇸 **¿Español o primera vez absoluta?** Lee primero **[EMPEZAR-AQUI.md](../EMPEZAR-AQUI.md)** — el manual paso a paso más detallado.
+
 You can use, install, and even re-publish this project **without opening a terminal**. This guide covers download, first run, the Firefox extension, and how to put the project on your own GitHub using only the web interface.
 
 ## What you need
