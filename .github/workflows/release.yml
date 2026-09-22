@@ -45,35 +45,47 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          RELEASE_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" --jq .id)
-          echo "Uploading to release id $RELEASE_ID"
+          LOG=/tmp/upload.log
+          : > "$LOG"
+          report() {
+            gh issue create --title "Release upload failed for ${GITHUB_REF_NAME}" \
+              --body "$(tail -40 "$LOG")" >/dev/null 2>&1 || true
+          }
+          fail() {
+            echo "FAILED: $1" | tee -a "$LOG"
+            report
+            exit 1
+          }
+          RELEASE_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" --jq .id 2>>"$LOG") \
+            || fail "could not resolve the release id"
+          echo "release id: $RELEASE_ID" | tee -a "$LOG"
           upload() {
             local file="$1" name attempt asset_id
             name="$(basename "$file")"
-            # A previous run may have attached an asset with the same name: remove it first.
             asset_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
-              --jq ".[] | select(.name == \"${name}\") | .id" || true)
+              --jq ".[] | select(.name == \"${name}\") | .id" 2>>"$LOG" || true)
             if [ -n "${asset_id:-}" ]; then
-              echo "replacing existing asset ${name}"
-              gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/${asset_id}" || true
+              echo "replacing existing asset ${name} (id ${asset_id})" | tee -a "$LOG"
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/${asset_id}" >>"$LOG" 2>&1 || true
+              sleep 2
             fi
             for attempt in 1 2 3; do
+              echo "uploading ${name} (attempt ${attempt})" | tee -a "$LOG"
               if curl -sSf -X POST \
                 -H "Authorization: Bearer $GH_TOKEN" \
                 -H "Content-Type: application/octet-stream" \
                 --data-binary @"$file" \
-                "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=${name}" >/dev/null; then
-                echo "uploaded ${name}"
+                "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=${name}" >>"$LOG" 2>&1; then
+                echo "uploaded ${name}" | tee -a "$LOG"
                 return 0
               fi
-              echo "retry $attempt for ${name}"
               sleep 5
             done
-            echo "FAILED to upload ${name}"
-            return 1
+            fail "could not upload ${name}"
           }
-          upload "dist/jev_ultrafast-${VERSION}-py3-none-any.whl"
-          upload "jev-agent-firefox-${GITHUB_REF_NAME}.xpi"
-          upload "custom-web-ultrafast-${GITHUB_REF_NAME}-source.zip"
+          upload "dist/jev_ultrafast-${VERSION}-py3-none-any.whl" || exit 1
+          upload "jev-agent-firefox-${GITHUB_REF_NAME}.xpi" || exit 1
+          upload "custom-web-ultrafast-${GITHUB_REF_NAME}-source.zip" || exit 1
+          echo "ALL ASSETS UPLOADED" | tee -a "$LOG"
