@@ -24,10 +24,14 @@ AGENT = None
 def load_environment():
     path = Path.cwd() / ".env"
     if path.exists():
-        for line in path.read_text().splitlines():
-            if "=" in line and not line.startswith("#"):
-                key, value = line.split("=", 1)
-                os.environ.setdefault(key, value)
+        with open(path, encoding="utf-8-sig") as handle:
+            for line in handle:
+                if "=" in line and not line.startswith("#"):
+                    key, value = line.split("=", 1)
+                    value = value.strip()
+                    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+                        value = value[1:-1]
+                    os.environ.setdefault(key.strip(), value)
 
 
 def response_state():

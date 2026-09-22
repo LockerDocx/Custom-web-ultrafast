@@ -35,6 +35,7 @@ def check_providers():
     results = {}
     for role in roles:
         entry = {"role": role, "model": None, "ok": False, "latency_ms": None, "detail": ""}
+        provider = None
         try:
             if role == "policy" and os.environ.get("TYPESAFE_API_KEY"):
                 entry.update(model="jev-latest (TypeSafe)", ok=True, detail="TypeSafe key configured", latency_ms=0)
@@ -57,6 +58,15 @@ def check_providers():
             entry["detail"] = str(error)[:300]
             if "404" in entry["detail"] or "not found" in entry["detail"].lower():
                 entry["detail"] += " — check the exact model id in the provider's catalogue"
+            elif "401" in entry["detail"] or "403" in entry["detail"]:
+                keys_url = (provider or {}).get("keys_url") if provider else None
+                preset = provider_layer.PROVIDERS.get((provider or {}).get("name", ""), {})
+                keys_url = keys_url or preset.get("keys_url")
+                where = f" at {keys_url}" if keys_url else ""
+                entry["detail"] += (
+                    f" — this is an API-key problem: the provider rejected the key. Generate a fresh key{where},"
+                    " paste it in .env without quotes or extra characters, save, and restart the starter."
+                )
         results[role] = entry
     return results
 
@@ -423,14 +433,21 @@ class TaskRunner:
         self.bridge.broadcast({"type": "state", "state": self.current_state()})
 
 
+def _clean_value(value):
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        value = value[1:-1]  # Notepad and some editors wrap pasted values in quotes
+    return value
+
+
 def load_environment():
     path = os.path.join(os.getcwd(), ".env")
     if os.path.exists(path):
-        with open(path) as handle:
+        with open(path, encoding="utf-8-sig") as handle:  # utf-8-sig drops a Notepad BOM
             for line in handle:
                 if "=" in line and not line.startswith("#"):
                     key, value = line.split("=", 1)
-                    os.environ.setdefault(key.strip(), value.strip())
+                    os.environ.setdefault(key.strip(), _clean_value(value))
 
 
 def main():

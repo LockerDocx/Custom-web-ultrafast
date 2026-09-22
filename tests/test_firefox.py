@@ -411,3 +411,48 @@ def test_hello_triggers_a_provider_check_broadcast(monkeypatch):
         ext.close()
     finally:
         server.close()
+
+
+# ── Key-rejection guidance and .env paste hardening ──────────────────────────
+
+
+def test_check_providers_explains_a_rejected_key(monkeypatch):
+    from jev_ultrafast import providers as provider_layer
+
+    for name in ("PLANNER_PROVIDER", "POLICY_PROVIDER", "TEXT_MODEL_PROVIDER", "TYPESAFE_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-bad")
+    monkeypatch.setenv("POLICY_PROVIDER", "nvidia")
+    monkeypatch.setenv("POLICY_MODEL", "z-ai/glm-5.3")
+
+    def fake_chat(provider, system, user, max_tokens=1024):
+        raise RuntimeError(
+            'Model provider returned HTTP 403: {"status":403,"detail":"Authorization failed"}; no action executed.'
+        )
+
+    monkeypatch.setattr(provider_layer, "chat", fake_chat)
+    results = firefox.check_providers()
+    detail = results["policy"]["detail"]
+    assert results["policy"]["ok"] is False
+    assert "API-key problem" in detail
+    assert "https://build.nvidia.com" in detail
+    assert "without quotes" in detail
+
+
+def test_env_loader_strips_quotes_and_bom(tmp_path, monkeypatch):
+    env = tmp_path / ".env"
+    env.write_bytes(
+        b"\xef\xbb\xbf# comment\n"
+        + b'JEV_TEST_QUOTED_KEY="nvapi-secret"\n'
+        + b"JEV_TEST_SINGLE_KEY='gsk-single'\n"
+        + b"JEV_TEST_BARE_KEY=gsk-bare\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    try:
+        firefox.load_environment()
+        assert os.environ["JEV_TEST_QUOTED_KEY"] == "nvapi-secret"
+        assert os.environ["JEV_TEST_SINGLE_KEY"] == "gsk-single"
+        assert os.environ["JEV_TEST_BARE_KEY"] == "gsk-bare"
+    finally:
+        for name in ("JEV_TEST_QUOTED_KEY", "JEV_TEST_SINGLE_KEY", "JEV_TEST_BARE_KEY"):
+            os.environ.pop(name, None)
