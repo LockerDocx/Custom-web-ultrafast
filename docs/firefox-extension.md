@@ -36,7 +36,7 @@ FIREFOX                          LOCAL HOST (this repo)
 
 4. Navigate to the page you want the agent to work on, type a goal in the sidebar, press **Run**.
 
-The agent attaches to the tab you are on, observes its elements, plans (if `PLANNER_*` is configured), and executes step by step. The sidebar shows the live checklist (✓ completed steps), the last screenshot, every action, and a Stop button. `export trace` is available from the Python API as usual.
+The agent attaches to the tab you are on, observes its elements, plans (if `PLANNER_*` is configured), and executes step by step. The sidebar shows the live checklist (✓ completed steps), the last screenshot, every action, and a Stop button. If the current tab cannot be scripted (new-tab page, `about:*`), the agent opens DuckDuckGo in a new tab and works there. Errors stay visible in the sidebar until the next run, and a **Test setup** button (plus an automatic check on connect) pings each configured provider and shows per-model status with the provider's exact error message. `export trace` is available from the Python API as usual.
 
 ## What runs where
 

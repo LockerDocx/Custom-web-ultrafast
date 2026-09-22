@@ -19,7 +19,7 @@ function render() {
   $("stop").hidden = !live;
   $("live").hidden = !state.page;
   const labels = {
-    idle: "idle",
+    idle: state.error ? "stopped — see the error below" : "idle",
     ready: "page observed · ready",
     predicted: "choice ready",
     done: "done ✓",
@@ -58,6 +58,35 @@ function render() {
   $("models").textContent = [state.planner && `planner · ${state.planner}`, state.policy && `policy · ${state.policy}`]
     .filter(Boolean)
     .join("   ·   ") || "no models configured";
+  renderProviders(state.providers);
+  renderError(state.error);
+}
+
+function renderProviders(providers) {
+  const box = $("providers");
+  if (!providers || !Object.keys(providers).length) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const names = { planner: "Planner", policy: "Executor", text: "Text writer" };
+  box.innerHTML = Object.values(providers)
+    .map((p) => {
+      const dot = p.ok ? "🟢" : "🔴";
+      const extra = p.ok
+        ? `${p.latency_ms != null ? ` ${p.latency_ms} ms` : ""}`
+        : `<small>${escape(p.detail || "not configured")}</small>`;
+      return `<div class="provider ${p.ok ? "ok" : "bad"}" title="${escape(p.detail || "")}">${dot} ${names[p.role] || p.role} · <b>${escape(p.model || "?")}</b>${extra}</div>`;
+    })
+    .join("");
+}
+
+function renderError(error) {
+  const box = $("error");
+  if (error) {
+    box.textContent = error;
+    box.hidden = false;
+  }
 }
 
 browser.runtime.onMessage.addListener((message) => {
@@ -67,11 +96,13 @@ browser.runtime.onMessage.addListener((message) => {
     render();
   }
   if (message.type === "error") {
+    // The next state broadcast carries the same error persistently; show it now.
     $("error").textContent = message.message;
     $("error").hidden = false;
   }
-  if (message.type === "state" && message.state) {
-    $("error").hidden = true;
+  if (message.type === "checking") {
+    $("providers").hidden = false;
+    $("providers").innerHTML = '<div class="provider">⏳ Checking the model connections…</div>';
   }
 });
 
@@ -79,7 +110,18 @@ $("run").addEventListener("click", async () => {
   const goal = $("goal").value.trim();
   if (!goal) return;
   $("error").hidden = true;
+  $("error").textContent = "";
+  if (state) state.error = null;
   const reply = await browser.runtime.sendMessage({ cmd: "run", goal });
+  if (reply && reply.error) {
+    $("error").textContent = reply.error;
+    $("error").hidden = false;
+  }
+});
+
+$("check").addEventListener("click", async () => {
+  $("error").hidden = true;
+  const reply = await browser.runtime.sendMessage({ cmd: "check" });
   if (reply && reply.error) {
     $("error").textContent = reply.error;
     $("error").hidden = false;

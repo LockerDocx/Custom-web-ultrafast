@@ -555,3 +555,69 @@ def test_predict_passes_the_current_step_to_the_executor(monkeypatch):
 def test_directive_matches_the_goal_for_single_step_runs():
     a = planned_agent(["Find a book"])
     assert a.directive() == "Find a book"
+
+
+# ── Adaptive requests and readable errors ────────────────────────────────────
+
+
+def test_post_json_includes_the_provider_error_detail(monkeypatch):
+    class FakeResponse:
+        status_code = 400
+        is_error = True
+        text = '{"error": {"message": "Model zai/glm-5.3 does not exist"}}'
+
+    monkeypatch.setattr(model, "CLIENT", Mock(post=Mock(return_value=FakeResponse())))
+    with pytest.raises(RuntimeError, match="does not exist"):
+        model.post_json("https://api.test/v1/chat/completions", "k", {})
+
+
+def test_chat_retries_without_a_rejected_response_format(monkeypatch):
+    monkeypatch.setenv("POLICY_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk")
+    monkeypatch.setenv("POLICY_MODEL", "gpt-4.1")
+    calls = []
+
+    def fake_post(_url, _key, body, headers=None):
+        calls.append(body)
+        if "response_format" in body:
+            raise RuntimeError("HTTP 400: 'response_format' is not supported for this model")
+        return {"choices": [{"message": {"content": "{}"}}]}
+
+    monkeypatch.setattr(model, "post_json", fake_post)
+    text, _meta = providers.chat(providers.resolve("policy"), "s", "u")
+    assert text == "{}"
+    assert len(calls) == 2
+    assert "response_format" not in calls[1]
+    assert calls[1]["messages"][0]["content"] == "s"
+
+
+def test_chat_falls_back_to_max_completion_tokens(monkeypatch):
+    monkeypatch.setenv("POLICY_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk")
+    monkeypatch.setenv("POLICY_MODEL", "gpt-4.1")
+    monkeypatch.setenv("POLICY_REASONING", "high")
+    calls = []
+
+    def fake_post(_url, _key, body, headers=None):
+        calls.append(body)
+        if "response_format" in body:
+            raise RuntimeError("HTTP 400: response_format unsupported")
+        if "reasoning_effort" in body:
+            raise RuntimeError("HTTP 400: Unsupported parameter: 'reasoning_effort'")
+        if "max_tokens" in body:
+            raise RuntimeError("HTTP 400: Use 'max_completion_tokens' instead of 'max_tokens'")
+        return {"choices": [{"message": {"content": "{}"}}]}
+
+    monkeypatch.setattr(model, "post_json", fake_post)
+    providers.chat(providers.resolve("policy"), "s", "u")
+    assert len(calls) == 4
+    assert "max_completion_tokens" in calls[3] and "max_tokens" not in calls[3]
+
+
+def test_chat_gives_up_when_the_error_is_not_a_parameter_issue(monkeypatch):
+    monkeypatch.setenv("POLICY_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk")
+    monkeypatch.setenv("POLICY_MODEL", "gpt-4.1")
+    monkeypatch.setattr(model, "post_json", Mock(side_effect=RuntimeError("HTTP 401: invalid api key")))
+    with pytest.raises(RuntimeError, match="401"):
+        providers.chat(providers.resolve("policy"), "s", "u")

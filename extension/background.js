@@ -80,6 +80,20 @@ async function ensureContent(tabId) {
   }
 }
 
+async function waitForLoad(tabId, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const tab = await browser.tabs.get(tabId);
+      if (tab.status === "complete") return true;
+    } catch {
+      return false; // the tab is gone
+    }
+    await sleep(150);
+  }
+  return false;
+}
+
 async function readSnapshot(tabId) {
   const results = await browser.tabs.executeScript(tabId, { file: "snapshot.js" });
   return results && results[0];
@@ -91,8 +105,9 @@ async function runCommand(message) {
     return { tabId: tab.id };
   }
   if (!Number.isInteger(message.tabId)) throw new Error("No tab attached");
-  await ensureContent(message.tabId);
   if (message.type === "observe") {
+    await waitForLoad(message.tabId);
+    await ensureContent(message.tabId);
     await browser.tabs.sendMessage(message.tabId, { cmd: "settle" });
     let state = null;
     for (let attempt = 0; attempt < 10 && !state; attempt++) {
@@ -126,13 +141,23 @@ browser.runtime.onMessage.addListener((message) => {
   }
   if (message.cmd === "run") {
     return (async () => {
-      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      let [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       if (!tab || !/^https?:/i.test(tab.url || "")) {
-        return { error: "Open a normal http(s) page in the current tab first" };
+        // The current tab (new tab page, about:*, ...) cannot be scripted:
+        // open a normal page and run the mission there instead of failing.
+        tab = await browser.tabs.create({ url: "https://duckduckgo.com/" });
       }
       send({ type: "run", goal: message.goal, url: tab.url, tabId: tab.id });
       return { ok: true };
     })().catch((error) => ({ error: String(error.message || error) }));
+  }
+  if (message.cmd === "check") {
+    try {
+      send({ type: "check" });
+      return Promise.resolve({ ok: true });
+    } catch (error) {
+      return Promise.resolve({ error: String(error.message || error) });
+    }
   }
   if (message.cmd === "stop") {
     try {

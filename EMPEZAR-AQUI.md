@@ -99,11 +99,17 @@ La clave es como una contraseña para que el asistente use una IA. La más fáci
 2. Se abre el **panel lateral** del agente. Mira el puntito de arriba a la derecha del panel:
    - 🟢 **Verde "host online"** = todo conectado ✓
    - 🔴 Rojo "offline" = la ventana negra está cerrada → vuelve al PASO 3
-3. Navega a cualquier web normal, por ejemplo escribe `wikipedia.org` en la barra de direcciones
-4. En el panel, escribe una misión de prueba y pulsa **Run**:
+3. **Revisa la conexión de las IAs**: al abrir el panel, debajo del cuadro de texto verás el estado de cada modelo:
+   - 🟢 `Executor · groq:openai/gpt-oss-20b` = tu clave Groq funciona ✓
+   - 🟢 `Planner · nvidia:zai/glm-5.3` y `Text writer` = tu clave NVIDIA funciona ✓
+   - 🔴 **algo rojo** = pulsa el botón **"Test setup"** y lee el mensaje: te dice EXACTAMENTE qué falla (clave mal pegada, modelo que no existe…). Arregla el `.env` (PASO 3) y reinicia el starter.
+4. Escribe una misión de prueba y pulsa **Run**:
    > Busca el artículo de la Wikipedia sobre la Torre Eiffel y ábrelo.
+   - ¿Estás en una pestaña vacía o en la página de inicio? **No pasa nada**: el agente abre solo DuckDuckGo y trabaja allí. Si quieres que trabaje en una web concreta, navega a ella antes de pulsar Run.
 5. 🍿 **Mira tu Firefox**: aparece el **PLAN con pasos que se van marcando ✓**, la página se mueve sola, clickea, escribe… y el historial de acciones va apareciendo en el panel
 6. Botón **Stop** para pararlo cuando quieras (termina la acción en curso y se detiene)
+
+**❌ Si algo falla aquí:** el error queda **escrito en rojo en el panel** (ya no desaparece) y el estado de cada modelo está siempre visible. Con ese mensaje y la tabla de abajo se resuelve casi todo.
 
 ---
 
@@ -123,13 +129,15 @@ Acabas de ver las dos IAs trabajando: el **planificador** (si pusiste clave NVID
 | Veo esto… | Solución |
 |---|---|
 | El puntito del panel está **rojo "offline"** | La ventana negra del host está cerrada → doble clic en el starter (PASO 3, punto 8) |
-| `Model provider returned HTTP 401` | La clave está mal copiada o incompleta → repite el PASO 3 (puntos 4-7) |
+| Un modelo está en **🔴 en el panel** | Pulsa **"Test setup"** y lee el mensaje exacto: `401` = clave mal pegada (repite PASO 3); `404` o `not found` = el nombre del modelo no existe en ese proveedor → córregelo en `.env` (el enlace correcto: Groq en console.groq.com/models, NVIDIA en build.nvidia.com/models) y reinicia el starter |
+| Sale un **error rojo en el panel** al pulsar Run | Léelo: ahora incluye la causa real (`HTTP 401: invalid key`, `HTTP 404: model ... does not exist`...). Cada caso está en esta tabla |
 | No encuentro `manifest.json` al cargar el add-on | Está DENTRO de la carpeta `extension` del proyecto (PASO 4, punto 4) |
 | Reinicié Firefox y el add-on desapareció | Normal, es "temporal" → repite el PASO 4 |
-| El agente no mueve la página | Debe ser una web normal (no vale `about:...`, ni el gestor de complementos) y la pestaña debe estar **visible** (no en segundo plano) |
+| El agente no mueve la página | Debe ser una web normal (no vale `about:...`); si estabas en una pestaña vacía, él abre DuckDuckGo solo. La pestaña debe estar **visible** (no minimizada) |
+| Estaba en la pestaña de inicio y di Run | No pasa nada: abre DuckDuckGo automáticamente y trabaja allí |
 | `Python 3.12 or newer is required` | Instala Python desde python.org y repite el PASO 3 |
-| La ventana negra se cierra al instante | En el instalador de Python marca **"Add python.exe to PATH"**, reinstala y repite |
-| Solo tengo clave de NVIDIA, no de Groq | Abre `.env` con el Bloc de notas y cambia la línea `POLICY_PROVIDER=groq` por `POLICY_PROVIDER=nvidia` y `POLICY_MODEL=openai/gpt-oss-20b` por `POLICY_MODEL=zai/glm-5.3`. Guarda y arranca |
+| La ventana negra se cierra al instante | En el instalador de Python marca **"Add python.exe a PATH"**, reinstala y repite |
+| Solo tengo clave de NVIDIA, no de Groq | Abre `.env` con el Bloc de notas y cambia la línea `POLICY_PROVIDER=groq` por `POLICY_PROVIDER=nvidia` y `POLICY_MODEL=openai/gpt-oss-20b` por un modelo de NVIDIA (míralos en build.nvidia.com/models). Guarda y arranca |
 | Quiero cambiar el modelo | Todo está explicado en `docs/providers.md` |
 
 ## ❓ Preguntas rápidas

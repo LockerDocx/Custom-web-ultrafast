@@ -23,7 +23,9 @@ def post_json(url, key, body, headers=None):
             time.sleep(0.5 * 2**attempt)
             continue
         if response.is_error:
-            raise RuntimeError(f"Model provider returned HTTP {response.status_code}; no action executed.")
+            # Include the provider's own message so the exact cause is visible in the sidebar.
+            detail = " ".join(response.text.split())[:300]
+            raise RuntimeError(f"Model provider returned HTTP {response.status_code}: {detail}; no action executed.")
         return response.json()
     raise RuntimeError("Model unavailable")
 

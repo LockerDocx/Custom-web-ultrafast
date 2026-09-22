@@ -224,15 +224,20 @@ def _anthropic_url(base_url):
     return url + "/v1/messages"
 
 
-def build_request(provider, system, user, max_tokens):
-    body = {"model": provider["model"], "max_tokens": max_tokens}
-    body.update(reasoning_params(provider["reasoning"], provider["name"], provider["dialect"]))
+def build_request(provider, system, user, max_tokens, omit=()):
+    body = {"model": provider["model"]}
+    if "max_tokens" in omit:
+        body["max_completion_tokens"] = max_tokens  # newer OpenAI-compatible endpoints
+    else:
+        body["max_tokens"] = max_tokens
+    if "reasoning" not in omit:
+        body.update(reasoning_params(provider["reasoning"], provider["name"], provider["dialect"]))
     if provider["dialect"] == "anthropic":
         headers = {"x-api-key": provider["key"], "anthropic-version": "2023-06-01"}
         body["system"] = system
         body["messages"] = [{"role": "user", "content": user}]
         return _anthropic_url(provider["base_url"]), headers, body
-    if provider["json_mode"]:
+    if provider["json_mode"] and "response_format" not in omit:
         body["response_format"] = {"type": "json_object"}
     body["messages"] = [
         {"role": "system", "content": system},
@@ -264,14 +269,54 @@ def parse_response(provider, result):
 
 
 def chat(provider, system, user, max_tokens=1024):
-    url, headers, body = build_request(provider, system, user, max_tokens)
+    """Send one chat request; adaptively drop params a strict endpoint rejects.
+
+    OpenAI-compatible providers disagree on response_format, reasoning controls,
+    and max_tokens vs max_completion_tokens. Instead of failing, retry without
+    the rejected parameter so a model change never breaks a run.
+    """
     from . import model  # one shared HTTP seam; tests patch model.post_json
 
-    if headers is None:
-        result = model.post_json(url, provider["key"], body)
-    else:
-        result = model.post_json(url, provider["key"], body, headers=headers)
-    return parse_response(provider, result)
+    ladder = (
+        (),
+        ("response_format",),
+        ("response_format", "reasoning"),
+        ("response_format", "reasoning", "max_tokens"),
+    )
+    index = 0
+    while True:
+        url, headers, body = build_request(provider, system, user, max_tokens, omit=ladder[index])
+        if headers is None:
+            try:
+                result = model.post_json(url, provider["key"], body)
+            except RuntimeError as error:
+                index = _next_attempt(index, str(error), provider["dialect"])
+                if index is None:
+                    raise
+                continue
+        else:
+            try:
+                result = model.post_json(url, provider["key"], body, headers=headers)
+            except RuntimeError as error:
+                index = _next_attempt(index, str(error), provider["dialect"])
+                if index is None:
+                    raise
+                continue
+        return parse_response(provider, result)
+
+
+def _next_attempt(index, error, dialect):
+    """The next adaptive retry for a rejected parameter, or None to give up."""
+    if dialect == "anthropic":
+        return None
+    lowered = error.lower()
+    if index < 1 and "response_format" in lowered:
+        return 1
+    if index < 2 and ("reasoning" in lowered or "unsupported parameter" in lowered or "unexpected" in lowered):
+        return 2
+    if index < 3 and ("max_tokens" in lowered or "max_completion_tokens" in lowered):
+        return 3
+    return None
 
 
 def extract_json(text):

@@ -86,3 +86,16 @@ footer {
   color: var(--muted);
   font-size: 11px;
 }
+.providers {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.provider b { color: var(--text); font-weight: 600; }
+.provider small { display: block; color: var(--warn); font-size: 11px; margin-top: 2px; word-break: break-word; }
+.provider.ok small { color: var(--muted); }

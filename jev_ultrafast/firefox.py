@@ -18,6 +18,48 @@ import time
 from .browser import StalePage, fingerprint
 from .model import policy_description
 
+
+def check_providers():
+    """One tiny real request per configured role; per-role status for the sidebar.
+
+    This is the setup self-test: it shows exactly which model works and, when
+    one fails, the provider's own error (wrong key, wrong model id, ...).
+    """
+    from . import providers as provider_layer
+
+    roles = []
+    if any(os.environ.get(name, "").strip() for name in ("PLANNER_PROVIDER", "PLANNER_BASE_URL")):
+        roles.append("planner")
+    roles.append("policy")
+    roles.append("text")
+    results = {}
+    for role in roles:
+        entry = {"role": role, "model": None, "ok": False, "latency_ms": None, "detail": ""}
+        try:
+            if role == "policy" and os.environ.get("TYPESAFE_API_KEY"):
+                entry.update(model="jev-latest (TypeSafe)", ok=True, detail="TypeSafe key configured", latency_ms=0)
+            else:
+                provider = provider_layer.resolve(role)
+                entry["model"] = f"{provider['name']}:{provider['model']}"
+                started = time.perf_counter()
+                provider_layer.chat(
+                    provider,
+                    "You are a connectivity check. Reply with exactly the JSON object {} and nothing else.",
+                    "ping",
+                    max_tokens=512,
+                )
+                entry.update(ok=True, latency_ms=round((time.perf_counter() - started) * 1000), detail="connected")
+        except ValueError as error:
+            entry["detail"] = str(error)
+            if role == "text" and "API_KEY" in str(error):
+                entry["detail"] += " (only needed when the agent types into fields)"
+        except RuntimeError as error:
+            entry["detail"] = str(error)[:300]
+            if "404" in entry["detail"] or "not found" in entry["detail"].lower():
+                entry["detail"] += " — check the exact model id in the provider's catalogue"
+        results[role] = entry
+    return results
+
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 DEFAULT_PORT = 8767
 COMMAND_TIMEOUT = 60.0
@@ -184,6 +226,12 @@ class BridgeServer:
                 self.send({"type": "welcome", "ok": False, "error": "Invalid bridge token"})
                 return
             self.send({"type": "welcome", "ok": True, "state": self.runner.current_state() if self.runner else None})
+            if self.runner:
+                threading.Thread(target=self.runner.run_provider_check, daemon=True).start()
+        elif kind == "check":
+            if self.runner:
+                self.send({"type": "checking"})
+                threading.Thread(target=self.runner.run_provider_check, daemon=True).start()
         elif kind == "run":
             if self.runner is None:
                 self.send({"type": "error", "message": "Task runner is not active"})
@@ -210,7 +258,7 @@ class BridgeServer:
     def broadcast(self, message):
         try:
             self.send(message)
-        except BridgeError:
+        except (BridgeError, OSError):
             pass  # broadcasts are best-effort; the sidebar refreshes on reconnect
 
     def command(self, kind, **payload):
@@ -250,9 +298,10 @@ class FirefoxBrowser:
                 state = self.bridge.command("observe", tabId=self.tab_id, screenshot=screenshot)
                 break
             except BridgeError as error:
-                if attempt == 9 or "navigating" not in str(error):
+                transient = "navigating" in str(error) or "receiving end" in str(error).lower()
+                if attempt == 9 or not transient:
                     raise
-                time.sleep(0.02)
+                time.sleep(0.05 + 0.05 * attempt)
         state["fingerprint"] = fingerprint(state)
         return state
 
@@ -267,12 +316,19 @@ class FirefoxBrowser:
         return current == page["marker"]
 
     def act(self, action, page, text=None):
-        if not self.fresh(page, action):
-            raise StalePage("Page changed since this decision. Observe again.")
-        if action["kind"] == "wait":
-            time.sleep(0.1)
-            return {"executed": action["id"]}
-        result = self.bridge.command("act", tabId=self.tab_id, action=action, text=text)
+        try:
+            if not self.fresh(page, action):
+                raise StalePage("Page changed since this decision. Observe again.")
+            if action["kind"] == "wait":
+                time.sleep(0.1)
+                return {"executed": action["id"]}
+            result = self.bridge.command("act", tabId=self.tab_id, action=action, text=text)
+        except BridgeError as error:
+            # A vanished content-script context means the tab navigated mid-action:
+            # treat it as a stale page so the agent re-observes instead of dying.
+            if "receiving end" in str(error).lower() or "context" in str(error).lower():
+                raise StalePage("The tab changed while acting. Observe again.") from None
+            raise
         if result.get("stale"):
             raise StalePage("Target changed or is covered. Observe again.")
         if result.get("error"):
@@ -302,6 +358,8 @@ class TaskRunner:
         self.bridge = bridge
         self.agent = None
         self.stopped = False
+        self.last_error = None
+        self.provider_check = None
         self._lock = threading.Lock()
 
     def current_state(self):
@@ -310,7 +368,23 @@ class TaskRunner:
         else:
             state = self.agent.snapshot()
         planner = self.agent.state.get("planner") if self.agent else None
-        return {**state, "policy": policy_description(), "planner": planner}
+        return {
+            **state,
+            "policy": policy_description(),
+            "planner": planner,
+            "error": self.last_error,
+            "providers": self.provider_check,
+        }
+
+    def run_provider_check(self):
+        """Self-test in the background; the result is carried in every state broadcast."""
+        if not self._lock.acquire(blocking=False):
+            return  # a task is running; providers are clearly working
+        try:
+            self.provider_check = check_providers()
+        finally:
+            self._lock.release()
+        self._broadcast()
 
     def start(self, goal, url, tab_id):
         goal = (goal or "").strip()
@@ -319,6 +393,7 @@ class TaskRunner:
         if not self._lock.acquire(blocking=False):
             raise ValueError("A task is already running; stop it first")
         self.stopped = False
+        self.last_error = None
         threading.Thread(target=self._run, args=(goal, url, tab_id), daemon=True).start()
 
     def stop_task(self):
@@ -336,6 +411,8 @@ class TaskRunner:
                 if self.stopped:
                     break
         except (ValueError, RuntimeError, BridgeError, StalePage) as error:
+            # Keep the failure in the state so the sidebar shows it until the next run.
+            self.last_error = str(error)
             self.bridge.broadcast({"type": "error", "message": str(error)})
         finally:
             self.agent = None

@@ -18,11 +18,13 @@
         <div class="row">
           <button id="run" class="primary">Run</button>
           <button id="stop" hidden>Stop</button>
-          <span class="hint">The agent drives the tab you are on.</span>
+          <button id="check" title="Check every model connection and show the exact error if one fails">Test setup</button>
         </div>
+        <span class="hint">The agent drives the tab you are on; if it can't (new tab page), it opens DuckDuckGo.</span>
       </section>
 
       <div id="error" role="alert" hidden></div>
+      <div id="providers" class="providers" hidden></div>
 
       <section id="live" hidden>
         <div class="status-line">

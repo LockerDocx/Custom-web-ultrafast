@@ -8,6 +8,7 @@ import socket
 import struct
 import threading
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -112,6 +113,8 @@ def serve(ext, handler, stop):
                 message = ext.recv(timeout=0.2)
             except (socket.timeout, TimeoutError):
                 continue
+            except (ConnectionError, OSError):
+                return
             if "id" not in message:
                 continue
             try:
@@ -293,3 +296,118 @@ def test_open_command_creates_a_tab(bridge):
     finally:
         stop.set()
         ext.close()
+
+
+# ── Self-test, persistent errors, and navigation resilience ──────────────────
+
+
+def test_check_providers_reports_each_role(monkeypatch):
+    from jev_ultrafast import providers as provider_layer
+
+    for name in ("POLICY_PROVIDER", "PLANNER_PROVIDER", "TEXT_MODEL_PROVIDER", "TYPESAFE_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk")
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi")
+    monkeypatch.setenv("POLICY_PROVIDER", "groq")
+    monkeypatch.setenv("POLICY_MODEL", "openai/gpt-oss-20b")
+    monkeypatch.setenv("PLANNER_PROVIDER", "nvidia")
+    monkeypatch.setenv("PLANNER_MODEL", "zai/glm-5.3")
+    monkeypatch.setenv("TEXT_MODEL_PROVIDER", "nvidia")
+    monkeypatch.setenv("TEXT_MODEL", "zai/glm-5.3-flash")
+    seen = []
+
+    def fake_chat(provider, system, user, max_tokens=1024):
+        seen.append(provider["model"])
+        if provider["model"] == "zai/glm-5.3":
+            raise RuntimeError("Model provider returned HTTP 404: model not found; no action executed.")
+        return "{}", {"model": provider["model"], "usage": {}, "provider": provider["name"]}
+
+    monkeypatch.setattr(provider_layer, "chat", fake_chat)
+    results = firefox.check_providers()
+    assert set(results) == {"planner", "policy", "text"}
+    assert results["policy"]["ok"] is True and results["policy"]["latency_ms"] is not None
+    assert results["text"]["ok"] is True
+    assert results["planner"]["ok"] is False
+    assert "check the exact model id" in results["planner"]["detail"]
+    assert results["planner"]["model"] == "nvidia:zai/glm-5.3"
+
+
+def test_check_providers_marks_planner_optional_when_unset(monkeypatch):
+    for name in ("PLANNER_PROVIDER", "PLANNER_BASE_URL", "POLICY_PROVIDER", "TEXT_MODEL_PROVIDER"):
+        monkeypatch.delenv(name, raising=False)
+    from jev_ultrafast import providers as provider_layer
+
+    monkeypatch.setattr(provider_layer, "chat", Mock(return_value=("{}", {})))
+    results = firefox.check_providers()
+    assert set(results) == {"policy", "text"}
+
+
+def test_runner_carries_the_last_error_until_the_next_run(monkeypatch):
+    from jev_ultrafast import agent as loop
+
+    bridge = Mock(broadcast=Mock())
+    runner = firefox.TaskRunner(bridge)
+    assert runner.current_state()["error"] is None
+
+    class FailingAgent:
+        def __init__(self, *_args, **_kwargs):
+            raise RuntimeError("Model provider returned HTTP 401: invalid key")
+
+        def run(self):
+            raise NotImplementedError
+
+    monkeypatch.setattr(loop, "Agent", FailingAgent)
+    runner._lock.acquire()  # start() holds this lock while _run executes
+    runner._run("goal", "https://example.test/", 1)
+    state = runner.current_state()
+    assert state["status"] == "idle"
+    assert "HTTP 401" in state["error"]
+
+
+def test_lost_content_context_becomes_a_stale_page(bridge):
+    state = page_state("https://example.test/", "Search")
+
+    def handler(message):
+        if message["type"] == "fresh" and "node" in message:
+            raise RuntimeError("Could not establish connection. Receiving end does not exist.")
+        if message["type"] == "observe":
+            return dict(state)
+        return {}
+
+    ext, stop = connect_fake_extension(bridge, handler)
+    try:
+        browser = firefox.FirefoxBrowser("https://example.test/", tab_id=1, bridge=bridge)
+        page = browser.observe(screenshot=False)
+        with pytest.raises(StalePage):
+            browser.act(page["actions"][2], page)
+    finally:
+        stop.set()
+        ext.close()
+
+
+def test_hello_triggers_a_provider_check_broadcast(monkeypatch):
+    from jev_ultrafast import providers as provider_layer
+
+    for name in ("PLANNER_PROVIDER", "PLANNER_BASE_URL", "POLICY_PROVIDER", "TEXT_MODEL_PROVIDER", "TYPESAFE_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk")
+    monkeypatch.setenv("POLICY_PROVIDER", "groq")
+    monkeypatch.setenv("POLICY_MODEL", "openai/gpt-oss-20b")
+    monkeypatch.setattr(provider_layer, "chat", Mock(return_value=("{}", {})))
+
+    server = firefox.BridgeServer(port=0)
+    server.runner = firefox.TaskRunner(server)
+    server.start()
+    try:
+        ext = FakeExtension(server.port)
+        ext.send({"type": "hello"})
+        assert ext.recv()["ok"] is True
+        message = ext.recv(timeout=5)
+        while message.get("type") != "state" or not message.get("state", {}).get("providers"):
+            message = ext.recv(timeout=5)
+        providers_report = message["state"]["providers"]
+        assert providers_report["policy"]["ok"] is True
+        assert providers_report["policy"]["model"] == "groq:openai/gpt-oss-20b"
+        ext.close()
+    finally:
+        server.close()
