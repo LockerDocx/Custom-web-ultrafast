@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link rel="stylesheet" href="sidebar.css" />
+  </head>
+  <body>
+    <header>
+      <span class="brand">✦ Jev Agent</span>
+      <span class="connection" id="connection"><i></i><em>offline</em></span>
+    </header>
+
+    <main>
+      <section class="composer">
+        <label for="goal">What do you want to do on this page?</label>
+        <textarea id="goal" rows="4" placeholder="Find one-way flights from Zurich to London on September 20, 2026…"></textarea>
+        <div class="row">
+          <button id="run" class="primary">Run</button>
+          <button id="stop" hidden>Stop</button>
+          <span class="hint">The agent drives the tab you are on.</span>
+        </div>
+      </section>
+
+      <div id="error" role="alert" hidden></div>
+
+      <section id="live" hidden>
+        <div class="status-line">
+          <span id="status">ready</span>
+          <span id="step-count"></span>
+        </div>
+        <img id="screenshot" alt="Live view of the controlled tab" />
+        <h3>Plan</h3>
+        <ol id="plan" class="plan"></ol>
+        <h3>Actions</h3>
+        <div id="history" class="history"></div>
+      </section>
+    </main>
+
+    <footer id="models">no models configured</footer>
+    <script src="sidebar.js"></script>
+  </body>
+</html>

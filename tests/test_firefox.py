@@ -1,0 +1,295 @@
+"""Offline contracts for the Firefox extension bridge. No browser, no paid APIs."""
+
+import base64
+import json
+import os
+import secrets
+import socket
+import struct
+import threading
+from pathlib import Path
+
+import pytest
+
+from jev_ultrafast import firefox, model
+from jev_ultrafast.browser import StalePage
+
+ROOT = Path(__file__).parent.parent
+
+
+class FakeExtension:
+    """A raw-socket WebSocket client that plays the extension side of the bridge."""
+
+    def __init__(self, port, origin="moz-extension://test"):
+        self.sock = socket.create_connection(("127.0.0.1", port), timeout=5)
+        key = base64.b64encode(secrets.token_bytes(16)).decode()
+        self.sock.sendall(
+            (
+                "GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\nOrigin: {origin}\r\n\r\n"
+            ).encode()
+        )
+        status = self._read_line()
+        if b" 101 " not in status:
+            raise ConnectionError(f"Handshake rejected: {status.decode().strip()}")
+        while self._read_line().strip():
+            pass
+
+    def _read_line(self):
+        line = b""
+        while not line.endswith(b"\r\n"):
+            chunk = self.sock.recv(1)
+            if not chunk:
+                raise ConnectionError("closed")
+            line += chunk
+        return line
+
+    def send(self, message):
+        payload = json.dumps(message).encode()
+        mask = os.urandom(4)
+        header = bytes([0x81])
+        length = len(payload)
+        if length < 126:
+            header += bytes([0x80 | length])
+        elif length < 65536:
+            header += bytes([0x80 | 126]) + struct.pack(">H", length)
+        else:
+            header += bytes([0x80 | 127]) + struct.pack(">Q", length)
+        self.sock.sendall(header + mask + bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload)))
+
+    def recv(self, timeout=5):
+        self.sock.settimeout(timeout)
+        opcode, payload = firefox._read_frame(self.sock)
+        if opcode == 8:
+            raise ConnectionError("closed")
+        return json.loads(payload.decode())
+
+    def close(self):
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+
+@pytest.fixture
+def bridge():
+    server = firefox.BridgeServer(port=0)
+    server.start()
+    yield server
+    server.close()
+
+
+def page_state(url, text):
+    return {
+        "url": url,
+        "title": "Search",
+        "w": 1120,
+        "h": 780,
+        "text": text,
+        "scroll": {"y": 0, "height": 800},
+        "actions": [
+            {"id": "e1", "kind": "fill", "label": "Search", "role": "textbox", "value": "", "node": 10},
+            {"id": "e2", "kind": "click", "label": "Open Search", "role": "textbox", "value": "", "node": 10},
+            {"id": "e3", "kind": "click", "label": "Go", "role": "button", "value": "", "node": 20},
+            {"id": "wait", "kind": "wait", "label": "Wait"},
+        ],
+        "marker": [1.0, url, 0, 0, 1120, 780, "Search", text, [], 7],
+        "page_key": [1.0, url, 0, 0, 1120, 780, [[10, "", None, None, False, False]]],
+        "guards": {
+            "10": [10, "textbox", "Search", "", None, None, None, False, None, None, None, None, None, ""],
+            "20": [20, "button", "Go", "", None, None, None, False, None, None, None, None, None, ""],
+        },
+        "omitted_actions": 0,
+    }
+
+
+def serve(ext, handler, stop):
+    """Answer host commands until stopped; records every command it served."""
+
+    def loop():
+        while not stop.is_set():
+            try:
+                message = ext.recv(timeout=0.2)
+            except (socket.timeout, TimeoutError):
+                continue
+            if "id" not in message:
+                continue
+            try:
+                ext.send({"id": message["id"], "ok": True, "result": handler(message)})
+            except Exception as error:  # noqa: BLE001 - forwarded to the host as an error reply
+                ext.send({"id": message["id"], "ok": False, "error": str(error)})
+
+    thread = threading.Thread(target=loop, daemon=True)
+    thread.start()
+    return thread
+
+
+def connect_fake_extension(bridge_instance, handler):
+    ext = FakeExtension(bridge_instance.port)
+    ext.send({"type": "hello"})
+    welcome = ext.recv()
+    assert welcome["type"] == "welcome" and welcome["ok"] is True
+    stop = threading.Event()
+    serve(ext, handler, stop)
+    return ext, stop
+
+
+def test_extension_snapshot_copy_stays_in_sync():
+    assert (ROOT / "extension" / "snapshot.js").read_text() == (ROOT / "jev_ultrafast" / "snapshot.js").read_text()
+
+
+def test_handshake_welcomes_a_moz_extension_origin(bridge):
+    ext = FakeExtension(bridge.port)
+    ext.send({"type": "hello"})
+    welcome = ext.recv()
+    assert welcome["ok"] is True
+    ext.close()
+
+
+def test_foreign_origin_is_rejected(bridge):
+    with pytest.raises(ConnectionError, match="Handshake rejected"):
+        FakeExtension(bridge.port, origin="https://evil.example")
+
+
+def test_bridge_token_is_enforced():
+    server = firefox.BridgeServer(port=0, token="secret")
+    server.start()
+    try:
+        ext = FakeExtension(server.port)
+        ext.send({"type": "hello", "token": "wrong"})
+        welcome = ext.recv()
+        assert welcome["ok"] is False
+        ext.send({"type": "hello", "token": "secret"})
+        assert ext.recv()["ok"] is True
+        ext.close()
+    finally:
+        server.close()
+
+
+def test_command_round_trip(bridge):
+    ext, stop = connect_fake_extension(bridge, lambda message: {"echo": message["type"]})
+    try:
+        assert bridge.command("observe", tabId=3, screenshot=False) == {"echo": "observe"}
+        assert bridge.command("act", tabId=3, action={"id": "e1"}) == {"echo": "act"}
+    finally:
+        stop.set()
+        ext.close()
+
+
+def test_command_error_is_raised(bridge):
+    def handler(message):
+        raise ValueError("boom")
+
+    ext, stop = connect_fake_extension(bridge, handler)
+    try:
+        with pytest.raises(firefox.BridgeError, match="boom"):
+            bridge.command("observe", tabId=1)
+    finally:
+        stop.set()
+        ext.close()
+
+
+def test_command_without_extension_has_instructions(bridge):
+    with pytest.raises(firefox.BridgeError, match="jev-firefox"):
+        bridge.command("observe", tabId=1)
+
+
+def test_agent_runs_over_the_bridge(bridge, monkeypatch):
+    for name in ("TYPESAFE_API_KEY", "PLANNER_PROVIDER", "PLANNER_BASE_URL"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("POLICY_PROVIDER", "custom")
+    monkeypatch.setenv("POLICY_BASE_URL", "https://gateway.test/v1")
+    monkeypatch.setenv("POLICY_API_KEY", "test-key")
+    monkeypatch.setenv("POLICY_MODEL", "test-model")
+    replies = [{"operation": "CLICK", "target": "2"}, {"operation": "DONE"}]
+    served = {"n": 0}
+
+    def fake_post(_url, _key, _body):
+        answer = replies[min(served["n"], len(replies) - 1)]
+        served["n"] += 1
+        return {"model": "test-model", "choices": [{"message": {"content": json.dumps(answer)}}]}
+
+    monkeypatch.setattr(model, "post_json", fake_post)
+
+    current = {"state": page_state("https://example.test/", "Search")}
+    acted = []
+
+    def handler(message):
+        kind = message["type"]
+        if kind == "observe":
+            state = dict(current["state"])
+            if message.get("screenshot"):
+                state["screenshot"] = "c2hvdA=="
+            return state
+        if kind == "fresh":
+            if "node" in message:
+                return [current["state"]["page_key"], current["state"]["guards"][str(message["node"])]]
+            return current["state"]["marker"]
+        if kind == "act":
+            acted.append((message["action"]["id"], message["tabId"]))
+            current["state"] = page_state("https://example.test/results", "Results")
+            return {"executed": message["action"]["id"]}
+        raise AssertionError(kind)
+
+    ext, stop = connect_fake_extension(bridge, handler)
+    try:
+        from jev_ultrafast import agent as loop
+
+        browser = firefox.FirefoxBrowser("https://example.test/", tab_id=7, bridge=bridge)
+        agent = loop.Agent("https://example.test/", "Find a book", screenshots=True, browser=browser)
+        assert agent.state["page"]["url"] == "https://example.test/"
+        agent.command("predict", {})
+        assert agent.state["decision"]["choice"] == "e3"
+        agent.command("act", {"fingerprint": agent.state["page"]["fingerprint"]})
+        assert agent.state["history"][-1]["action"] == "Go"
+        assert agent.state["history"][-1]["page_changed"] is True
+        assert agent.state["page"]["url"] == "https://example.test/results"
+        agent.command("predict", {})
+        agent.command("act", {"fingerprint": agent.state["page"]["fingerprint"]})
+        assert agent.state["status"] == "done"
+        assert acted == [("e3", 7)]
+    finally:
+        stop.set()
+        ext.close()
+
+
+def test_stale_target_over_the_bridge_raises_stale_page(bridge):
+    state = page_state("https://example.test/", "Search")
+
+    def handler(message):
+        if message["type"] == "fresh" and "node" in message:
+            return None  # the tab reports a new document: no cache, no guard
+        if message["type"] == "observe":
+            return dict(state)
+        return {}
+
+    ext, stop = connect_fake_extension(bridge, handler)
+    try:
+        browser = firefox.FirefoxBrowser("https://example.test/", tab_id=1, bridge=bridge)
+        page = browser.observe(screenshot=False)
+        with pytest.raises(StalePage):
+            browser.act(page["actions"][2], page)
+    finally:
+        stop.set()
+        ext.close()
+
+
+def test_runner_validates_goals_and_rejects_concurrency(bridge):
+    bridge.runner = firefox.TaskRunner(bridge)
+    with pytest.raises(ValueError, match="1–2,000"):
+        bridge.runner.start("", "https://example.test/", 1)
+    assert bridge.runner.current_state()["status"] == "idle"
+    bridge.runner._lock.acquire()  # simulate an active run
+    with pytest.raises(ValueError, match="already running"):
+        bridge.runner.start("Do something", "https://example.test/", 1)
+    bridge.runner._lock.release()
+
+
+def test_open_command_creates_a_tab(bridge):
+    ext, stop = connect_fake_extension(bridge, lambda message: {"tabId": 42} if message["type"] == "open" else {})
+    try:
+        browser = firefox.FirefoxBrowser("https://example.test/", bridge=bridge)
+        assert browser.tab_id == 42
+    finally:
+        stop.set()
+        ext.close()

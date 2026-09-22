@@ -67,6 +67,47 @@ Chrome connects through [Browser Harness](https://github.com/browser-use/browser
 
 `TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting.
 
+## Bring your own model
+
+The policy and the text helper are pluggable. If `TYPESAFE_API_KEY` is set, Jev makes the choices. Without it, any OpenAI-compatible or Anthropic-compatible endpoint takes over — OpenRouter, NVIDIA NIM, OmniRoute, OpenAI, Anthropic, DeepSeek, Groq, Together, Mistral, xAI, Gemini, or your own gateway:
+
+```bash
+# .env — policy via OpenRouter, text helper via Anthropic
+POLICY_PROVIDER=openrouter
+OPENROUTER_API_KEY=sk-or-v1-...
+POLICY_MODEL=anthropic/claude-sonnet-4.5
+
+TEXT_MODEL_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+TEXT_MODEL=claude-sonnet-4-5
+```
+
+Each preset knows its base URL, dialect, and key variable, so `POLICY_PROVIDER=nvidia` plus `NVIDIA_API_KEY` is enough for NIM (`POLICY_BASE_URL` overrides any default, e.g. a remote OmniRoute gateway). The generic policy sends the same indexed element table and rules in one request and validates the returned operation/target against the observed action space, so a wrong or invented choice never executes. Full configuration, including self-hosted gateways and reasoning controls: [providers.md](docs/providers.md).
+
+An optional **planner** role adds a second, slower model that decomposes the mission into a step checklist once, while the fast policy executes one step per turn — two providers at once:
+
+```bash
+# .env — fast executor on Groq, planner + text helper on NVIDIA NIM
+POLICY_PROVIDER=groq
+GROQ_API_KEY=gsk-...
+POLICY_MODEL=openai/gpt-oss-20b
+
+PLANNER_PROVIDER=nvidia
+NVIDIA_API_KEY=nvapi-...
+PLANNER_MODEL=zai/glm-5.3
+```
+
+## Run it inside Firefox
+
+`extension/` is a WebExtension that turns this agent into a Firefox sidebar driving your live tab — the same planner/executor loop, the same indexed action space, no Chrome required:
+
+```bash
+uv run --env-file .env jev-firefox        # start the local bridge host
+# Firefox → about:debugging → Load Temporary Add-on → extension/manifest.json
+```
+
+The sidebar shows the plan checklist with ✓ progress, live screenshots, every executed action, and a Stop button. Setup and architecture: [firefox-extension.md](docs/firefox-extension.md).
+
 ## Use the library
 
 ```python

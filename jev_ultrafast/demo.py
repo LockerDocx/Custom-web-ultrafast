@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .agent import Agent
+from .model import policy_description
 from .questions import MAX_STEPS
 
 ROOT = Path(__file__).parent
@@ -31,7 +32,12 @@ def load_environment():
 
 def response_state():
     state = AGENT.snapshot() if AGENT else {"page": None, "status": "idle", "history": [], "decision": None}
-    return {**state, "text_model": os.environ.get("TEXT_MODEL", "deepseek-chat"), "max_steps": MAX_STEPS}
+    return {
+        **state,
+        "text_model": os.environ.get("TEXT_MODEL", "deepseek-chat"),
+        "policy_model": policy_description(),
+        "max_steps": MAX_STEPS,
+    }
 
 
 def close_browser():
@@ -133,6 +139,7 @@ def main():
     atexit.register(close_browser)
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"Jev Ultrafast: {ORIGIN}", flush=True)
+    print(f"Policy model: {policy_description()}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
