@@ -44,8 +44,27 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" \
-            "dist/jev_ultrafast-${VERSION}-py3-none-any.whl" \
-            "jev-agent-firefox-${GITHUB_REF_NAME}.xpi" \
-            "custom-web-ultrafast-${GITHUB_REF_NAME}-source.zip" \
-            --clobber
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          RELEASE_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" --jq .id)
+          echo "Uploading to release id $RELEASE_ID"
+          upload() {
+            local file="$1" attempt
+            for attempt in 1 2 3; do
+              if curl -sSf -X POST \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary @"$file" \
+                "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$(basename "$file")" >/dev/null; then
+                echo "uploaded $(basename "$file")"
+                return 0
+              fi
+              echo "retry $attempt for $(basename "$file")"
+              sleep 5
+            done
+            echo "FAILED to upload $(basename "$file")"
+            return 1
+          }
+          upload "dist/jev_ultrafast-${VERSION}-py3-none-any.whl"
+          upload "jev-agent-firefox-${GITHUB_REF_NAME}.xpi"
+          upload "custom-web-ultrafast-${GITHUB_REF_NAME}-source.zip"
