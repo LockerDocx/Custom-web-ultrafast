@@ -1,4 +1,5 @@
 """Per-role model connectivity report — the same check the sidebar runs at startup.
+Re-run it with a push to this file or from the repo's Actions tab (workflow_dispatch).
 
 Usage:
     uv run --env-file .env python scripts/check_providers.py   # local, reads .env
