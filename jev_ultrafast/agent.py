@@ -106,13 +106,22 @@ class Agent:
             if action["kind"] == "fill":
                 if not state["browser"].fresh(page):
                     raise StalePage("Page changed before text generation. Choose again.")
-                context = field_context(state["goal"], action, page, state["history"])
-                if self.pending_text and self.pending_text[0] == context:
-                    _, text, helper = self.pending_text
-                else:
-                    text, helper = field_text(context)
-                    self.pending_text = (context, text, helper)
+                if decision.get("text") is not None and str(decision["text"]).strip():
+                    text = str(decision["text"]).strip()
+                    helper = {
+                        "model": decision.get("model", "llm"),
+                        "latency_ms": 0,
+                        "usage": decision.get("usage", {}),
+                    }
                     state["text_calls"].append({**helper, "field": action["label"], "value": text})
+                else:
+                    context = field_context(state["goal"], action, page, state["history"])
+                    if self.pending_text and self.pending_text[0] == context:
+                        _, text, helper = self.pending_text
+                    else:
+                        text, helper = field_text(context)
+                        self.pending_text = (context, text, helper)
+                        state["text_calls"].append({**helper, "field": action["label"], "value": text})
             # Browser.act checks freshness immediately before input, including after text generation.
             state["browser"].act(action, page, text=text)
             self.pending_text = None

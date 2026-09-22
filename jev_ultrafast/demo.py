@@ -31,7 +31,15 @@ def load_environment():
 
 def response_state():
     state = AGENT.snapshot() if AGENT else {"page": None, "status": "idle", "history": [], "decision": None}
-    return {**state, "text_model": os.environ.get("TEXT_MODEL", "deepseek-chat"), "max_steps": MAX_STEPS}
+    from .providers import get_provider_config
+    cfg = get_provider_config()
+    return {
+        **state,
+        "provider": cfg["provider"],
+        "model": cfg["model"],
+        "text_model": os.environ.get("TEXT_MODEL", cfg["model"]),
+        "max_steps": MAX_STEPS,
+    }
 
 
 def close_browser():
@@ -43,7 +51,21 @@ def close_browser():
 
 def command(name, body):
     global AGENT
-    if name == "reset":
+    if name == "set_provider":
+        prov = body.get("provider")
+        if prov:
+            os.environ["LLM_PROVIDER"] = prov
+            if body.get("model"):
+                os.environ[f"{prov.upper()}_MODEL"] = body["model"]
+                os.environ["LLM_MODEL"] = body["model"]
+            if body.get("api_key"):
+                os.environ[f"{prov.upper()}_API_KEY"] = body["api_key"]
+                os.environ["LLM_API_KEY"] = body["api_key"]
+            if body.get("base_url"):
+                os.environ[f"{prov.upper()}_BASE_URL"] = body["base_url"]
+                os.environ["LLM_BASE_URL"] = body["base_url"]
+        return response_state()
+    elif name == "reset":
         scenario = body.get("scenario", "flights")
         if scenario not in {"travel", "research", "flights"}:
             raise ValueError("Unknown demo scenario")

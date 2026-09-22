@@ -1,4 +1,7 @@
-"""TypeSafe makes choices; an optional small OpenAI-compatible model writes field values."""
+"""Multi-provider browser agent model interface.
+
+Supports OpenRouter, OmniRoute, NVIDIA NIM, Anthropic, OpenAI, and TypeSafe.
+"""
 
 import json
 import math
@@ -78,7 +81,7 @@ def action_space(actions):
     return elements, targets, controls
 
 
-def choose(state, goal, history):
+def choose_typesafe(state, goal, history):
     elements, targets, controls = action_space(state["actions"])
     labels = {
         "CLICK": "Click an element, button, menu option, autocomplete suggestion, or calendar day.",
@@ -148,6 +151,17 @@ def choose(state, goal, history):
     }
 
 
+def choose(state, goal, history):
+    """Choose the next browser action using the configured provider (OpenRouter, OmniRoute, NVIDIA, etc.)."""
+    from .providers import choose_llm, detect_provider
+
+    provider = detect_provider()
+    if provider == "typesafe":
+        return choose_typesafe(state, goal, history)
+
+    return choose_llm(state, goal, history)
+
+
 def field_context(goal, action, page, history):
     return {
         "goal": goal,
@@ -160,7 +174,52 @@ def field_context(goal, action, page, history):
 def field_text(context):
     key = os.environ.get("TEXT_MODEL_API_KEY")
     if not key:
-        raise ValueError("TYPE_TEXT needs TEXT_MODEL_API_KEY; no text is hardcoded or guessed by the executor.")
+        from .providers import extract_json, get_provider_config, post_anthropic, post_openai_compatible
+
+        cfg = get_provider_config()
+        if not cfg["api_key"] and cfg["provider"] != "omniroute":
+            raise ValueError(
+                "TYPE_TEXT needs TEXT_MODEL_API_KEY or LLM_API_KEY; no text is hardcoded or guessed by the executor."
+            )
+
+        started = time.perf_counter()
+        if cfg["api_type"] == "anthropic":
+            resp, latency_ms = post_anthropic(
+                url=f"{cfg['base_url']}/messages",
+                key=cfg["api_key"],
+                model=cfg["model"],
+                system=TEXT_VALUE,
+                user_prompt=json.dumps(context),
+            )
+            raw = resp["content"][0]["text"]
+            usage = resp.get("usage", {})
+        else:
+            resp, latency_ms = post_openai_compatible(
+                url=f"{cfg['base_url']}/chat/completions",
+                key=cfg["api_key"],
+                model=cfg["model"],
+                messages=[
+                    {"role": "system", "content": TEXT_VALUE},
+                    {"role": "user", "content": json.dumps(context)},
+                ],
+            )
+            raw = resp["choices"][0]["message"]["content"]
+            usage = resp.get("usage", {})
+
+        try:
+            output = extract_json(raw)
+            value = output["text"]
+            if set(output) != {"text"} or not isinstance(value, str) or not value.strip() or len(value) > 2000:
+                raise ValueError()
+        except (ValueError, KeyError, TypeError):
+            raise ValueError("Text helper returned no valid field value; nothing typed.") from None
+
+        return value, {
+            "model": f"{cfg['provider']}/{cfg['model']}",
+            "latency_ms": latency_ms,
+            "usage": usage,
+        }
+
     base = os.environ.get("TEXT_MODEL_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
     model = os.environ.get("TEXT_MODEL", "deepseek-chat")
     reasoning = {"thinking": {"type": "disabled"}} if "api.deepseek.com/" in base else {"reasoning": {"effort": "low"}}

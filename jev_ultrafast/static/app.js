@@ -68,7 +68,12 @@ async function perform(fn, label) {
 }
 function render() {
   if (!state) return;
-  $("helper").textContent = `Text helper · ${state.text_model}`;
+  const prov = state.provider ? `${state.provider}/` : "";
+  $("helper").textContent = `Model · ${prov}${state.model || state.text_model}`;
+  const modelTag = document.querySelector(".model-tag");
+  if (modelTag && state.provider) {
+    modelTag.innerHTML = `<span>${escape(state.provider)}</span> · ${escape(state.model || state.text_model)}`;
+  }
   $("plan").innerHTML = (state.plan || [])
     .map(
       (goal, i) =>

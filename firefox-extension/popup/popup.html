@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ultrafast Web Agent</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <!-- Header -->
+      <header class="app-header">
+        <div class="brand">
+          <span class="bolt">⚡</span>
+          <h1>Ultrafast <span>Agent</span></h1>
+        </div>
+        <div class="status-indicator">
+          <span class="status-dot" id="status-dot"></span>
+          <span class="status-text" id="status-text">Listo</span>
+        </div>
+      </header>
+
+      <!-- Settings Card (Collapsible) -->
+      <details class="card settings-card" id="settings-details">
+        <summary class="card-summary">
+          <span>⚙️ Proveedor LLM & Configuración</span>
+          <span class="summary-meta" id="active-provider-badge">OpenRouter</span>
+        </summary>
+        <div class="card-body">
+          <div class="form-group">
+            <label for="provider-select">Proveedor de IA:</label>
+            <select id="provider-select">
+              <option value="openrouter">OpenRouter (deepseek, llama, haiku, etc.)</option>
+              <option value="omniroute">OmniRoute (Open Source Gateway / Local)</option>
+              <option value="nvidia">NVIDIA NIM (integrate.api.nvidia.com)</option>
+              <option value="anthropic">Anthropic (Claude 3.5 Haiku / Sonnet)</option>
+              <option value="openai">OpenAI (GPT-4o mini / GPT-4o)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="api-key">API Key:</label>
+            <div class="input-password-wrapper">
+              <input type="password" id="api-key" placeholder="Pega tu API Key aquí..." autocomplete="off" />
+              <button type="button" id="toggle-key-visibility" title="Mostrar/Ocultar">👁</button>
+            </div>
+            <span class="hint" id="key-hint">Guardado de forma segura en almacenamiento local de Firefox.</span>
+          </div>
+
+          <div class="form-group">
+            <label for="base-url">Base URL:</label>
+            <input type="text" id="base-url" placeholder="https://..." />
+          </div>
+
+          <div class="form-group">
+            <label for="model-name">Modelo:</label>
+            <input type="text" id="model-name" placeholder="Nombre del modelo..." />
+            <div class="model-chips" id="model-chips">
+              <!-- Dynamically populated chips -->
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Task / Goal Section -->
+      <section class="card goal-card">
+        <label for="goal-input" class="section-label">🎯 Objetivo / Tarea en esta pestaña:</label>
+        <textarea
+          id="goal-input"
+          rows="3"
+          placeholder="Ej: Buscar vuelos baratos de Madrid a Tokio para el 15 de octubre en clase turista..."
+        ></textarea>
+        <div class="goal-presets">
+          <button type="button" class="preset-btn" data-preset="Buscar un vuelo de ida de Madrid a Londres para el 20 de noviembre en clase turista. Detente cuando se vean los resultados.">✈️ Vuelos</button>
+          <button type="button" class="preset-btn" data-preset="Buscar una estancia o hotel con cancelación gratuita y abrir el primer resultado con mejor valoración.">🏨 Hoteles</button>
+          <button type="button" class="preset-btn" data-preset="Rellenar los campos requeridos del formulario y enviar.">📝 Formulario</button>
+        </div>
+      </section>
+
+      <!-- Controls -->
+      <section class="controls-section">
+        <div class="primary-controls">
+          <button type="button" id="btn-start" class="btn btn-primary">
+            <span>▶</span> Iniciar Agente
+          </button>
+          <button type="button" id="btn-step" class="btn btn-secondary" title="Ejecutar solo el siguiente paso">
+            <span>⏭</span> Paso
+          </button>
+          <button type="button" id="btn-stop" class="btn btn-danger" disabled>
+            <span>⏹</span> Detener
+          </button>
+          <button type="button" id="btn-reset" class="btn btn-ghost" title="Reiniciar historial">
+            <span>🔄</span>
+          </button>
+        </div>
+
+        <div class="aux-controls">
+          <label class="toggle-control">
+            <input type="checkbox" id="chk-badges" />
+            <span>Ver índices [1], [2] en la página</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Latency & Metrics Bar -->
+      <section class="metrics-bar" id="metrics-bar">
+        <div class="metric-item">
+          <span class="metric-label">DOM Snapshot:</span>
+          <span class="metric-value" id="metric-dom">0 ms</span>
+        </div>
+        <div class="metric-item">
+          <span class="metric-label">LLM Inferencia:</span>
+          <span class="metric-value highlight" id="metric-llm">0 ms</span>
+        </div>
+        <div class="metric-item">
+          <span class="metric-label">Ejecución DOM:</span>
+          <span class="metric-value" id="metric-exec">0 ms</span>
+        </div>
+        <div class="metric-item total">
+          <span class="metric-label">Paso Total:</span>
+          <span class="metric-value" id="metric-total">0 ms</span>
+        </div>
+      </section>
+
+      <!-- Error Notification -->
+      <div class="alert alert-error" id="error-box" hidden></div>
+
+      <!-- Live Execution Log -->
+      <section class="card history-card">
+        <div class="history-header">
+          <span class="section-label">📜 Historial de Acciones</span>
+          <span class="history-count" id="step-count">0 pasos</span>
+        </div>
+        <div class="history-list" id="history-list">
+          <div class="empty-state" id="empty-history">
+            Escribe un objetivo y pulsa <b>Iniciar</b> o <b>Paso</b> para comenzar la navegación autónoma.
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

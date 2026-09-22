@@ -48,6 +48,40 @@ page → element table → operation                 │
 
 Target questions are speculative. If the operation is `CLICK`, only `click_target` can execute. Two decisions, **one network round trip**. Each target head contains only compatible elements. Native dropdown choices carry an observed element/option index.
 
+When using general LLMs (OpenRouter, OmniRoute, NVIDIA NIM, Anthropic, OpenAI), the model outputs the operation, target, and typed text in a single structured JSON response, eliminating the second roundtrip entirely!
+
+## 🦊 Firefox WebExtension (Zero-IPC Latency)
+
+For the fastest possible execution without local CDP daemons or subprocesses, this repository includes a complete **native Firefox extension** in [`firefox-extension/`](firefox-extension/):
+
+- **0ms IPC Latency**: Runs directly inside Firefox's JavaScript engine.
+- **Multi-Provider Switcher**: Switch between **OpenRouter**, **OmniRoute**, **NVIDIA NIM**, **Anthropic**, and **OpenAI** directly from the popup.
+- **Visual Overlay**: Real-time element badge numbers (`[1]`, `[2]`, `[3]`) and glowing target pulse.
+- **Latency Breakdown**: Live display of DOM read (~2ms), LLM inference (~300ms), and execution (~1ms).
+
+### Quick Install in Firefox:
+1. Open Firefox and go to `about:debugging#/runtime/this-firefox`.
+2. Click **"Load Temporary Add-on..."** (*Cargar complemento temporal...*).
+3. Select `firefox-extension/manifest.json`.
+4. Click the ⚡ icon in the toolbar, enter your API key, and give the agent a goal!
+
+See [`firefox-extension/README.md`](firefox-extension/README.md) for full instructions and screenshots.
+
+## Multi-Provider LLM Configuration
+
+Set `LLM_PROVIDER` in your `.env` to any of the supported providers:
+
+| Provider | `LLM_PROVIDER` | Default Endpoint | Default Fast Model |
+| --- | --- | --- | --- |
+| **OpenRouter** | `openrouter` | `https://openrouter.ai/api/v1` | `deepseek/deepseek-chat` |
+| **OmniRoute** | `omniroute` | `http://localhost:20128/v1` | `gpt-4o-mini` |
+| **NVIDIA NIM** | `nvidia` | `https://integrate.api.nvidia.com/v1` | `meta/llama-3.1-70b-instruct` |
+| **Anthropic** | `anthropic` | `https://api.anthropic.com/v1` | `claude-3-5-haiku-20241022` |
+| **OpenAI** | `openai` | `https://api.openai.com/v1` | `gpt-4o-mini` |
+| **TypeSafe** | `typesafe` | `https://api.typesafe.ai/v1` | `jev-latest` |
+
+See [`.env.example`](.env.example) for detailed environment configuration.
+
 There are no site-specific action scripts or prepared field strings in the policy. The Flights example supplies a goal and independently verifies the outcome. The screenshot renderer adds labels afterward; it does not drive the browser.
 
 ## Try it
