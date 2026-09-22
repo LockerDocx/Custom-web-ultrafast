@@ -186,6 +186,7 @@ def test_download_file_cleans_up_on_oversize(box, monkeypatch):
 
 
 def test_parse_document_xlsx_round_trip(box):
+    pytest.importorskip("openpyxl", reason="documents extra not installed")
     from openpyxl import Workbook
 
     workbook = Workbook()
@@ -201,6 +202,7 @@ def test_parse_document_xlsx_round_trip(box):
 
 
 def test_parse_document_docx_round_trip(box):
+    pytest.importorskip("docx", reason="documents extra not installed")
     import docx
 
     document = docx.Document()
@@ -211,6 +213,7 @@ def test_parse_document_docx_round_trip(box):
 
 
 def test_parse_document_pdf_round_trip(box):
+    pytest.importorskip("pypdf", reason="documents extra not installed")
     import io
 
     from pypdf import PdfWriter
