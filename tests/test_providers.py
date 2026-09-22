@@ -369,7 +369,7 @@ def test_policy_description_reports_the_active_backend(monkeypatch):
 def planner_env(monkeypatch):
     monkeypatch.setenv("PLANNER_PROVIDER", "nvidia")
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi")
-    monkeypatch.setenv("PLANNER_MODEL", "zai/glm-5.3")
+    monkeypatch.setenv("PLANNER_MODEL", "z-ai/glm-5.3")
 
 
 def planned_agent(plan, plan_index=0, planner=True):
@@ -377,7 +377,7 @@ def planned_agent(plan, plan_index=0, planner=True):
 
     a = loop.Agent.__new__(loop.Agent)
     a.screenshots = False
-    a.planner = {"model": "zai/glm-5.3"} if planner else None
+    a.planner = {"model": "z-ai/glm-5.3"} if planner else None
     a.pending_text = None
     a.state = {
         "browser": Mock(fresh=Mock(return_value=True), observe=Mock(return_value=page())),
@@ -417,7 +417,7 @@ def act(a, operation):
 def test_planner_role_resolves_with_provider_key_fallback(monkeypatch):
     planner_env(monkeypatch)
     provider = providers.resolve("planner")
-    assert (provider["name"], provider["model"], provider["key"]) == ("nvidia", "zai/glm-5.3", "nvapi")
+    assert (provider["name"], provider["model"], provider["key"]) == ("nvidia", "z-ai/glm-5.3", "nvapi")
 
 
 def test_planning_is_off_without_configuration(monkeypatch):
@@ -426,7 +426,7 @@ def test_planning_is_off_without_configuration(monkeypatch):
 
 def test_planning_is_on_when_configured(monkeypatch):
     planner_env(monkeypatch)
-    assert model.planning_config()["model"] == "zai/glm-5.3"
+    assert model.planning_config()["model"] == "z-ai/glm-5.3"
 
 
 def test_plan_steps_returns_a_validated_checklist(monkeypatch):
@@ -564,7 +564,7 @@ def test_post_json_includes_the_provider_error_detail(monkeypatch):
     class FakeResponse:
         status_code = 400
         is_error = True
-        text = '{"error": {"message": "Model zai/glm-5.3 does not exist"}}'
+        text = '{"error": {"message": "Model z-ai/glm-5.3 does not exist"}}'
 
     monkeypatch.setattr(model, "CLIENT", Mock(post=Mock(return_value=FakeResponse())))
     with pytest.raises(RuntimeError, match="does not exist"):

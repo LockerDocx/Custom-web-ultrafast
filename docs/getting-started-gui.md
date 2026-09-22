@@ -36,7 +36,7 @@ POLICY_MODEL=openai/gpt-oss-20b
 
 PLANNER_PROVIDER=nvidia
 NVIDIA_API_KEY=nvapi-...your key...
-PLANNER_MODEL=zai/glm-5.3
+PLANNER_MODEL=z-ai/glm-5.3
 ```
 
 Keep the black host window open while you use the agent. Every option is described in [providers.md](providers.md).

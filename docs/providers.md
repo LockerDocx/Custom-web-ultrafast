@@ -22,9 +22,9 @@ POLICY_REASONING=low
 # Planner + text helper · GLM-5.3 on NVIDIA NIM (free endpoints)
 PLANNER_PROVIDER=nvidia
 NVIDIA_API_KEY=nvapi-...
-PLANNER_MODEL=zai/glm-5.3
+PLANNER_MODEL=z-ai/glm-5.3
 TEXT_MODEL_PROVIDER=nvidia
-TEXT_MODEL=zai/glm-5.3-flash
+TEXT_MODEL=z-ai/glm-5.3-flash
 TEXT_MODEL_REASONING=none
 ```
 

@@ -20,9 +20,9 @@ POLICY_REASONING=low
 
 # Planner: breaks your mission into a checklist. Needs the NVIDIA key. Optional.
 PLANNER_PROVIDER=nvidia
-PLANNER_MODEL=zai/glm-5.3
+PLANNER_MODEL=z-ai/glm-5.3
 
 # Text writer: fills text fields. Needs the NVIDIA key.
 TEXT_MODEL_PROVIDER=nvidia
-TEXT_MODEL=zai/glm-5.3-flash
+TEXT_MODEL=z-ai/glm-5.3-flash
 TEXT_MODEL_REASONING=none

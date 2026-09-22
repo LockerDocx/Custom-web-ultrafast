@@ -94,7 +94,7 @@ POLICY_MODEL=openai/gpt-oss-20b
 
 PLANNER_PROVIDER=nvidia
 NVIDIA_API_KEY=nvapi-...
-PLANNER_MODEL=zai/glm-5.3
+PLANNER_MODEL=z-ai/glm-5.3
 ```
 
 ## Run it inside Firefox

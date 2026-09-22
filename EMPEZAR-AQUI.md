@@ -101,7 +101,7 @@ La clave es como una contraseña para que el asistente use una IA. La más fáci
    - 🔴 Rojo "offline" = la ventana negra está cerrada → vuelve al PASO 3
 3. **Revisa la conexión de las IAs**: al abrir el panel, debajo del cuadro de texto verás el estado de cada modelo:
    - 🟢 `Executor · groq:openai/gpt-oss-20b` = tu clave Groq funciona ✓
-   - 🟢 `Planner · nvidia:zai/glm-5.3` y `Text writer` = tu clave NVIDIA funciona ✓
+   - 🟢 `Planner · nvidia:z-ai/glm-5.3` y `Text writer` = tu clave NVIDIA funciona ✓
    - 🔴 **algo rojo** = pulsa el botón **"Test setup"** y lee el mensaje: te dice EXACTAMENTE qué falla (clave mal pegada, modelo que no existe…). Arregla el `.env` (PASO 3) y reinicia el starter.
 4. Escribe una misión de prueba y pulsa **Run**:
    > Busca el artículo de la Wikipedia sobre la Torre Eiffel y ábrelo.
@@ -129,6 +129,7 @@ Acabas de ver las dos IAs trabajando: el **planificador** (si pusiste clave NVID
 | Veo esto… | Solución |
 |---|---|
 | El puntito del panel está **rojo "offline"** | La ventana negra del host está cerrada → doble clic en el starter (PASO 3, punto 8) |
+| **Planner o Text writer en 🔴 con error 404 / "not found"** | El id del modelo estaba mal en versiones anteriores (`zai/glm-5.3` en vez de `z-ai/glm-5.3`). **Los starters nuevos lo corrigen solos** al arrancar (verás "Fixed an outdated model id") — o edita `.env` a mano: cambia `zai/` por `z-ai/` en las líneas PLANNER_MODEL y TEXT_MODEL |
 | Un modelo está en **🔴 en el panel** | Pulsa **"Test setup"** y lee el mensaje exacto: `401` = clave mal pegada (repite PASO 3); `404` o `not found` = el nombre del modelo no existe en ese proveedor → córregelo en `.env` (el enlace correcto: Groq en console.groq.com/models, NVIDIA en build.nvidia.com/models) y reinicia el starter |
 | Sale un **error rojo en el panel** al pulsar Run | Léelo: ahora incluye la causa real (`HTTP 401: invalid key`, `HTTP 404: model ... does not exist`...). Cada caso está en esta tabla |
 | No encuentro `manifest.json` al cargar el add-on | Está DENTRO de la carpeta `extension` del proyecto (PASO 4, punto 4) |

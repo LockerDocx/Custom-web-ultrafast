@@ -311,14 +311,14 @@ def test_check_providers_reports_each_role(monkeypatch):
     monkeypatch.setenv("POLICY_PROVIDER", "groq")
     monkeypatch.setenv("POLICY_MODEL", "openai/gpt-oss-20b")
     monkeypatch.setenv("PLANNER_PROVIDER", "nvidia")
-    monkeypatch.setenv("PLANNER_MODEL", "zai/glm-5.3")
+    monkeypatch.setenv("PLANNER_MODEL", "z-ai/glm-5.3")
     monkeypatch.setenv("TEXT_MODEL_PROVIDER", "nvidia")
-    monkeypatch.setenv("TEXT_MODEL", "zai/glm-5.3-flash")
+    monkeypatch.setenv("TEXT_MODEL", "z-ai/glm-5.3-flash")
     seen = []
 
     def fake_chat(provider, system, user, max_tokens=1024):
         seen.append(provider["model"])
-        if provider["model"] == "zai/glm-5.3":
+        if provider["model"] == "z-ai/glm-5.3":
             raise RuntimeError("Model provider returned HTTP 404: model not found; no action executed.")
         return "{}", {"model": provider["model"], "usage": {}, "provider": provider["name"]}
 
@@ -329,7 +329,7 @@ def test_check_providers_reports_each_role(monkeypatch):
     assert results["text"]["ok"] is True
     assert results["planner"]["ok"] is False
     assert "check the exact model id" in results["planner"]["detail"]
-    assert results["planner"]["model"] == "nvidia:zai/glm-5.3"
+    assert results["planner"]["model"] == "nvidia:z-ai/glm-5.3"
 
 
 def test_check_providers_marks_planner_optional_when_unset(monkeypatch):

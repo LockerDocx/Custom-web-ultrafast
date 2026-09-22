@@ -27,6 +27,12 @@ if [ ! -d ".venv" ]; then
   fi
 fi
 
+# Earlier templates shipped a wrong NVIDIA model id (zai/ instead of z-ai/): fix it in place.
+if [ -f ".env" ] && grep -q "zai/glm-5.3" .env; then
+  sed -i.bak 's|zai/glm-5\.3|z-ai/glm-5.3|g' .env
+  echo "Fixed an outdated model id in .env (zai/ → z-ai/). Backup saved as .env.bak"
+fi
+
 if [ ! -f ".env" ]; then
   cp env-template.txt .env
   echo ""
