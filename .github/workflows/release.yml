@@ -9,7 +9,7 @@ on:
 
 permissions:
   contents: write
-  issues: write
+  pull-requests: write
 
 jobs:
   build-and-upload:
@@ -50,16 +50,17 @@ jobs:
           LOG=/tmp/upload.log
           : > "$LOG"
           report() {
-            gh issue create --title "Release upload failed for ${GITHUB_REF_NAME}" \
-              --body "$(tail -40 "$LOG")" >/dev/null 2>&1 || true
+            gh pr comment 1 --body "Release upload failed for ${GITHUB_REF_NAME}:\n\`\`\`\n$(tail -40 "$LOG")\n\`\`\`" >/dev/null 2>&1 || true
           }
           fail() {
             echo "FAILED: $1" | tee -a "$LOG"
             report
             exit 1
           }
-          RELEASE_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" --jq .id 2>>"$LOG") \
-            || fail "could not resolve the release id"
+          RELEASE_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"${GITHUB_REF_NAME}\") | .id" 2>>"$LOG") \
+            || fail "could not list releases"
+          [ -n "${RELEASE_ID:-}" ] || fail "no release found for tag ${GITHUB_REF_NAME}"
           echo "release id: $RELEASE_ID" | tee -a "$LOG"
           upload() {
             local file="$1" name attempt asset_id
