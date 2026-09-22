@@ -87,10 +87,13 @@ Each preset knows its base URL, dialect, and key variable, so `POLICY_PROVIDER=n
 An optional **planner** role adds a second, slower model that decomposes the mission into a step checklist once, while the fast policy executes one step per turn — two providers at once:
 
 ```bash
-# .env — fast executor on Groq, planner + text helper on NVIDIA NIM
+# .env — executor + text helper on Groq, planner on NVIDIA NIM
 POLICY_PROVIDER=groq
 GROQ_API_KEY=gsk-...
 POLICY_MODEL=openai/gpt-oss-20b
+
+TEXT_MODEL_PROVIDER=groq
+TEXT_MODEL=openai/gpt-oss-20b
 
 PLANNER_PROVIDER=nvidia
 NVIDIA_API_KEY=nvapi-...

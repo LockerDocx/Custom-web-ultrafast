@@ -22,7 +22,8 @@ POLICY_REASONING=low
 PLANNER_PROVIDER=nvidia
 PLANNER_MODEL=z-ai/glm-5.3
 
-# Text writer: fills text fields. Needs the NVIDIA key.
-TEXT_MODEL_PROVIDER=nvidia
-TEXT_MODEL=z-ai/glm-5.3-flash
-TEXT_MODEL_REASONING=none
+# Text writer: fills text fields. Uses Groq too - measured ~300 ms per field
+# vs ~22 s for glm-5.3-flash (which reasons by default). Needs the Groq key.
+TEXT_MODEL_PROVIDER=groq
+TEXT_MODEL=openai/gpt-oss-20b
+TEXT_MODEL_REASONING=low

@@ -19,13 +19,16 @@ GROQ_API_KEY=gsk_...
 POLICY_MODEL=openai/gpt-oss-20b
 POLICY_REASONING=low
 
-# Planner + text helper · GLM-5.3 on NVIDIA NIM (free endpoints)
+# Planner · GLM-5.3 on NVIDIA NIM (free endpoint)
 PLANNER_PROVIDER=nvidia
 NVIDIA_API_KEY=nvapi-...
 PLANNER_MODEL=z-ai/glm-5.3
-TEXT_MODEL_PROVIDER=nvidia
-TEXT_MODEL=z-ai/glm-5.3-flash
-TEXT_MODEL_REASONING=none
+
+# Text helper on Groq too: measured ~300 ms per field vs ~22 s with
+# z-ai/glm-5.3-flash (which reasons by default).
+TEXT_MODEL_PROVIDER=groq
+TEXT_MODEL=openai/gpt-oss-20b
+TEXT_MODEL_REASONING=low
 ```
 
 Without `PLANNER_*` configuration the agent keeps the original single-goal loop, so nothing changes for existing setups.
