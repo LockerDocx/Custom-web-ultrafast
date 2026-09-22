@@ -1,0 +1,51 @@
+name: Release artifacts
+
+# Builds the downloadable artifacts (source ZIP, Firefox .xpi, Python wheel)
+# and attaches them to the GitHub release for the pushed tag.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip build
+          pip install -e . pytest ruff "httpx[http2]" browser-harness==0.1.13
+      - name: Checks
+        run: |
+          ruff check .
+          pytest -q
+          node --check jev_ultrafast/static/app.js
+          node --check extension/background.js
+          node --check extension/content.js
+          node --check extension/sidebar/sidebar.js
+      - name: Build artifacts
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python -m build --wheel --outdir dist
+          (cd extension && zip -r -q "../jev-agent-firefox-${GITHUB_REF_NAME}.xpi" .)
+          git archive --format=zip -o "custom-web-ultrafast-${GITHUB_REF_NAME}-source.zip" HEAD
+          ls -la dist *.xpi *-source.zip
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            "dist/jev_ultrafast-${VERSION}-py3-none-any.whl" \
+            "jev-agent-firefox-${GITHUB_REF_NAME}.xpi" \
+            "custom-web-ultrafast-${GITHUB_REF_NAME}-source.zip" \
+            --clobber
