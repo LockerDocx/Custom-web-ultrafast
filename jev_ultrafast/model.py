@@ -272,6 +272,7 @@ def typesafe_choose(state, goal, history):
 
 
 POLICY_TEXT_CHARS = 2500
+FIELD_TEXT_CHARS = 2000
 
 
 def _policy_request(goal, state, elements, operations, history):
@@ -378,7 +379,7 @@ def field_context(goal, action, page, history):
     return {
         "goal": goal,
         "field": {k: action.get(k) for k in ("label", "role", "value")},
-        "page": {"title": page["title"], "text": page["text"][:6000]},
+        "page": {"title": page["title"], "text": page["text"][:FIELD_TEXT_CHARS]},
         "recent_actions": [{k: h.get(k) for k in ("action", "text")} for h in history[-6:]],
     }
 

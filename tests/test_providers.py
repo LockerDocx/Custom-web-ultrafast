@@ -712,3 +712,13 @@ def test_the_text_retry_points_at_the_goal_when_the_model_says_null(monkeypatch)
         model.field_text({"goal": "Type London into the Where to? field"})
     assert len(seen) == 2
     assert "goal states the value" in seen[1], "a null answer needs a targeted retry, not a repeat"
+
+
+def test_the_field_context_keeps_the_page_text_short():
+    """A field value does not need the whole page: the excerpt is context, the goal is the source."""
+    from jev_ultrafast.model import FIELD_TEXT_CHARS, field_context
+
+    page = {"title": "Flights", "text": "y" * 6000}
+    context = field_context("Type London into Where to?", {"label": "Where to?", "role": "textbox"}, page, [])
+    assert len(context["page"]["text"]) == FIELD_TEXT_CHARS
+    assert context["field"]["label"] == "Where to?"

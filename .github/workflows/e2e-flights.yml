@@ -17,7 +17,7 @@ on:
         default: "2.4"
       max_seconds:
         description: "Mission time budget in seconds"
-        default: "600"
+        default: "900"
       tpm:
         description: "Token budget per minute per model (free Groq tier allows 8000)"
         default: "7500"
@@ -49,7 +49,7 @@ permissions:
 jobs:
   flights:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -99,8 +99,11 @@ jobs:
           # The routing battery samples groq:openai/gpt-oss-20b at the same time, and Groq
           # spends the minute per model: the text role uses the executor's model instead,
           # so the live mission never competes with another workflow for its allowance.
+          # The text role writes short field values; a small fast model has its own
+          # tokens-per-minute allowance, so it neither competes with the executor's
+          # reasoning model nor waits behind it.
           TEXT_MODEL_PROVIDER: groq
-          TEXT_MODEL: openai/gpt-oss-120b
+          TEXT_MODEL: llama-3.1-8b-instant
           TEXT_MODEL_REASONING: none
         run: |
           if [ -z "${GROQ_API_KEY}" ]; then
@@ -112,7 +115,7 @@ jobs:
           fi
           set +e
           python scripts/e2e_flights.py \
-            --max-seconds "${{ github.event.inputs.max_seconds || 600 }}" \
+            --max-seconds "${{ github.event.inputs.max_seconds || 900 }}" \
             --pacing "${{ github.event.inputs.pacing || 1.5 }}" \
             --tpm "${{ github.event.inputs.tpm || 7500 }}" \
             --artifacts artifacts/e2e-flights \
