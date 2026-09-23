@@ -633,3 +633,16 @@ def test_a_rejected_json_schema_is_dropped_instead_of_killing_the_run():
     assert _droppable_param(groq_error, {"response_format"}, "openai") is None
     # A plain bad request stays a bad request.
     assert _droppable_param("Model provider returned HTTP 400: bad request", set(), "openai") is None
+
+
+def test_the_text_helper_asks_once_more_before_giving_up(monkeypatch):
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    post = Mock(side_effect=[
+        {"model": "m", "choices": [{"message": {"content": '{"text": null}'}}]},
+        {"model": "m", "choices": [{"message": {"content": '{"text": "Zürich"}'}}]},
+    ])
+    monkeypatch.setattr(model, "post_json", post)
+    value, _meta = model.field_text({"goal": "Find flights from Zurich to London"})
+    assert value == "Zürich"
+    assert post.call_count == 2
+    assert "rejected" in post.call_args.args[2]["messages"][1]["content"]

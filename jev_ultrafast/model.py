@@ -378,20 +378,27 @@ def field_context(goal, action, page, history):
 
 def field_text(context):
     provider = providers.resolve("text")
+    request = json.dumps(context)
     started = time.perf_counter()
-    content, meta = providers.chat(provider, TEXT_VALUE, json.dumps(context), max_tokens=1024)
-    try:
-        output = providers.extract_json(content)
-        value = output["text"]
-        if set(output) != {"text"} or not isinstance(value, str) or not value.strip() or len(value) > 2000:
-            raise ValueError()
-    except (ValueError, KeyError, TypeError):
-        raise ValueError("Text helper returned no valid field value; nothing typed.") from None
-    return value, {
-        "model": provider["model"],
-        "latency_ms": round((time.perf_counter() - started) * 1000),
-        "usage": meta.get("usage", {}),
-    }
+    content, meta = None, None
+    for attempt in range(2):
+        message = request
+        if attempt:
+            message += '\n\nYour previous reply was rejected. Reply with ONLY {"text": "the exact field value"}.'
+        content, meta = providers.chat(provider, TEXT_VALUE, message, max_tokens=1024)
+        try:
+            output = providers.extract_json(content)
+            value = output["text"]
+            if set(output) != {"text"} or not isinstance(value, str) or not value.strip() or len(value) > 2000:
+                raise ValueError()
+        except (ValueError, KeyError, TypeError):
+            continue  # a small model answers {"text": null} now and then; ask once more
+        return value, {
+            "model": provider["model"],
+            "latency_ms": round((time.perf_counter() - started) * 1000),
+            "usage": meta.get("usage", {}),
+        }
+    raise ValueError("Text helper returned no valid field value; nothing typed.") from None
 
 
 def planning_config():

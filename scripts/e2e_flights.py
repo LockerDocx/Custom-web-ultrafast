@@ -509,6 +509,11 @@ def render_report(outcome, reason, state, seconds, pacing, paced, chrome, note=N
     if excerpt:
         lines += [f"Final page text: `{excerpt}`", ""]
     if state.get("error"):
+        decisions = state.get("decisions") or []
+        if decisions:
+            last = decisions[-1]
+            lines += [f"Last decision: `{last.get('operation')}` on `{last.get('target')}` "
+                      f"(choice `{last.get('choice')}`)", ""]
         lines += [f"Error: `{state['error']}`", ""]
     return "\n".join(lines)
 
