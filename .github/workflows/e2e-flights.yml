@@ -17,7 +17,10 @@ on:
         default: "2.4"
       max_seconds:
         description: "Mission time budget in seconds"
-        default: "300"
+        default: "600"
+      tpm:
+        description: "Token budget per minute (free Groq tier allows 8000)"
+        default: "6000"
   pull_request:
     paths:
       - ".github/workflows/e2e-flights.yml"
@@ -29,11 +32,15 @@ on:
       - "jev_ultrafast/providers.py"
       - "jev_ultrafast/orchestrator.py"
   push:
-    branches: ["main", "arena/**"]
+    branches: ["main"]
     paths:
       - ".github/workflows/e2e-flights.yml"
       - "scripts/e2e_flights.py"
       - "examples/flights.py"
+
+concurrency:
+  group: e2e-flights-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -94,8 +101,9 @@ jobs:
           fi
           set +e
           python scripts/e2e_flights.py \
-            --max-seconds "${{ github.event.inputs.max_seconds || 300 }}" \
+            --max-seconds "${{ github.event.inputs.max_seconds || 600 }}" \
             --pacing "${{ github.event.inputs.pacing || 2.4 }}" \
+            --tpm "${{ github.event.inputs.tpm || 6000 }}" \
             --artifacts artifacts/e2e-flights \
             --json artifacts/e2e-flights.json | tee /tmp/report.md
           # `tee` would swallow the real status; PIPESTATUS[0] is the mission's.
@@ -108,6 +116,8 @@ jobs:
           echo "=== CDP /json/version ==="; curl -s http://127.0.0.1:9333/json/version || true
           echo "=== harness daemon log ==="
           tail -40 "$HOME/.config/browser-harness/tmp/bu-default.log" 2>/dev/null || echo "(no daemon log)"
+          echo "=== mission json ==="
+          cat artifacts/e2e-flights.json 2>/dev/null || echo "(no mission json)"
       - name: Upload the artifacts
         if: always()
         uses: actions/upload-artifact@v4

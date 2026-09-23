@@ -10,9 +10,13 @@ one adult, economy — and it never selects or books anything.
 
 Design notes that matter on a CI runner:
 
-- **Pacing.** Free provider tiers reject bursts. Every model call is spaced by
-  `--pacing` seconds by wrapping `model.post_json` / `model.post_stream`, the single
-  HTTP seam of the product, so the wrapper cannot be bypassed by a new call site.
+- **Pacing.** Free provider tiers reject bursts by *tokens*, not by requests: the
+  first live run died on `HTTP 429 ... tokens per minute (TPM): Limit 8000`. Every
+  model call is spaced by `--pacing` seconds and, on top of that, must fit a sliding
+  token budget (`--tpm`, `--window`) before it leaves; a throttled response is
+  retried obeying the provider's own "try again in Xs" hint. Both hooks wrap
+  `model.post_json` / `model.post_stream`, the single HTTP seam of the product, so
+  the limiter cannot be bypassed by a new call site.
 - **Verification.** The verdict comes from `examples.flights.verify`, seven checks on
   the final page (search page, one-way, origin, destination, date, year, matching
   results) — never from the model's own DONE answer.
@@ -29,6 +33,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -45,34 +50,159 @@ BLOCK_MARKERS = (
     "are you a robot", "accept all", "i agree", "recaptcha",
 )
 
+# Provider throttling: Retry-After style spacing, capped so a stuck run still ends.
+RETRY_HINT = re.compile(r"try again in ([\d.]+)\s*s", re.IGNORECASE)
+MAX_PAUSE_S = 90.0
+
+
+class TokenWindow:
+    """A client-side tokens-per-minute budget over a sliding window.
+
+    Free provider tiers reject bursts by tokens, not by requests: one page
+    observation can be a fifth of the whole minute, so a fixed delay between calls
+    is not enough. A request reserves its estimated cost before it goes out and is
+    corrected to the provider's own `usage` once it answers.
+    """
+
+    def __init__(self, tpm, window=60.0, clock=time.monotonic, sleeper=time.sleep):
+        self.tpm = float(tpm)
+        self.window = float(window)
+        self.clock = clock
+        self.sleeper = sleeper
+        self.samples = []  # [expires_at, tokens]; the objects handed out by reserve()
+        self.slept_s = 0.0
+
+    def used(self):
+        return sum(sample[1] for sample in self.samples)
+
+    def _prune(self, now):
+        self.samples = [sample for sample in self.samples if sample[0] > now]
+
+    def reserve(self, tokens):
+        """Block until `tokens` fit in the window; returns the reservation."""
+        tokens = float(tokens)
+        if self.tpm <= 0 or tokens <= 0:
+            return None
+        # One request cannot be split, so an oversize call is clamped, never rejected.
+        tokens = min(tokens, self.tpm)
+        self._prune(self.clock())
+        while self.samples and self.used() + tokens > self.tpm:
+            oldest = min(sample[0] for sample in self.samples)
+            pause = min(MAX_PAUSE_S, max(oldest - self.clock(), 0.02))
+            self.sleeper(pause)
+            self.slept_s += pause
+            self._prune(self.clock())
+        reservation = [self.clock() + self.window, tokens]
+        self.samples.append(reservation)
+        return reservation
+
+    def settle(self, reservation, tokens):
+        """Replace a reservation's estimate with the provider's real usage."""
+        if reservation is not None and tokens and tokens > 0:
+            reservation[1] = float(tokens)
+
+    def cancel(self, reservation):
+        """A request that never answered costs nothing in the window."""
+        if reservation in self.samples:
+            self.samples.remove(reservation)
+
+
+def _estimate_tokens(body):
+    """Worst case for one request: prompt size plus the completion cap."""
+    try:
+        prompt = len(json.dumps(body, ensure_ascii=False)) / 4.0
+    except (TypeError, ValueError):
+        prompt = 1024.0
+    cap = body.get("max_tokens") if isinstance(body, dict) else None
+    return prompt + (float(cap) if isinstance(cap, (int, float)) else 0.0)
+
+
+def _actual_tokens(result):
+    """The provider's own accounting, when the response carries it."""
+    usage = result.get("usage") if isinstance(result, dict) else None
+    if usage is None and isinstance(result, tuple) and len(result) == 3:
+        usage = result[1]
+    if not isinstance(usage, dict):
+        return None
+    for key in ("total_tokens", "prompt_tokens"):
+        value = usage.get(key)
+        if isinstance(value, (int, float)) and value > 0:
+            return float(value)
+    return None
+
+
+def _throttled(failure):
+    """429 and its cousins: the provider asked us to slow down, not to give up."""
+    return any(marker in str(failure) for marker in ("HTTP 429", "HTTP 503", "HTTP 529"))
+
+
+def _retry_delay(failure, attempt):
+    """Obey the provider's own hint ("try again in 4.5s"); else back off."""
+    found = RETRY_HINT.search(str(failure))
+    if found:
+        return min(MAX_PAUSE_S, float(found.group(1)) + 0.5)
+    return min(MAX_PAUSE_S, 2.0**attempt)
+
 
 @contextmanager
-def paced_requests(pacing):
-    """Space out every model call through the product's single HTTP seam."""
+def paced_requests(pacing, tpm=0.0, window=60.0, retries=3, clock=time.monotonic, sleeper=time.sleep):
+    """Space out every model call through the product's single HTTP seam.
+
+    Fixed spacing covers request bursts; the token budget covers the minute; the
+    retry covers the provider still saying no, and it waits exactly as long as the
+    provider asked. All three live behind `model.post_json` / `model.post_stream`,
+    so no call site can bypass them.
+    """
     from jev_ultrafast import model
 
     original_json, original_stream = model.post_json, model.post_stream
-    state = {"calls": 0, "slept_s": 0.0}
+    budget = TokenWindow(tpm, window=window, clock=clock, sleeper=sleeper) if tpm and tpm > 0 else None
+    state = {"calls": 0, "attempts": 0, "retries": 0, "slept_s": 0.0, "throttled_s": 0.0, "tokens": 0.0,
+             "tpm": float(tpm or 0.0), "window_s": float(window)}
 
-    def wait():
-        if state["calls"]:
-            time.sleep(pacing)
-            state["slept_s"] += pacing
-        state["calls"] += 1
+    def perform(original, args, kwargs):
+        body = args[2] if len(args) > 2 else kwargs.get("body")
+        estimate = _estimate_tokens(body)
+        attempt = 0
+        while True:
+            if state["attempts"] and pacing > 0:
+                sleeper(pacing)
+                state["slept_s"] += pacing
+            state["attempts"] += 1
+            reservation = budget.reserve(estimate) if budget else None
+            try:
+                result = original(*args, **kwargs)
+            except RuntimeError as failure:
+                if budget:
+                    budget.cancel(reservation)
+                if attempt >= retries or not _throttled(failure):
+                    raise
+                pause = _retry_delay(failure, attempt)
+                state["retries"] += 1
+                state["throttled_s"] += pause
+                sleeper(pause)
+                attempt += 1
+                continue
+            if budget:
+                budget.settle(reservation, _actual_tokens(result) or estimate)
+                state["tokens"] = budget.used()
+            state["calls"] += 1
+            return result
 
     def post_json(url, key, body, headers=None):
-        wait()
-        return original_json(url, key, body, headers=headers)
+        return perform(original_json, (url, key, body), {"headers": headers})
 
     def post_stream(url, key, body, headers=None, on_delta=None):
-        wait()
-        return original_stream(url, key, body, headers=headers, on_delta=on_delta)
+        return perform(original_stream, (url, key, body), {"headers": headers, "on_delta": on_delta})
 
     model.post_json, model.post_stream = post_json, post_stream
     try:
         yield state
     finally:
         model.post_json, model.post_stream = original_json, original_stream
+        if budget:
+            state["tokens"] = budget.used()
+            state["slept_s"] += budget.slept_s
 
 
 def classify(page, verification, error=None, timed_out=False):
@@ -100,10 +230,7 @@ def preflight():
 
     for role in ("policy", "text"):
         try:
-            provider = providers.resolve(role)
-            reasons.append(None) if False else None
-            if provider is None:  # pragma: no cover - resolve never returns None
-                reasons.append(f"{role}: no provider")
+            providers.resolve(role)
         except ValueError as error:
             reasons.append(f"{role}: {error}")
     chrome = os.environ.get("BH_CHROME_PATH") or os.environ.get("CHROME_PATH")
@@ -139,7 +266,8 @@ def run_mission(max_seconds, artifacts):
                 "action": step.get("action"),
                 "url": step.get("url"),
             })
-            print(f"{state['elapsed_ms']:>7} ms  {state['status']:<10} {step.get('action', '')}", flush=True)
+            print(f"{state['elapsed_ms']:>7} ms  {state['status']:<10} {step.get('action', '')}",
+                  file=sys.stderr, flush=True)
             if time.perf_counter() - started > max_seconds:
                 timed_out = True
                 break
@@ -179,14 +307,24 @@ def render_report(outcome, reason, state, seconds, pacing, paced, chrome, note=N
     ]
     if note:
         lines += [note, ""]
+    limits = []
+    if paced.get("retries"):
+        limits.append(f"**{paced['retries']}** throttled retries")
+    if paced.get("throttled_s"):
+        limits.append(f"{paced['throttled_s']:,.1f} s waiting for the provider to reopen")
+    if paced.get("tpm"):
+        limits.append(f"token budget {paced['tpm']:,.0f}/min over a {paced.get('window_s', 60):,.0f} s window "
+                      f"(~{paced.get('tokens', 0):,.0f} tokens held)")
     lines += [
         f"- Wall clock: **{seconds:,.1f} s** · mission status: `{state.get('status', '—')}` · "
         f"actions: {len(state.get('history') or [])}",
-        f"- Model calls: **{paced['calls']}** with {pacing:,.1f} s pacing ({paced['slept_s']:,.1f} s slept) · "
-        f"Chrome: `{chrome or 'not found'}`",
+        f"- Model calls: **{paced.get('calls', 0)}** with {pacing:,.1f} s pacing "
+        f"({paced.get('slept_s', 0.0):,.1f} s slept) · Chrome: `{chrome or 'not found'}`",
         f"- Final URL: {state.get('final_page', {}).get('url', '—')}",
-        "",
     ]
+    if limits:
+        lines.append(f"- Rate limiting: {' · '.join(limits)}")
+    lines.append("")
     if checks:
         lines += ["| Check | Result |", "|---|---|"]
         for name, ok in checks.items():
@@ -227,7 +365,61 @@ def selftest(pacing):
     finally:
         model.post_json = original
 
-    # 2. the seven page checks accept a correct result page and reject a wrong one
+    # 2. the token budget holds the minute, and it waits instead of overrunning
+    now = [0.0]
+    slept = []
+
+    def fake_sleep(seconds):
+        now[0] += seconds
+        slept.append(seconds)
+
+    clock = lambda: now[0]  # noqa: E731 - a one-line clock keeps the assertions readable
+    budget = TokenWindow(tpm=100, window=60.0, clock=clock, sleeper=fake_sleep)
+    peaks = []
+    for _ in range(4):
+        budget.reserve(40)
+        peaks.append(budget.used())
+    checks.append(("the token budget never exceeds the minute", max(peaks) <= 100))
+    checks.append(("a burst waits for the window to slide", bool(slept) and slept[0] >= 59))
+    reservation = budget.reserve(30)
+    budget.settle(reservation, 5)
+    checks.append(("the budget is corrected to the provider's real usage", budget.used() <= 100))
+
+    # 3. a throttled call is retried on the provider's own schedule; a real error is not
+    attempts = []
+
+    def throttled_post_json(url, key, body, headers=None):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise RuntimeError("Model provider returned HTTP 429: Rate limit reached; "
+                               "Please try again in 4.5s; no action executed.")
+        return {"choices": [{"message": {"content": "{}"}}], "usage": {"total_tokens": 12}}
+
+    model.post_json = throttled_post_json
+    try:
+        with paced_requests(0.0, tpm=1000, retries=3, clock=clock, sleeper=fake_sleep) as paced:
+            model.post_json("http://example.test", "k", {"max_tokens": 8})
+        checks.append(("a throttled call is retried, not failed", len(attempts) == 3 and paced["calls"] == 1))
+        checks.append(("the retry waits as long as the provider asked", abs(paced["throttled_s"] - 10.0) < 0.01))
+    finally:
+        model.post_json = original
+
+    def broken_post_json(url, key, body, headers=None):
+        raise RuntimeError("Model provider returned HTTP 400: bad request; no action executed.")
+
+    model.post_json = broken_post_json
+    try:
+        with paced_requests(0.0, retries=3, sleeper=fake_sleep) as paced:
+            try:
+                model.post_json("http://example.test", "k", {})
+                raised = False
+            except RuntimeError:
+                raised = True
+        checks.append(("a real error is not retried", raised and paced["attempts"] == 1))
+    finally:
+        model.post_json = original
+
+    # 4. the seven page checks accept a correct result page and reject a wrong one
     good = {
         "url": "https://www.google.com/travel/flights/search?tfs=CBwQAhooEgoyMDI2LTA5LTIw&hl=en",
         "text": "departing 2026-09-20",
@@ -245,7 +437,7 @@ def selftest(pacing):
     wrong = {**good, "actions": [a for a in good["actions"] if "Select flight" not in a["label"]]}
     checks.append(("a page without matching results fails", verify(wrong)["passed"] is False))
 
-    # 3. the three verdicts, including the infrastructure one
+    # 5. the three verdicts, including the infrastructure one
     consent = {"url": "https://consent.google.com/ml?continue=...", "text": "Before you continue to Google",
                "actions": []}
     outcome, _ = classify(consent, verify(consent))
@@ -257,7 +449,7 @@ def selftest(pacing):
     ok, _ = classify(good, passed)
     checks.append(("a verified page is a pass", ok == "passed"))
 
-    # 4. the report never claims a pass it did not measure
+    # 6. the report never claims a pass it did not measure
     report = render_report("failed", "checks not satisfied: results", {"verification": passed}, 12.0, pacing,
                            {"calls": 4, "slept_s": 3 * pacing}, "/usr/bin/google-chrome")
     checks.append(("the report labels the outcome", "🔴 **failed**" in report))
@@ -269,8 +461,12 @@ def selftest(pacing):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--selftest", action="store_true", help="offline: no browser, no network, no keys")
-    parser.add_argument("--max-seconds", type=float, default=300.0)
+    parser.add_argument("--max-seconds", type=float, default=600.0)
     parser.add_argument("--pacing", type=float, default=2.4, help="seconds between model calls")
+    parser.add_argument("--tpm", type=float, default=6000.0,
+                        help="token budget per minute (the free Groq tier allows 8000); 0 disables it")
+    parser.add_argument("--window", type=float, default=60.0, help="seconds of the token budget window")
+    parser.add_argument("--retries", type=int, default=3, help="throttled retries per model call")
     parser.add_argument("--artifacts", default="")
     parser.add_argument("--json", default="")
     args = parser.parse_args()
@@ -282,14 +478,14 @@ def main():
     chrome, reasons = preflight()
     if reasons:
         print(render_report("skipped", "preconditions not met", {}, 0.0, args.pacing,
-                            {"calls": 0, "slept_s": 0.0}, chrome,
+                            {"calls": 0, "slept_s": 0.0, "tpm": args.tpm, "window_s": args.window}, chrome,
                             note="Skipped: " + "; ".join(reasons)))
         if args.json:
             Path(args.json).parent.mkdir(parents=True, exist_ok=True)
             Path(args.json).write_text(json.dumps({"outcome": "skipped", "reasons": reasons}, indent=2))
         return 0
 
-    with paced_requests(args.pacing) as paced:
+    with paced_requests(args.pacing, tpm=args.tpm, window=args.window, retries=args.retries) as paced:
         state, error, timed_out, seconds = run_mission(args.max_seconds, args.artifacts)
 
     page = (state or {}).get("final_page") or {"url": "", "text": "", "actions": []}
@@ -307,6 +503,10 @@ def main():
             "seconds": seconds,
             "pacing_s": args.pacing,
             "model_calls": paced["calls"],
+            "token_budget_per_minute": args.tpm,
+            "tokens_held": paced.get("tokens", 0.0),
+            "throttled_retries": paced.get("retries", 0),
+            "throttled_s": paced.get("throttled_s", 0.0),
             "verification": verification,
             "final_url": page.get("url"),
             "error": error,

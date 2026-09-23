@@ -99,17 +99,24 @@ tokens); un precio inventado es peor que ningún precio.
 ## 4. E2E real: vuelos Zúrich → Londres
 
 ```
-python scripts/e2e_flights.py --selftest                  # offline, 10 comprobaciones
-xvfb-run -a python scripts/e2e_flights.py --max-seconds 300
+python scripts/e2e_flights.py --selftest                  # offline, 16 comprobaciones
+xvfb-run -a python scripts/e2e_flights.py --max-seconds 600
 ```
 
 La misión del demo (solo ida, Zúrich–Londres, 20 de septiembre de 2026, un adulto,
-economía; nunca selecciona ni reserva) sobre Google Flights real, con tres decisiones
+economía; nunca selecciona ni reserva) sobre Google Flights real, con cuatro decisiones
 de diseño que importan en un runner:
 
 - **Pacing**: cada llamada al modelo se separa `--pacing` segundos (2.4 por defecto)
   parcheando `model.post_json`/`model.post_stream`, la única costura HTTP del producto,
   así que ningún camino de llamada nuevo puede saltarse el espaciado.
+- **Presupuesto de tokens**: el primer run real murió con `HTTP 429 … TPM: Limit 8000`.
+  El tier gratuito rechaza por **tokens**, no por peticiones, así que cada llamada
+  reserva su coste estimado en una ventana deslizante (`--tpm 6000`, `--window 60`) y
+  se corrige con el `usage` real que devuelve el proveedor; una respuesta limitada se
+  reintenta esperando lo que el proveedor pide («try again in 4.5s»). El workflow
+  ejecuta una sola misión por commit (`concurrency` por PR/rama) porque todo comparte
+  el mismo presupuesto.
 - **Verificación**: el veredicto sale de `examples.flights.verify`, **siete
   comprobaciones sobre la página final** (página de búsqueda, solo ida, origen,
   destino, fecha, año, resultados que coinciden), nunca del `DONE` del modelo.

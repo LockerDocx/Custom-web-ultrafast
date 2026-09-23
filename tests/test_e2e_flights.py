@@ -160,3 +160,66 @@ def test_main_fails_when_the_mission_ran_but_the_page_is_wrong(monkeypatch, tmp_
     monkeypatch.setattr(e2e_flights.sys, "argv", ["e2e_flights.py", "--json", str(tmp_path / "e2e.json")])
     assert e2e_flights.main() == 1
     assert "🔴 **failed**" in capsys.readouterr().out
+
+
+def test_the_token_budget_holds_the_minute_and_waits_instead_of_overrunning():
+    now = [0.0]
+    slept = []
+
+    def fake_sleep(seconds):
+        now[0] += seconds
+        slept.append(seconds)
+
+    budget = e2e_flights.TokenWindow(tpm=100, window=60.0, clock=lambda: now[0], sleeper=fake_sleep)
+    peaks = []
+    for _ in range(4):
+        budget.reserve(40)
+        peaks.append(budget.used())
+    assert max(peaks) <= 100, "a burst must never exceed the minute's allowance"
+    assert slept and slept[0] >= 59, "the fourth call waits for the window to slide"
+    reservation = budget.reserve(30)
+    budget.settle(reservation, 5)
+    assert budget.used() == 5, "the reservation is corrected to the provider's real usage"
+
+
+def test_throttled_calls_are_retried_on_the_providers_own_schedule(monkeypatch):
+    attempts = []
+
+    def throttled(url, key, body, headers=None):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise RuntimeError("Model provider returned HTTP 429: Rate limit reached; "
+                               "Please try again in 4.5s; no action executed.")
+        return {"choices": [{"message": {"content": "{}"}}], "usage": {"total_tokens": 12}}
+
+    monkeypatch.setattr(model, "post_json", throttled)
+    with e2e_flights.paced_requests(0.0, tpm=8000, retries=3, sleeper=lambda seconds: None) as paced:
+        model.post_json("http://example.test", "k", {"max_tokens": 8})
+    assert len(attempts) == 3
+    assert paced["calls"] == 1 and paced["retries"] == 2
+    assert paced["throttled_s"] == pytest.approx(10.0), "4.5 s of hint plus the safety margin, twice"
+
+
+def test_a_real_provider_error_is_not_retried(monkeypatch):
+    def broken(url, key, body, headers=None):
+        raise RuntimeError("Model provider returned HTTP 400: bad request; no action executed.")
+
+    monkeypatch.setattr(model, "post_json", broken)
+    with e2e_flights.paced_requests(0.0, retries=3, sleeper=lambda seconds: None) as paced:
+        with pytest.raises(RuntimeError):
+            model.post_json("http://example.test", "k", {})
+    assert paced["attempts"] == 1, "only throttling is worth retrying"
+
+
+def test_the_report_names_the_rate_limiting_it_had_to_do():
+    page = good_page()
+    verification = verify(page)
+    report = e2e_flights.render_report(
+        "passed", "every page-state check holds",
+        {"status": "done", "history": [1], "final_page": page, "verification": verification},
+        90.0, 2.4, {"calls": 12, "slept_s": 26.4, "retries": 3, "throttled_s": 15.5,
+                    "tpm": 6000.0, "window_s": 60.0, "tokens": 5400.0},
+        "/usr/bin/google-chrome")
+    assert "Rate limiting" in report
+    assert "**3** throttled retries" in report
+    assert "token budget 6,000/min" in report
