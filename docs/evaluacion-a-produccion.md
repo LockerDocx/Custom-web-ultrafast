@@ -79,7 +79,7 @@ cuando un proveedor rechaza un campo.
 → explica" no está instrumentada de punta a punta con trazas, y la recuperación ante
 proveedor caído a mitad de tarea es limitada.
 
-## 5. Precisión del routing — ✅ CORRECTO (los números son exactos)
+## 5. Precisión del routing — ✅ CORRECTO, y ahora con batería propia (41 casos medidos)
 
 Laya cruda 6/14 (43 %) · efectiva con fallback 13/14 (93 %) — medidos con pesos reales en CI
 (workflow «Laya check», tabla regenerada en cada push). La conclusión de la evaluación es
@@ -87,6 +87,14 @@ justa: 14 casos es una prueba de concepto, no una validación; y 1/14 incorrecto
 herramientas reales puede ser caro. El objetivo propuesto (500–5.000 tareas, multilingüe,
 adversarial, con métricas de routing/completion/retries/latency/coste) es el estándar
 correcto → roadmap 0.4.0.
+
+**Avance (duelo medido)**: el workflow «Executor duel» ya enfrenta 41 casos reales (24 routing
++ 17 executor) contra GPT-OSS-20B real en cada push. Resultado: GPT-OSS **24/24 routing y
+17/17 executor**; Laya 42 %/53 % (0/3 en páginas de 30+ elementos). Con esos datos, el gate de
+confianza de Laya subió de 0.55 a **0.75** (toda decisión de routing ≥0.75 fue correcta en la
+batería). Descubrimiento pendiente: el fallback de keywords solo cubre ES/EN — las misiones con
+herramientas en DE/FR/IT se desvían al navegador cuando Laya duda (roadmap 0.4.0: usar el modelo
+de policy como router cuando hay red).
 
 **Matiz a favor del diseño**: el fallo medido (misión alemana mal enrutada) NO ejecutó nada
 peligroso — enrutar al bucle de navegador una misión de herramientas solo la hace fallar

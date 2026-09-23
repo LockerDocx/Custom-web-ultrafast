@@ -19,7 +19,11 @@ the keyword implementation without touching the run.
 import os
 import threading
 
-CONFIDENCE_GATE = 0.55  # calibrated probability below which we keep the keyword answer
+# Calibrated probability below which we keep the keyword answer. Tuned on the
+# measured duel battery (GitHub Actions, real weights, 24 multilingual routing
+# cases): every Laya routing decision at >= 0.75 confidence was correct, while
+# 0.55-0.74 contained confident-wrong answers that misrouted real missions.
+CONFIDENCE_GATE = 0.75
 CHECKPOINTS = ("multilingual", "english", "typed-decisions")
 
 _engine = None

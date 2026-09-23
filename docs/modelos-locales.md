@@ -63,16 +63,17 @@ Verificado el 23-sep-2026: **Jev NO es open source ni descargable**. Lanzado el 
 
 - **Enrutar misiones** (¿navegador u orquestador?) y **elegir skills** en **cualquier idioma** — nuestro keyword-matching solo sabía español/inglés; Laya añade cobertura semántica en cualquier idioma, con confianza calibrada. Si duda (<0.55), cae automáticamente al matcher de siempre: **nunca rompe una ejecución**.
 
-**Resultados medidos con pesos reales** (batería de 14 misiones ES/EN/DE/FR, GitHub Actions, CPU, sept 2026):
+**Resultados medidos con pesos reales** (GitHub Actions, CPU, sept 2026 — baterías «Laya check» y «Executor duel»):
 
-| Métrica | Valor |
-|---|---|
-| Laya en solitario (zero-shot) | 6/14 (43 %) — en línea con el ~0.36 publicado |
-| **Efectivo con el fallback de keywords** | **13/14 (93 %)** |
-| Latencia de decisión (p50, CPU) | 190 ms |
-| Carga del modelo (una sola vez) | 20 s |
+| Métrica | Laya | GPT-OSS-20B (Groq) |
+|---|---|---|
+| Enrutado de misiones (24 casos, 6 idiomas) | 10/24 (42 %) | **24/24 (100 %)** |
+| Elegir el elemento de la página (17 casos, 12–33 elementos) | 9/17 (53 %) | **17/17 (100 %)** |
+| Páginas «cliff» de 30+ elementos | 0/3 | **3/3** |
+| Latencia p50 (CPU local vs API Groq) | 117 ms routing / 447 ms executor | 294 ms / 221 ms |
+| Coste por duelo completo | 0 €, 0 tokens | 12.542 tokens (capa gratuita) |
 
-El único fallo real: una misión alemana con herramientas (Laya se equivocó *con confianza 0.81* — el caso "confidently wrong" que su propia calibración promete mitigar con fine-tune). La tabla completa se regenera en el PR en cada push (workflow «Laya check»).
+Conclusiones accionadas: (1) el gate de confianza subió de 0.55 a **0.75** — en la batería, toda decisión de routing de Laya ≥0.75 fue correcta y el rango 0.55–0.74 contenía errores confiados que desviaban misiones reales; (2) confirmado que **GPT-OSS-20B ejecuta y Laya solo clasifica cuando está muy segura**; (3) el valor restante de Laya es operar **sin clave, sin red y gratis** — con red, incluso el routing le gana GPT-OSS. Las tablas completas se regeneran en el PR en cada push (workflows «Laya check» y «Executor duel»).
 
 ### Requisitos técnicos (verificados sobre el paquete v0.3.6)
 
