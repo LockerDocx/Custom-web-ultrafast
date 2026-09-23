@@ -264,7 +264,7 @@ def warm_up(seconds=25.0, poll=1.0, sleeper=time.sleep, factory=None):
 
     browser = (factory or Browser)(URL)
     started = time.perf_counter()
-    notes = {"consent": False, "ready_s": 0.0}
+    notes = {"consent": False, "ready_s": 0.0, "ticket_type": None}
     while True:
         page = browser.observe(screenshot=False)
         buttons = [action for action in page.get("actions") or []
@@ -278,9 +278,39 @@ def warm_up(seconds=25.0, poll=1.0, sleeper=time.sleep, factory=None):
             sleeper(poll)
             continue
         if _interactive(page) or time.perf_counter() - started >= seconds:
-            notes["ready_s"] = round(time.perf_counter() - started, 1)
-            return browser, page, notes
+            break
         sleeper(poll)
+    notes["ready_s"] = round(time.perf_counter() - started, 1)
+    page = _set_one_way(browser, page, notes, poll, sleeper)
+    return browser, page, notes
+
+
+def _set_one_way(browser, page, notes, poll=1.0, sleeper=time.sleep):
+    """The ticket type is the one control a policy model loops on; settle it here.
+
+    Its label carries the state ("Change ticket type. One way"), and the last live run
+    clicked the same control twelve times without ever seeing the form behind it.
+    """
+    control = next((action for action in page.get("actions") or []
+                    if "ticket type" in action.get("label", "").lower()), None)
+    if control is None or "one way" in control["label"].lower():
+        notes["ticket_type"] = "one way" if control else "not offered"
+        return page
+    try:
+        browser.act(control, page)
+        sleeper(poll)
+        page = browser.observe(screenshot=False)
+        choice = next((action for action in page.get("actions") or []
+                       if action.get("label", "").strip().lower() == "one way"), None)
+        if choice is None:
+            return page
+        browser.act(choice, page)
+        sleeper(poll)
+        page = browser.observe(screenshot=False)
+        notes["ticket_type"] = "one way"
+    except Exception:  # noqa: BLE001 - a stubborn menu must not kill the run
+        notes["ticket_type"] = "left to the agent"
+    return page
 
 
 def preflight():
@@ -444,6 +474,8 @@ def render_report(outcome, reason, state, seconds, pacing, paced, chrome, note=N
         detail = f"- Warm-up: the page was interactive after {warm.get('ready_s', 0):,.1f} s"
         if warm.get("consent"):
             detail += " · cookie wall dismissed"
+        if warm.get("ticket_type"):
+            detail += f" · ticket type {warm['ticket_type']}"
         lines.append(detail)
     if state.get("attempt", 1) > 1:
         lines.append(f"- Attempts: **{state['attempt']}** (an earlier run met a page that had not rendered)")

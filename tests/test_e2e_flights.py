@@ -360,3 +360,51 @@ def test_the_report_says_which_mission_ran():
                                         "history": [], "mission": "cold"}, 10.0, 1.5,
                                        {"calls": 1, "slept_s": 0.0}, "chrome")
     assert "- Mission: `cold`" in report
+
+
+def test_the_warm_up_settles_the_control_a_policy_model_loops_on():
+    class MenuBrowser:
+        def __init__(self, url):
+            self.clicks = []
+            self.pages = [
+                {"url": url, "text": "Flights", "actions": [
+                    {"id": "t1", "label": "Change ticket type. Round trip", "kind": "click"}]},
+                {"url": url, "text": "Flights", "actions": [
+                    {"id": "t1", "label": "Change ticket type. Round trip", "kind": "click"},
+                    {"id": "o1", "label": "One way", "kind": "click"}]},
+                {"url": url, "text": "Flights", "actions": [
+                    {"id": "t1", "label": "Change ticket type. One way", "kind": "click"},
+                    {"id": "f1", "label": "Where from?", "kind": "fill"}]},
+            ]
+
+        def observe(self, screenshot=True):
+            return self.pages.pop(0) if len(self.pages) > 1 else self.pages[0]
+
+        def act(self, action, page, text=None):
+            self.clicks.append(action["label"])
+
+    notes = {"consent": False, "ready_s": 0.0, "ticket_type": None}
+    browser = MenuBrowser("https://www.google.com/travel/flights?hl=en")
+    page = browser.observe()
+    e2e_flights._set_one_way(browser, page, notes, poll=0.0, sleeper=lambda seconds: None)
+    assert browser.clicks == ["Change ticket type. Round trip", "One way"]
+    assert notes["ticket_type"] == "one way"
+
+
+def test_the_warm_up_leaves_an_already_correct_ticket_type_alone():
+    notes = {"consent": False, "ready_s": 0.0, "ticket_type": None}
+
+    class QuietBrowser:
+        def __init__(self):
+            self.clicks = []
+
+        def act(self, action, page, text=None):
+            self.clicks.append(action["label"])
+
+    browser = QuietBrowser()
+    page = {"url": "https://www.google.com/travel/flights?hl=en", "text": "Flights", "actions": [
+        {"id": "t1", "label": "Change ticket type. One way", "kind": "click"},
+        {"id": "f1", "label": "Where from?", "kind": "fill"}]}
+    assert e2e_flights._set_one_way(browser, page, notes, poll=0.0, sleeper=lambda seconds: None) is page
+    assert browser.clicks == []
+    assert notes["ticket_type"] == "one way"
