@@ -96,8 +96,11 @@ jobs:
           POLICY_PROVIDER: groq
           POLICY_MODEL: openai/gpt-oss-120b
           POLICY_REASONING: low
+          # The routing battery samples groq:openai/gpt-oss-20b at the same time, and Groq
+          # spends the minute per model: the text role uses the executor's model instead,
+          # so the live mission never competes with another workflow for its allowance.
           TEXT_MODEL_PROVIDER: groq
-          TEXT_MODEL: openai/gpt-oss-20b
+          TEXT_MODEL: openai/gpt-oss-120b
           TEXT_MODEL_REASONING: low
         run: |
           if [ -z "${GROQ_API_KEY}" ]; then
