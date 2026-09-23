@@ -57,7 +57,18 @@ plan general viaja a internet.
 
 **No** sustituimos al executor del navegador: elegir entre 30+ elementos de una página real choca frontalmente con las dos letras pequeñas. Donde Laya **ya** gana desde hoy:
 
-- **Enrutar misiones** (¿navegador u orquestador?) y **elegir skills** en **cualquier idioma** — nuestro keyword-matching solo sabía español/inglés; con Laya una misión en alemán o francés se enruta igual de bien, en ~33 ms y con confianza calibrada. Si duda (<0.55), cae automáticamente al matcher de siempre: **nunca rompe una ejecución**.
+- **Enrutar misiones** (¿navegador u orquestador?) y **elegir skills** en **cualquier idioma** — nuestro keyword-matching solo sabía español/inglés; Laya añade cobertura semántica en cualquier idioma, con confianza calibrada. Si duda (<0.55), cae automáticamente al matcher de siempre: **nunca rompe una ejecución**.
+
+**Resultados medidos con pesos reales** (batería de 14 misiones ES/EN/DE/FR, GitHub Actions, CPU, sept 2026):
+
+| Métrica | Valor |
+|---|---|
+| Laya en solitario (zero-shot) | 6/14 (43 %) — en línea con el ~0.36 publicado |
+| **Efectivo con el fallback de keywords** | **13/14 (93 %)** |
+| Latencia de decisión (p50, CPU) | 190 ms |
+| Carga del modelo (una sola vez) | 20 s |
+
+El único fallo real: una misión alemana con herramientas (Laya se equivocó *con confianza 0.81* — el caso "confidently wrong" que su propia calibración promete mitigar con fine-tune). La tabla completa se regenera en el PR en cada push (workflow «Laya check»).
 
 | Cómo | Detalle |
 |---|---|
