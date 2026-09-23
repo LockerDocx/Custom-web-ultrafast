@@ -400,6 +400,12 @@ def _droppable_param(error, dropped, dialect, allow_stream_drop=False):
         return "stream"
     if "response_format" in lowered and "response_format" not in dropped:
         return "response_format"
+    # Some endpoints reject the request instead of the parameter: Groq answers a strict
+    # JSON schema the model could not satisfy with `json_validate_failed` and an empty
+    # generation. The reply is parsed as text anyway, so the schema is what gets dropped.
+    if ("json_validate_failed" in lowered or "failed to validate json" in lowered) \
+            and "response_format" not in dropped:
+        return "response_format"
     if ("reasoning_effort" in lowered or "'reasoning'" in lowered) and "reasoning" not in dropped:
         return "reasoning"
     if "temperature" in lowered and "temperature" not in dropped:

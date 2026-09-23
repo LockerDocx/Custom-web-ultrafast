@@ -45,7 +45,7 @@ from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from examples.flights import FIELD_DATE, GOALS, ISO_DATE, OPTION_DATE, URL, verify  # noqa: E402
+from examples.flights import FIELD_DATE, ISO_DATE, OPTION_DATE, URL, goals_for, verify  # noqa: E402
 
 BLOCK_MARKERS = (
     "before you continue", "consent", "captcha", "unusual traffic",
@@ -305,12 +305,12 @@ def preflight():
     return chrome, [reason for reason in reasons if reason]
 
 
-def _attempt(agent_class, max_seconds, started, warm_up_seconds=25.0):
+def _attempt(agent_class, mission, max_seconds, started, warm_up_seconds=25.0):
     """One live attempt: warm the page up, then run the agent to its own verdict."""
     browser, warm = None, None
     try:
         browser, _page, warm = warm_up(seconds=warm_up_seconds)
-        agent = agent_class(URL, GOALS, browser=browser)
+        agent = agent_class(URL, goals_for(mission), browser=browser)
     except Exception as failure:  # noqa: BLE001 - a browser that will not start is a run failure
         if browser is not None:
             try:
@@ -360,7 +360,7 @@ def _attempt(agent_class, max_seconds, started, warm_up_seconds=25.0):
     return result, error, timed_out, warm
 
 
-def run_mission(max_seconds, artifacts, attempts=2):
+def run_mission(max_seconds, artifacts, attempts=2, mission="prepared"):
     """Run the live mission, bounded in time; returns (state, error, timed_out, seconds).
 
     A cold page can beat the agent's first observation; a run that died before its
@@ -371,11 +371,12 @@ def run_mission(max_seconds, artifacts, attempts=2):
     started = time.perf_counter()
     result, error, timed_out, warm = None, None, False, None
     for attempt in range(1, max(1, attempts) + 1):
-        state, error, timed_out, warm = _attempt(Agent, max_seconds, started)
+        state, error, timed_out, warm = _attempt(Agent, mission, max_seconds, started)
         if state is None:  # nothing ran at all: there is no state to decorate
             result = None
             break
         state["attempt"] = attempt
+        state["mission"] = mission
         if warm:
             state["warm_up"] = warm
         result = state
@@ -420,7 +421,8 @@ def render_report(outcome, reason, state, seconds, pacing, paced, chrome, note=N
         f"- Model calls: **{paced.get('calls', 0)}** with {pacing:,.1f} s pacing "
         f"({paced.get('slept_s', 0.0):,.1f} s slept) · Chrome: `{chrome or 'not found'}`",
         f"- Final URL: {state.get('final_page', {}).get('url', '—')}",
-        f"- Target: one-way Zurich → London on **{ISO_DATE}** (never selected or booked)",
+        f"- Mission: `{state.get('mission', 'prepared')}` · target: one-way Zurich → London on "
+        f"**{ISO_DATE}** (never selected or booked)",
     ]
     if limits:
         lines.append(f"- Rate limiting: {' · '.join(limits)}")
@@ -628,6 +630,8 @@ def main():
                         help="token budget per minute (the free Groq tier allows 8000); 0 disables it")
     parser.add_argument("--window", type=float, default=60.0, help="seconds of the token budget window")
     parser.add_argument("--retries", type=int, default=3, help="throttled retries per model call")
+    parser.add_argument("--mission", choices=["prepared", "cold"], default="prepared",
+                        help="prepared: the documented plan; cold: only the outcome, as written above")
     parser.add_argument("--artifacts", default="")
     parser.add_argument("--json", default="")
     args = parser.parse_args()
@@ -647,7 +651,7 @@ def main():
         return 0
 
     with paced_requests(args.pacing, tpm=args.tpm, window=args.window, retries=args.retries) as paced:
-        state, error, timed_out, seconds = run_mission(args.max_seconds, args.artifacts)
+        state, error, timed_out, seconds = run_mission(args.max_seconds, args.artifacts, mission=args.mission)
 
     page = (state or {}).get("final_page") or {"url": "", "text": "", "actions": []}
     verification = (state or {}).get("verification") or {"passed": False, "checks": {}, "visible_flights": []}
@@ -662,6 +666,7 @@ def main():
             "outcome": outcome,
             "reason": reason,
             "seconds": seconds,
+            "mission": args.mission,
             "pacing_s": args.pacing,
             "model_calls": paced["calls"],
             "token_budget_per_minute": args.tpm,

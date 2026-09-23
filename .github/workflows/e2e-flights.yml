@@ -92,7 +92,9 @@ jobs:
           # replies (reasoning tokens with no content), so the executor stays on Groq.
           POLICY_PROVIDER: groq
           POLICY_MODEL: openai/gpt-oss-20b
-          POLICY_REASONING: medium
+          # Low reasoning produced valid decisions; the prepared brief carries the guidance,
+          # and medium reasoning answered with an empty generation the endpoint rejected.
+          POLICY_REASONING: low
           TEXT_MODEL_PROVIDER: groq
           TEXT_MODEL: openai/gpt-oss-20b
           TEXT_MODEL_REASONING: low

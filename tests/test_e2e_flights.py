@@ -156,7 +156,8 @@ def test_main_fails_when_the_mission_ran_but_the_page_is_wrong(monkeypatch, tmp_
     page = {"url": "https://www.google.com/travel/flights?hl=en", "text": "Flights", "actions": []}
     state = {"status": "blocked", "history": [], "final_page": page, "verification": verify(page)}
     monkeypatch.setattr(e2e_flights, "preflight", lambda: ("/usr/bin/google-chrome", []))
-    monkeypatch.setattr(e2e_flights, "run_mission", lambda max_seconds, artifacts: (state, None, False, 12.0))
+    monkeypatch.setattr(e2e_flights, "run_mission",
+                        lambda max_seconds, artifacts, **kwargs: (state, None, False, 12.0))
     monkeypatch.setattr(e2e_flights.sys, "argv", ["e2e_flights.py", "--json", str(tmp_path / "e2e.json")])
     assert e2e_flights.main() == 1
     assert "🔴 **failed**" in capsys.readouterr().out
@@ -270,7 +271,7 @@ def test_a_run_that_died_before_its_first_action_is_retried():
 def test_run_mission_retries_a_page_that_was_not_ready(monkeypatch):
     calls = []
 
-    def fake_attempt(agent_class, max_seconds, started, warm_up_seconds=25.0):
+    def fake_attempt(agent_class, mission, max_seconds, started, warm_up_seconds=25.0):
         calls.append(1)
         if len(calls) == 1:
             return ({"history": [], "status": "blocked", "final_page": {"url": "", "text": "", "actions": []},
@@ -336,3 +337,26 @@ def test_the_report_names_the_models_that_ran():
     assert "planner `z-ai/glm-5.3`" in report
     assert "policy `nvidia:z-ai/glm-5.3`" in report
     assert "text `openai/gpt-oss-20b`" in report
+
+
+def test_the_prepared_mission_is_the_documented_plan_and_the_cold_one_is_the_outcome():
+    from examples.flights import GOALS, STEPS, goals_for
+
+    prepared = goals_for()
+    assert goals_for("prepared") == prepared
+    assert goals_for("cold") == GOALS
+    for number, step in enumerate(STEPS, start=1):
+        assert f"{number}. {step}" in prepared
+    assert goals_for.__defaults__ == ("prepared",), "the stricter, documented brief is the default"
+    with pytest.raises(ValueError, match="Unknown mission"):
+        goals_for("whatever")
+
+
+def test_the_report_says_which_mission_ran():
+    page = good_page()
+    verification = verify(page)
+    report = e2e_flights.render_report("failed", "checks not satisfied: results",
+                                       {"verification": verification, "final_page": page,
+                                        "history": [], "mission": "cold"}, 10.0, 1.5,
+                                       {"calls": 1, "slept_s": 0.0}, "chrome")
+    assert "- Mission: `cold`" in report

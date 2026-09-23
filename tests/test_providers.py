@@ -621,3 +621,15 @@ def test_chat_gives_up_when_the_error_is_not_a_parameter_issue(monkeypatch):
     monkeypatch.setattr(model, "post_json", Mock(side_effect=RuntimeError("HTTP 401: invalid api key")))
     with pytest.raises(RuntimeError, match="401"):
         providers.chat(providers.resolve("policy"), "s", "u")
+
+
+def test_a_rejected_json_schema_is_dropped_instead_of_killing_the_run():
+    from jev_ultrafast.providers import _droppable_param
+
+    groq_error = ('Model provider returned HTTP 400: {"error":{"message":"Failed to validate JSON. '
+                  'Please adjust your prompt. See \'failed_generation\' for more details.",'
+                  '"code":"json_validate_failed"}}')
+    assert _droppable_param(groq_error, set(), "openai") == "response_format"
+    assert _droppable_param(groq_error, {"response_format"}, "openai") is None
+    # A plain bad request stays a bad request.
+    assert _droppable_param("Model provider returned HTTP 400: bad request", set(), "openai") is None

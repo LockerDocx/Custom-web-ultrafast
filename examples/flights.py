@@ -28,6 +28,32 @@ GOALS = (
 )
 
 
+STEPS = [
+    "Set the ticket type to one way.",
+    "Type Zurich into the 'Where from?' field, then choose the Zürich, Switzerland option from the list.",
+    "Type London into the 'Where to?' field, then choose the London, United Kingdom option from the list.",
+    f"Open the departure date picker, choose {OPTION_DATE}, and confirm it.",
+    "Wait until matching one-way flight options are visible. Do not select or book a flight.",
+]
+# The demo video was a prepared run (docs/flights-prepared-measurement.json): a written
+# plan removes the free-form part of the task and keeps the part the stack is being
+# tested on — reading the page, filling the fields, and verifying the result.
+PREPARED_GOALS = (
+    "Find one-way flights from Zurich to London for one adult in economy, following this "
+    "documented plan exactly, one step at a time:\n"
+    + "\n".join(f"{number}. {step}" for number, step in enumerate(STEPS, 1))
+)
+MISSIONS = {"cold": GOALS, "prepared": PREPARED_GOALS}
+
+
+def goals_for(mission="prepared"):
+    """The mission brief for a named mode; an unknown name is a caller error, not a default."""
+    try:
+        return MISSIONS[mission]
+    except KeyError:
+        raise ValueError(f"Unknown mission {mission!r}; known: {', '.join(sorted(MISSIONS))}") from None
+
+
 def verify(page):
     """Independent checks on the resulting page, not the model's DONE answer."""
     parsed = urlparse(page["url"])
