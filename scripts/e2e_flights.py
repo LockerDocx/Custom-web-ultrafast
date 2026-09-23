@@ -218,8 +218,19 @@ def paced_requests(pacing, tpm=0.0, window=60.0, retries=3, clock=time.monotonic
         state["slept_s"] += sum(one.slept_s for one in budgets.values())
 
 
+PROVIDER_ERRORS = ("Model connection failed", "Model provider returned HTTP 5", "Model provider returned HTTP 4",
+                    "Model unavailable", "Model stream failed")
+
+
+def _provider_error(error):
+    """True for an error the model endpoint raised, which is infrastructure, not a regression."""
+    return any(marker in error for marker in PROVIDER_ERRORS)
+
+
 def classify(page, verification, error=None, timed_out=False):
     """Turn a finished run into one honest outcome, never a silent pass."""
+    if error and _provider_error(str(error)):
+        return "provider_error", f"the model endpoint refused the run: {error}"
     if error:
         return "failed", f"the run raised {error}"
     if timed_out:
@@ -458,7 +469,7 @@ def run_mission(max_seconds, artifacts, attempts=2, mission="prepared"):
 def render_report(outcome, reason, state, seconds, pacing, paced, chrome, note=None):
     verification = state.get("verification") or {}
     checks = verification.get("checks") or {}
-    icon = {"passed": "✅", "site_blocked": "⚠️", "failed": "🔴"}.get(outcome, "❔")
+    icon = {"passed": "✅", "site_blocked": "⚠️", "provider_error": "⚠️", "failed": "🔴"}.get(outcome, "❔")
     lines = [
         "## 🛫 E2E flights — Zurich → London on the live Google Flights page",
         "",
@@ -759,7 +770,8 @@ def main():
         }, indent=2, ensure_ascii=False))
         print(f"\nJSON written to {destination}")
 
-    # A blocked site is infrastructure; a failed mission is our regression.
+    # A blocked site or a provider that refuses to serve is infrastructure; a mission that
+    # ran and did not verify is our regression.
     return 1 if outcome == "failed" else 0
 
 

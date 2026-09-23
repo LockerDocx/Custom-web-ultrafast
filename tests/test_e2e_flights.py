@@ -408,3 +408,16 @@ def test_the_warm_up_leaves_an_already_correct_ticket_type_alone():
     assert e2e_flights._set_one_way(browser, page, notes, poll=0.0, sleeper=lambda seconds: None) is page
     assert browser.clicks == []
     assert notes["ticket_type"] == "one way"
+
+
+def test_a_provider_that_refuses_is_infrastructure_not_a_regression():
+    page = good_page()
+    provider_down = "RuntimeError: Model provider returned HTTP 404: the model does not exist; no action executed."
+    outcome, reason = e2e_flights.classify(page, verify(page), error=provider_down)
+    assert outcome == "provider_error"
+    assert "refused the run" in reason
+    # A product error stays a failure.
+    assert e2e_flights.classify(page, verify(page), error="ValueError: invalid operation")[0] == "failed"
+    report = e2e_flights.render_report(outcome, reason, {"verification": verify(page)}, 3.0, 1.5,
+                                       {"calls": 1, "slept_s": 0.0}, "chrome")
+    assert "⚠️ **provider_error**" in report

@@ -94,8 +94,8 @@ jobs:
           # executor is a bigger model on the fast endpoint, with reasoning off and 1024
           # tokens per call.
           POLICY_PROVIDER: groq
-          POLICY_MODEL: llama-3.3-70b-versatile
-          POLICY_REASONING: none
+          POLICY_MODEL: openai/gpt-oss-120b
+          POLICY_REASONING: low
           TEXT_MODEL_PROVIDER: groq
           TEXT_MODEL: openai/gpt-oss-20b
           TEXT_MODEL_REASONING: low
