@@ -156,12 +156,24 @@ def paced_requests(pacing, tpm=0.0, window=60.0, retries=3, clock=time.monotonic
     from jev_ultrafast import model
 
     original_json, original_stream = model.post_json, model.post_stream
-    budget = TokenWindow(tpm, window=window, clock=clock, sleeper=sleeper) if tpm and tpm > 0 else None
+    budgets = {}
     state = {"calls": 0, "attempts": 0, "retries": 0, "slept_s": 0.0, "throttled_s": 0.0, "tokens": 0.0,
-             "tpm": float(tpm or 0.0), "window_s": float(window)}
+             "tpm": float(tpm or 0.0), "window_s": float(window), "budgets": {}}
+
+    def budget_for(url):
+        """One budget per provider: a slow planner must not throttle the policy model."""
+        if not tpm or tpm <= 0:
+            return None
+        host = urlparse(url).hostname or "unknown"
+        return budgets.setdefault(host, TokenWindow(tpm, window=window, clock=clock, sleeper=sleeper))
+
+    def collect():
+        state["tokens"] = sum(one.used() for one in budgets.values())
+        state["budgets"] = {host: round(one.used(), 1) for host, one in budgets.items()}
 
     def perform(original, args, kwargs):
         body = args[2] if len(args) > 2 else kwargs.get("body")
+        budget = budget_for(args[0])
         estimate = _estimate_tokens(body)
         attempt = 0
         while True:
@@ -185,7 +197,7 @@ def paced_requests(pacing, tpm=0.0, window=60.0, retries=3, clock=time.monotonic
                 continue
             if budget:
                 budget.settle(reservation, _actual_tokens(result) or estimate)
-                state["tokens"] = budget.used()
+                collect()
             state["calls"] += 1
             return result
 
@@ -200,9 +212,8 @@ def paced_requests(pacing, tpm=0.0, window=60.0, retries=3, clock=time.monotonic
         yield state
     finally:
         model.post_json, model.post_stream = original_json, original_stream
-        if budget:
-            state["tokens"] = budget.used()
-            state["slept_s"] += budget.slept_s
+        collect()
+        state["slept_s"] += sum(one.slept_s for one in budgets.values())
 
 
 def classify(page, verification, error=None, timed_out=False):
@@ -315,6 +326,11 @@ def _attempt(agent_class, max_seconds, started, warm_up_seconds=25.0):
                 "elapsed_ms": state["elapsed_ms"],
                 "status": state["status"],
                 "action": step.get("action"),
+                "kind": step.get("kind"),
+                "operation": step.get("operation"),
+                "target": step.get("target"),
+                "text": None if step.get("text") is None else str(step["text"])[:120],
+                "page_changed": step.get("page_changed"),
                 "url": step.get("url"),
             })
             print(f"{state['elapsed_ms']:>7} ms  {state['status']:<10} {step.get('action', '')}",
@@ -392,8 +408,10 @@ def render_report(outcome, reason, state, seconds, pacing, paced, chrome, note=N
     if paced.get("throttled_s"):
         limits.append(f"{paced['throttled_s']:,.1f} s waiting for the provider to reopen")
     if paced.get("tpm"):
-        limits.append(f"token budget {paced['tpm']:,.0f}/min over a {paced.get('window_s', 60):,.0f} s window "
-                      f"(~{paced.get('tokens', 0):,.0f} tokens held)")
+        held = ", ".join(f"{host} ~{tokens:,.0f}" for host, tokens in sorted((paced.get("budgets") or {}).items()))
+        limits.append(f"token budget {paced['tpm']:,.0f}/min per provider over a "
+                      f"{paced.get('window_s', 60):,.0f} s window"
+                      + (f" ({held} tokens held)" if held else f" (~{paced.get('tokens', 0):,.0f} tokens held)"))
     lines += [
         f"- Wall clock: **{seconds:,.1f} s** · mission status: `{state.get('status', '—')}` · "
         f"actions: {len(state.get('history') or [])}",
@@ -422,6 +440,24 @@ def render_report(outcome, reason, state, seconds, pacing, paced, chrome, note=N
         lines += ["First visible options:", ""]
         lines += [f"- {flight}" for flight in flights[:3]]
         lines.append("")
+    steps = state.get("steps") or []
+    if steps:
+        lines += [f"What the agent did ({len(steps)} step(s)):", "",
+                  "| # | Action | Kind | Operation | Page changed |", "|---|---|---|---|---|"]
+        for index, step in enumerate(steps[:12], start=1):
+            action = (step.get("action") or "—")[:70]
+            lines.append(f"| {index} | {action} | {step.get('kind') or '—'} | "
+                         f"{step.get('operation') or '—'} | {step.get('page_changed')} |")
+        lines.append("")
+    page = state.get("final_page") or {}
+    labels = [action.get("label", "")[:60] for action in (page.get("actions") or [])][:12]
+    if labels:
+        lines += ["Controls the agent could see at the end:", ""]
+        lines += [f"- {label}" for label in labels]
+        lines.append("")
+    excerpt = " ".join((page.get("text") or "").split())[:280]
+    if excerpt:
+        lines += [f"Final page text: `{excerpt}`", ""]
     if state.get("error"):
         lines += [f"Error: `{state['error']}`", ""]
     return "\n".join(lines)

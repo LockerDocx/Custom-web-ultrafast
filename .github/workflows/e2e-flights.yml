@@ -85,6 +85,8 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           CHROME_PATH: /usr/bin/google-chrome
           BU_CDP_URL: http://127.0.0.1:9333
+          PLANNER_PROVIDER: nvidia
+          PLANNER_MODEL: z-ai/glm-5.3
           POLICY_PROVIDER: groq
           POLICY_MODEL: openai/gpt-oss-20b
           POLICY_REASONING: low

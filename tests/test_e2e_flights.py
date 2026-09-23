@@ -288,3 +288,35 @@ def test_run_mission_retries_a_page_that_was_not_ready(monkeypatch):
     assert state["verification"]["passed"] is True
     assert state["warm_up"]["consent"] is True
     assert error is None and timed_out is False
+
+
+def test_each_provider_gets_its_own_token_budget(monkeypatch):
+    slept = []
+
+    def fake_post_json(url, key, body, headers=None):
+        return {"choices": [{"message": {"content": "{}"}}], "usage": {"total_tokens": 30}}
+
+    monkeypatch.setattr(model, "post_json", fake_post_json)
+    with e2e_flights.paced_requests(0.0, tpm=100, retries=0, sleeper=slept.append) as paced:
+        for _ in range(3):
+            model.post_json("https://api.groq.com/openai/v1/chat/completions", "k", {"max_tokens": 4})
+        # A different provider must not inherit the first one's spent allowance.
+        model.post_json("https://integrate.api.nvidia.com/v1/chat/completions", "k", {"max_tokens": 4})
+    assert paced["budgets"] == {"api.groq.com": 90.0, "integrate.api.nvidia.com": 30.0}
+    assert not slept, "three 30-token calls fit in a 100-token minute"
+
+
+def test_the_report_shows_what_the_agent_did_and_what_it_could_see():
+    page = good_page()
+    verification = verify(page)
+    state = {
+        "status": "blocked", "history": [1], "final_page": page, "verification": verification,
+        "steps": [{"elapsed_ms": 10, "status": "ready", "action": "Where from?", "kind": "fill",
+                   "operation": "fill", "target": "Where from?", "page_changed": False}],
+    }
+    report = e2e_flights.render_report("failed", "checks not satisfied: results", state, 12.0, 2.4,
+                                       {"calls": 3, "slept_s": 4.8}, "chrome")
+    assert "What the agent did (1 step(s))" in report
+    assert "| 1 | Where from?" in report
+    assert "Controls the agent could see at the end" in report
+    assert "Select flight." in report, "the visible controls are the diagnosis a failed run needs"
