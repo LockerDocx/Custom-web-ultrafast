@@ -39,11 +39,21 @@ def load_skills():
 
 
 def select_skills(goal, available_tools=None):
-    """The minimal skill set for a goal: a skill matches when any keyword appears."""
+    """The minimal skill set for a goal: a skill matches when any keyword appears.
+
+    Laya (optional, open decision engine) picks semantically in any language
+    first; the keyword match stays as the always-available fallback.
+    """
+    loaded = load_skills()
+    from . import laya_local
+
+    picked = laya_local.pick_skills(goal, loaded, available_tools=available_tools)
+    if picked is not None:
+        return picked
     available = set(available_tools or [])
     lowered = goal.lower()
     selected = []
-    for skill in load_skills():
+    for skill in loaded:
         keywords = skill.get("keywords") or []
         if not any(str(keyword).lower() in lowered for keyword in keywords):
             continue

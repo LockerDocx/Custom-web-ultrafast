@@ -182,6 +182,17 @@ Si tu PC va justo de RAM o no quieres usar ninguna clave, el agente puede pensar
 
 > Qué esperar: cada paso del navegador tarda **3-8 segundos** en CPU (Groq tardaba menos de 1), pero todo ocurre en tu PC, gratis y sin internet. Si se atasca mucho, usa un modelo mayor o vuelve a Groq.
 
+## 🧠 Extra para curiosos: Laya, el «Jev» abierto (opcional)
+
+Existe un motor de decisión **gratis y de código abierto** (Laya, de Convai — la alternativa abierta al modelo Jev de pago) que este agente ya sabe usar: **clasifica tu misión en cualquier idioma** (¿va al navegador, o necesita búsqueda/archivos/terminal?) en milisegundos y en tu propio PC. Es opcional: sin él todo funciona igual (con las palabras clave de siempre).
+
+1. Descarga los últimos cambios del proyecto (`git pull`) — verás 3 archivos nuevos: `install-laya.bat`, `install-laya.command`, `install-laya.sh`.
+2. **Haz doble clic en el de tu sistema** (Windows → `.bat` · macOS → `.command` · Linux → `.sh`). La primera vez hay que haber arrancado el starter al menos una vez.
+3. Espera: descarga ~1,3 GB (una sola vez) y verás "Done".
+4. **Reinicia el starter.** A partir de aquí, si escribes la misión en alemán, francés… también se enruta bien.
+
+> Para desactivarlo: añade `JEV_LAYA=off` al `.env`. Análisis completo (números, límites, por qué aún no sustituye al navegador): `docs/modelos-locales.md`, sección 2.
+
 ## 🔧 Problemas comunes
 
 | Veo esto… | Solución |
@@ -206,6 +217,7 @@ Si tu PC va justo de RAM o no quieres usar ninguna clave, el agente puede pensar
 | Uso Ollama y en **Test setup** sale 🔴 "connection refused" | Ollama no está arrancado → ábrelo (icono 🦙) o ejecuta `ollama serve` en la terminal, y pulsa Test setup otra vez |
 | Elegí un modelo local y el agente va **muy lento** | Normal en CPU (3-8 s/paso). Guía de modelos según tu máquina: `docs/modelos-locales.md`. Con GRÁFICA de 6 GB+ prueba `qwen3.5:9b` |
 | El desplegable del panel no muestra los modelos de Ollama | Pulsa **Refresh catalogue** con Ollama encendido; solo lista modelos ya descargados (`ollama pull …`) |
+| Instalé Laya y va igual que antes | Laya no cambia lo que ves: enruta misiones y elige skills por dentro (en cualquier idioma). Comprueba que reiniciaste el starter tras instalarlo; para desactivarlo: `JEV_LAYA=off` |
 
 ## ❓ Preguntas rápidas
 

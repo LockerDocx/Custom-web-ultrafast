@@ -452,6 +452,9 @@ class TaskRunner:
             apply_saved_config()
         except Exception:  # noqa: BLE001 - a broken config file must never block startup
             pass
+        from . import laya_local
+
+        laya_local.warm()  # preload the optional open decision engine, if installed
 
     def current_state(self):
         selection = current_selection()

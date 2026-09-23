@@ -47,7 +47,17 @@ Rules:
 
 
 def route_task(goal):
-    """'browser' for pure browsing missions; 'orchestrated' when tools are needed."""
+    """'browser' for pure browsing missions; 'orchestrated' when tools are needed.
+
+    Laya (the open System-1 decision engine) routes first when installed — it
+    works in any language, not just the keyword lists below — and the keywords
+    stay as the always-available fallback.
+    """
+    from . import laya_local
+
+    decided = laya_local.route_mission(goal)
+    if decided is not None:
+        return decided
     lowered = goal.lower()
     if any(keyword in lowered for keyword in ORCHESTRATED_KEYWORDS):
         return "orchestrated"

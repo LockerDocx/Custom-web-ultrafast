@@ -244,6 +244,7 @@ def isolated_config(tmp_path, monkeypatch):
             monkeypatch.delenv(env, raising=False)
     for env in parameters.ROLE_PARAM_ENV.values():
         monkeypatch.delenv(env, raising=False)
+    monkeypatch.setenv("JEV_LAYA", "off")  # hermetic: keyword routing only
     monkeypatch.setattr(firefox, "check_providers", lambda: {})
     yield
 

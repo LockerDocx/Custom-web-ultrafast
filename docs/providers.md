@@ -150,6 +150,22 @@ Four local OpenAI-compatible runtimes are first-class presets, so no base URL an
 
 A raw URL is auto-detected too (`POLICY_PROVIDER=http://127.0.0.1:1234/v1` → `lmstudio`). JSON mode is off by default for local runtimes (server support varies; the reply parser already tolerates prose and fences), reasoning params are never sent to them, and the sidebar catalogue lists the models the running server exposes. Model recommendations by hardware tier (sub-32 GB RAM, CPU/iGPU/VRAM): [modelos-locales.md](modelos-locales.md).
 
+## Laya — the open System-1 decision engine (optional, local)
+
+[Laya](https://github.com/NandhaKishorM/laya) (Convai Innovations, Apache 2.0) is the open alternative to TypeSafe's Jev: it answers typed questions with calibrated confidence in one forward pass, fully local. This agent uses it — when installed — for two decisions where a generative model is overkill and keywords only know Spanish/English:
+
+- **Mission routing** (browser loop vs tool orchestrator) in any language
+- **Skill picking** (which procedural package guides the mission)
+
+Everything is fail-safe: if the package is missing, the weights cannot load, or the calibrated confidence is below 0.55, the keyword implementation decides exactly as before. It is deliberately **not** used as the browser executor yet — its zero-shot choice accuracy and 512/1024-token context are not ready for picking among dozens of page elements (see docs/modelos-locales.md §2 for the numbers and the fine-tuning path).
+
+| Variable | Effect |
+|---|---|
+| `JEV_LAYA=off` | disable Laya participation (keywords only) |
+| `LAYA_CHECKPOINT` | `multilingual` (default, 322M, 100+ languages), `english` (421M), or `typed-decisions` |
+
+Install: `pip install -e ".[laya]"` (or double-click `install-laya.bat` / `.command` / `.sh`). The «Laya check» CI workflow replays a multilingual battery with the real weights and reports the accuracy on the PR.
+
 ## The sidebar catalogue and parameters (MVP-1)
 
 The Firefox sidebar's **⚙️ Models & parameters** panel replaces `.env` editing for everyday changes:

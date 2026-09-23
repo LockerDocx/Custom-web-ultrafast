@@ -104,6 +104,8 @@ PLANNER_MODEL=z-ai/glm-5.3
 
 Any local OpenAI-compatible runtime works with **no API key**: Ollama (`POLICY_PROVIDER=ollama`), LM Studio (`lmstudio`), llama.cpp's server (`llamacpp`), or Jan — the model pickers in the sidebar list whatever the running server exposes. Recommended small models for the executor role (September 2026): **Qwen3.5 4B** (~4.5 GB, Apache 2.0, structured output) or **Phi-4-mini** (~2.5 GB, MIT) on CPU; Qwen3.5 9B / 8B class with a GPU or 16 GB+ RAM. A popular hybrid keeps the planner on a free cloud API while the executor and text writer run locally. Full hardware tiers, runtime comparison, setup walkthrough, and speed expectations: **[docs/modelos-locales.md](docs/modelos-locales.md)** (Español).
 
+**The open Jev alternative — [Laya](https://github.com/NandhaKishorM/laya)** (Convai Innovations, Apache 2.0, Sept 2026): an open System-1 decision engine — 32.8 ms calibrated decisions, fully local. The agent uses it, when installed (`pip install -e ".[laya]"`), to route missions and pick skills in **any language**, falling back to keywords on low confidence; it is not yet the browser executor itself (zero-shot choice accuracy and 512-token context are the honest blockers — evaluation and the fine-tuning path in [docs/modelos-locales.md §2](docs/modelos-locales.md)).
+
 ```bash
 # .env — executor + text on a local Ollama, planner on a free API
 POLICY_PROVIDER=ollama

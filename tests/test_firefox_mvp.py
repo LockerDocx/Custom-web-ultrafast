@@ -64,6 +64,7 @@ def isolated_config(tmp_path, monkeypatch):
         "TEXT_MODEL_PROVIDER", "TEXT_MODEL", "TYPESAFE_API_KEY",
     ):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("JEV_LAYA", "off")  # hermetic: keyword routing only
     monkeypatch.setattr(firefox, "check_providers", lambda: {"planner": {"ok": True}})
     yield
 

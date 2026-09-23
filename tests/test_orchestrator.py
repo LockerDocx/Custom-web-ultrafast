@@ -41,12 +41,14 @@ def tool_reply(tool, **args):
 # ── routing ──────────────────────────────────────────────────────────────────
 
 
-def test_route_task_browser_for_plain_browsing():
+def test_route_task_browser_for_plain_browsing(monkeypatch):
+    monkeypatch.setenv("JEV_LAYA", "off")  # pin the keyword router for these tests
     assert route_task("Find one-way flights from Zurich to London on the airline page") == "browser"
     assert route_task("Click the login button") == "browser"
 
 
-def test_route_task_orchestrated_for_tools():
+def test_route_task_orchestrated_for_tools(monkeypatch):
+    monkeypatch.setenv("JEV_LAYA", "off")
     assert route_task("Download the PDF report and summarize it") == "orchestrated"
     assert route_task("Create a file notes.txt with the summary") == "orchestrated"
     assert route_task("Run the tests and fix failures") == "orchestrated"

@@ -21,11 +21,58 @@ calidad, y esa es la clave para que quepa en un PC modesto:
 acciones) + executor/text 100% locales (no ven tu misión completa). Coste: 0 €, y solo el
 plan general viaja a internet.
 
+**¿Buscabas una alternativa al modelo Jev en sí?** → mira la sección 2: **Laya**, el motor de decisión abierto que compite directamente con Jev (ya integrado en este agente para enrutar misiones y elegir skills).
+
 **Configuración 100% offline**: los tres roles en local (necesita ~16 GB de RAM para ir bien).
 
 ---
 
-## 2. Qué le pasa al agente con un modelo pequeño (y por qué aguanta bien)
+## 2. Laya: el «Jev» abierto (ConvAI Innovations, Apache 2.0)
+
+> Lanzado el **18 de septiembre de 2026** (5 días antes de escribir esta guía). Es la alternativa **más directa** al modelo Jev de TypeSafe — el motor rápido de este agente: misma categoría («System 1»: decide, no genera texto), pero con **pesos abiertos** y gratis para siempre.
+
+### Qué es
+
+- Motor de decisión **no-autorregresivo**: lee el estado y responde preguntas tipadas — `choice` (elige una opción de una lista), `score` (valora en una escala), `noul` (booleano con P(true) calibrada) — en **una sola pasada**, sin generar ni un token. Arquitecturalmente **imposible que invente una opción fuera de la lista** (misma filosofía de validación de este agente).
+- 3 checkpoints en un repo: `laya` (inglés, 421M, ModernBERT-large, 512 tokens de contexto), **`laya-multilingual` (322M, 1024 tokens, 100+ idiomas — el que usa el agente)** y `laya-typed-decisions` (fine-tune).
+- Entrenado con **RLCD** (el reward solo se maximiza diciendo la verdad) → la confianza está **calibrada de verdad**: ECE 0.081 vs 0.246 de Jev. Cuando dice 0.7, es 0.7.
+- Apache 2.0, ~1,3 GB de pesos, corre en **CPU** (amigo del PC patata), <1 GB de RAM en el puerto MLX, **32,8 ms p50** en GPU y ~3,7 ms en CoreML.
+
+### Números publicados vs Jev (T4; cifras de Jev medidas por terceros)
+
+| Métrica | Laya | Jev (TypeSafe) |
+|---|---|---|
+| Latencia p50 | **32,8 ms** (7,2 ms en lote) | 236–276 ms (~7,8× más lento) |
+| Calibración (ECE, menos es mejor) | **0.081** | 0.246 |
+| Precisión typed-decisions | **0.766** (checkpoint fine-tuned) | 0.727 |
+| Coste | **0 €** (self-hosted, air-gapped) | 0,042 $/M tokens |
+| Idiomas | 45 de 51 idiomas >3× azar | sin números publicados |
+
+### Las dos letras pequeñas (importantísimas)
+
+1. **Zero-shot flojo**: los checkpoints base sacan **~0.36** en su propio benchmark (el 0.766 es del fine-tuned). Los propios autores lo dicen: es «una base rápida para especializar», no un oráculo zero-shot.
+2. **`choice` degrada pasadas ~20 opciones** (Banking77, 77 clases: 0.425 vs 0.870 de Jev) y el contexto es de solo 512/1024 tokens.
+
+### Qué hace HOY en este agente (integrado)
+
+**No** sustituimos al executor del navegador: elegir entre 30+ elementos de una página real choca frontalmente con las dos letras pequeñas. Donde Laya **ya** gana desde hoy:
+
+- **Enrutar misiones** (¿navegador u orquestador?) y **elegir skills** en **cualquier idioma** — nuestro keyword-matching solo sabía español/inglés; con Laya una misión en alemán o francés se enruta igual de bien, en ~33 ms y con confianza calibrada. Si duda (<0.55), cae automáticamente al matcher de siempre: **nunca rompe una ejecución**.
+
+| Cómo | Detalle |
+|---|---|
+| Instalar | Doble clic en `install-laya.bat` (Windows) / `install-laya.command` (macOS) / `install-laya.sh` (Linux) — o `pip install -e ".[laya]"` |
+| Desactivar | `JEV_LAYA=off` en `.env` |
+| Elegir checkpoint | `LAYA_CHECKPOINT=multilingual` (por defecto) / `english` / `typed-decisions` |
+| Verificación | El workflow «Laya check» de CI corre una batería multilingüe (ES/EN/DE/FR) con los pesos reales y publica la tabla en el PR |
+
+### El camino al executor 100% abierto
+
+Cada ejecución del agente ya graba sus **decisiones validadas** (`artifacts/runs.jsonl`, historial con operation/target por paso). Ese registro es, tal cual, **el dataset de fine-tune que Laya necesita** para convertirse en el executor local: mismas preguntas `choice` sobre elementos observados, con las etiquetas correctas incluidas. Ese es el paso natural hacia un agente de navegador 100% abierto y gratis.
+
+> Curiosidad de contexto: el autor de Laya publicó el enfoque en arXiv (marzo 2025) un año antes del lanzamiento de Jev; la polémica sobre «quién lo construyó primero» está enlazada en las fuentes.
+
+## 3. Qué le pasa al agente con un modelo pequeño (y por qué aguanta bien)
 
 Este agente **no genera código ni selectores**: el executor solo elige `{"operation", "target"}`
 entre elementos **observados y numerados**, y toda respuesta inválida se rechaza antes de
@@ -44,7 +91,7 @@ Lo que sí NOTARÁS respecto a Groq/NVIDIA:
 
 ---
 
-## 3. Modelos recomendados (estado 2026)
+## 4. Modelos recomendados (estado 2026)
 
 Todos cuantizados en **Q4_K_M** (4 bits), el estándar de calidad/tamaño; "RAM" = memoria
 total que necesitas libre (modelo + contexto):
@@ -79,7 +126,7 @@ vía Vulkan (LM Studio lo hace muy bien): 12-20 tok/s con un Qwen3.5 4B.
 
 ---
 
-## 4. Runtimes (el "motor" que ejecuta el modelo)
+## 5. Runtimes (el "motor" que ejecuta el modelo)
 
 Todos exponen la **API compatible con OpenAI** que este agente ya habla; solo cambia el puerto:
 
@@ -94,7 +141,7 @@ Todos exponen la **API compatible con OpenAI** que este agente ya habla; solo ca
 
 ---
 
-## 5. Paso a paso: agente 100% gratis en tu PC
+## 6. Paso a paso: agente 100% gratis en tu PC
 
 ### Opción A — Ollama (la más fácil, recomendada)
 
@@ -158,7 +205,7 @@ en GPU; sin GPU, omítelo. `--reasoning off` evita que el modelo "piense" de má
 
 ---
 
-## 6. Límites y expectativas honestas
+## 7. Límites y expectativas honestas
 
 - Un 1-2B **fallará más** en misiones largas de navegador: si el executor se atasca, sube al
   4B. El agente reintenta y valida, pero la calidad de decisión sí depende del modelo.
@@ -168,7 +215,7 @@ en GPU; sin GPU, omítelo. `--reasoning off` evita que el modelo "piense" de má
   que DDR5-5600) y de los AVX de tu procesador.
 - Ollama descarga el modelo la primera vez que lo usas; ten disco libre (2-6 GB por modelo).
 
-## 7. Licencias (resumen)
+## 8. Licencias (resumen)
 
 - **Apache 2.0** (Qwen3.5, Gemma 4, Qwen2.5, SmolLM): uso comercial sin restricciones.
 - **MIT** (Phi-4-mini, DeepSeek-R1 distills): igual de permisivo.
@@ -177,7 +224,12 @@ en GPU; sin GPU, omítelo. `--reasoning off` evita que el modelo "piense" de má
 - **Runtimes**: Ollama (MIT), llama.cpp (MIT), LM Studio (gratis para uso personal y
   laboral), Jan (Apache 2.0).
 
-## 8. Fuentes (septiembre 2026)
+## 9. Fuentes (septiembre 2026)
+
+**Laya (System 1 abierto):**
+- Análisis técnico con los caveats: [eesel.ai — Laya AI review](https://www.eesel.ai/blog/laya-ai) · ficha con API y checkpoints: [ai-tldr.dev/tools/laya](https://ai-tldr.dev/tools/laya/)
+- Análisis en español del impacto: [agentes.ai — Laya de Convai](https://www.agentes.ai/blog/laya-de-convai-el-modelo-open-source-que-planta-cara-a-jev-de-typesafeai-y-va-8) · lanzamiento: [elsolitario.org](https://elsolitario.org/en/2026/09/19/laya-convai-decision-engine-33ms/)
+- Historia de la prioridad (arXiv mar-2025 vs Jev): [dev.to — Nandakishor M](https://dev.to/nandakishor_m_6cc0adfde9f/i-built-non-autoregressive-decision-models-a-year-ago-then-a-frontier-lab-called-it-a-18me)
 
 - Panorámica de modelos pequeños 2026 y tamaños Q4: [promptquorum — Best Local LLMs 2026](https://www.promptquorum.com/local-llms/best-local-llms-2026), [codersera — Best Small LLMs](https://codersera.com/blog/best-small-llms-to-run-locally-a-comprehensive-guide/)
 - Hardware por tier de RAM/VRAM y velocidades CPU: [promptquorum — Hardware guide 2026](https://www.promptquorum.com/local-llms/local-llm-hardware-guide-2026), [promptquorum — Fastest LLMs for low-end PCs](https://www.promptquorum.com/local-llms/fastest-local-llms-low-end-pcs), [localllm.in — Ollama VRAM guide](https://localllm.in/blog/ollama-vram-requirements-for-local-llms)
