@@ -135,7 +135,7 @@ de diseño que importan en un runner:
 | Workflow | Recurso real | Qué publica |
 |---|---|---|
 | `Routing battery` | pesos abiertos de Laya (caché de HF) + Groq para la muestra | tabla por idioma, confusión peligrosa, antes/después de la capa de keywords |
-| `E2E flights` | Chrome + xvfb + Groq/NVIDIA + Google Flights | las 7 comprobaciones, warm-up, presupuesto de tokens, reintentos, URL final, artefactos |
+| `E2E flights` | Chrome headless + CDP + Groq/NVIDIA + Google Flights | las 7 comprobaciones, warm-up, presupuesto de tokens por modelo, reintentos, URL final, artefactos |
 | `Provider check`, `Laya check`, `Executor duel` (0.2.0/0.3.0) | claves reales del repo | ya existían; ahora comentan en **el PR de la rama**, no en el PR #1 |
 
 Los cuatro workflows que comentan usan `scripts/comment_on_pr.sh`, que resuelve el PR
@@ -144,13 +144,37 @@ del evento (`pull_request`) o por rama (`push`) y nunca tumba el job por un come
 Puertas reales, no decorativas: la batería falla por debajo del 85% de acierto o por
 más de 5 confusiones peligrosas; el E2E falla si la misión corrió y no verificó.
 
-## 6. Límites conocidos
+## 6. Resultados medidos (23 de septiembre de 2026, CI con recursos reales)
+
+| Medición | Resultado |
+|---|---|
+| Batería de routing, pesos reales de Laya | **241/241 (100 %)** efectivo · **0** confusiones peligrosas · 0 sobre-enrutado |
+| Laya crudo (pesos solos, sin puerta ni keywords) | **140/241 (58 %)** de las misiones decididas |
+| Capa de keywords, medida con el mismo `route_task` | 0.3.0: 77 % y **54** peligrosas · 0.4.0: 100 % y **0** |
+| Latencia de decisión | Laya p50/p95 190/206 ms · stack 0/198 ms |
+| Cross-check del modelo de política (muestra de 23) | 20/23 (87 %) |
+| Provider check (roles reales) | planner y policy 🟢 · text 🟢 tras corregir el presupuesto de tokens |
+| **E2E de vuelos en vivo** | **✅ passed — 7/7 comprobaciones**, 369 s, 16 llamadas al modelo, 9 acciones, resultados reales (easyJet 78 USD ZRH→LTN) |
+
+El E2E no se conforma con que el modelo diga `DONE`: el veredicto sale de la página
+final. Ese primer verde costó siete correcciones reales que solo aparecen con recursos
+de verdad: la fecha del demo había caducado, el daemon de Chrome no arranca en un runner
+limpio, `| tee` escondía el código de salida, el ritmo reventaba el cupo de tokens, el
+*helper* de texto devolvía `null`, el presupuesto se contaba por host y no por modelo, y
+el agente repetía un `fill` sobre un campo que ya tenía el valor en lugar de pulsar la
+sugerencia que lo confirma (esa última recuperación es ahora parte del agente).
+
+## 7. Límites conocidos
 
 - Laya crudo ~42%: el routing depende de la puerta + el router multilingüe. El
   backlog #1 (router híbrido: el modelo de política cuando hay red, Laya offline) es
   el siguiente salto natural.
 - Los E2E contra terceros son frágiles por naturaleza: por eso la clasificación
-  distingue «el sitio nos bloqueó» de «nuestra misión falló».
+  distingue «el sitio nos bloqueó» y «el proveedor se cayó» (infraestructura, avisa y
+  sale 0) de «nuestra misión falló» (sale 1).
+- Los tiers gratuitos se agotan **por modelo y por día** (`TPD: Limit 200000`, medido):
+  una misión completa consume alrededor de medio cupo, así que los reintentos del E2E
+  hay que racionarlos o subir de tier.
 - La batería mide routing y verificación de página, no *task completion* completo:
   métricas de completion, reintentos y coste por tarea siguen en el backlog.
 - Los 241 casos son el suelo, no el techo: el formato JSONL permite llegar a 500 sin
