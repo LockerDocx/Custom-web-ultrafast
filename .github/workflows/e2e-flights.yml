@@ -112,9 +112,21 @@ jobs:
             --pacing "${{ github.event.inputs.pacing || 1.5 }}" \
             --tpm "${{ github.event.inputs.tpm || 6000 }}" \
             --artifacts artifacts/e2e-flights \
-            --json artifacts/e2e-flights.json | tee /tmp/report.md
+            --json artifacts/e2e-flights.json 2> /tmp/mission.err | tee /tmp/report.md
           # `tee` would swallow the real status; PIPESTATUS[0] is the mission's.
           echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          if [ ! -s /tmp/report.md ]; then
+            # A driver that crashed before printing still owes the PR an explanation.
+            {
+              echo "## 🛫 E2E flights — Zurich → London on the live Google Flights page"
+              echo ""
+              echo "🔴 **failed** — the driver wrote no report. stderr:"
+              echo ""
+              echo '```'
+              tail -30 /tmp/mission.err 2>/dev/null || echo "(no stderr)"
+              echo '```'
+            } > /tmp/report.md
+          fi
           exit 0
       - name: Daemon and Chrome diagnostics
         if: always()

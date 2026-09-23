@@ -281,8 +281,14 @@ def warm_up(seconds=25.0, poll=1.0, sleeper=time.sleep, factory=None):
             break
         sleeper(poll)
     notes["ready_s"] = round(time.perf_counter() - started, 1)
-    page = _set_one_way(browser, page, notes, poll, sleeper)
-    notes["planner"] = _probe_planner(page)
+    try:
+        page = _set_one_way(browser, page, notes, poll, sleeper)
+    except Exception as failure:  # noqa: BLE001 - a warm-up bug must not end the mission
+        notes["ticket_type"] = f"warm-up error: {type(failure).__name__}: {failure}"
+    try:
+        notes["planner"] = _probe_planner(page)
+    except Exception as failure:  # noqa: BLE001 - the probe reports, it never raises
+        notes["planner"] = f"failed: {type(failure).__name__}: {failure}"
     return browser, page, notes
 
 
@@ -721,7 +727,13 @@ def main():
     page = (state or {}).get("final_page") or {"url": "", "text": "", "actions": []}
     verification = (state or {}).get("verification") or {"passed": False, "checks": {}, "visible_flights": []}
     outcome, reason = classify(page, verification, error=error, timed_out=timed_out)
-    report = render_report(outcome, reason, state or {}, seconds, args.pacing, paced, chrome)
+    try:
+        report = render_report(outcome, reason, state or {}, seconds, args.pacing, paced, chrome)
+    except Exception as failure:  # noqa: BLE001 - the report itself must never be the crash
+        report = (f"## 🛫 E2E flights — Zurich → London on the live Google Flights page\n\n"
+                  f"{'✅' if outcome == 'passed' else '🔴'} **{outcome}** — {reason}\n\n"
+                  f"The report could not be rendered ({type(failure).__name__}: {failure}); "
+                  f"raw outcome: `{json.dumps({'outcome': outcome, 'seconds': seconds, 'error': error})}`")
     print(report)
 
     if args.json:
