@@ -107,7 +107,13 @@ class Agent:
         instruction to type again: the goal needs the suggestion clicked.
         """
         previous = self.state["history"][-1] if self.state["history"] else None
-        if not previous or previous.get("choice") != selected or previous.get("kind") != "fill":
+        if not previous or previous.get("kind") != "fill":
+            return None
+        # The same field is observed twice — the input and its combobox wrapper are separate
+        # elements — so the last action, not the element id, is what says "we just typed this".
+        if (previous.get("text") or "").strip().lower() != text.strip().lower():
+            return None
+        if (previous.get("action") or "").strip().lower() != (action.get("label") or "").strip().lower():
             return None
         if str(action.get("value") or "").strip().lower() != text.strip().lower():
             return None

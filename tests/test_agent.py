@@ -333,7 +333,8 @@ def test_a_repeated_fill_commits_the_suggestion_instead_of_typing_again(runner, 
     ]
     p["fingerprint"] = fingerprint(p)
     runner.state.update(page=p, decision=decision("e1"),
-                        history=[{"choice": "e1", "kind": "fill", "action": "Where to?"}])
+                        history=[{"choice": "e0", "kind": "fill", "action": "Where to?",
+                                  "text": "London"}])
     monkeypatch.setattr(loop, "field_text", Mock(return_value=("London", {"model": "test", "latency_ms": 5})))
     runner.command("act", {"fingerprint": p["fingerprint"]})
     clicked = runner.state["browser"].act.call_args.args[0]
@@ -351,7 +352,7 @@ def test_a_first_fill_with_a_fresh_field_still_types_the_value(runner, monkeypat
     ]
     p["fingerprint"] = fingerprint(p)
     runner.state.update(page=p, decision=decision("e1"), history=[
-        {"choice": "e0", "kind": "click", "action": "One way"}])
+        {"choice": "e0", "kind": "click", "action": "One way", "text": None}])
     monkeypatch.setattr(loop, "field_text", Mock(return_value=("London", {"model": "test", "latency_ms": 5})))
     runner.command("act", {"fingerprint": p["fingerprint"]})
     act = runner.state["browser"].act.call_args
