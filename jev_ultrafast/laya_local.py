@@ -67,9 +67,11 @@ def status():
         return "off (JEV_LAYA=off)"
     if _engine is not None:
         return f"ready ({os.environ.get('LAYA_CHECKPOINT', 'multilingual')})"
+    if _load_error:  # installed but the weights could not load (network, disk…)
+        return _load_error
     if not available():
         return "not installed (pip install -e \".[laya]\")"
-    return _load_error or "not loaded yet"
+    return "not loaded yet"
 
 
 def engine():
@@ -86,7 +88,9 @@ def engine():
             return None
         try:
             import laya
-
+        except ImportError:
+            return None  # simply not installed; not an error worth reporting
+        try:
             checkpoint = os.environ.get("LAYA_CHECKPOINT", "multilingual").strip().lower()
             if checkpoint not in CHECKPOINTS:
                 checkpoint = "multilingual"

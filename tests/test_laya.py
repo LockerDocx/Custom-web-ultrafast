@@ -43,13 +43,17 @@ def test_status_reports_each_state(monkeypatch):
     monkeypatch.setenv("JEV_LAYA", "on")
     monkeypatch.setattr(laya_local, "_engine", FakeLaya())
     assert laya_local.status().startswith("ready")
+    # installed but the weights failed to load → the load error wins
     monkeypatch.setattr(laya_local, "_engine", None)
     monkeypatch.setattr(laya_local, "_load_error", "laya unavailable: no network")
     assert "no network" in laya_local.status()
+    # not installed at all → the friendly install hint
     monkeypatch.setattr(laya_local, "_load_error", None)
-    # not installed: hide the real package for this check
     monkeypatch.setattr(laya_local, "available", lambda: False)
     assert "not installed" in laya_local.status()
+    # installed, no error, not yet loaded
+    monkeypatch.setattr(laya_local, "available", lambda: True)
+    assert laya_local.status() == "not loaded yet"
 
 
 def test_route_task_uses_laya_when_confident():
