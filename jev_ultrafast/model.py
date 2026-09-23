@@ -338,7 +338,9 @@ def provider_choose(state, goal, history):
         message = user
         if attempt:
             message += "\n\nYour previous reply was rejected. Respond again with ONLY the JSON object."
-        content, meta = providers.chat(provider, POLICY_SYSTEM, message, max_tokens=1024)
+        # Same reasoning as the text helper: a thinking model needs room for the
+        # thought and the answer, and a truncated reply is an invalid choice.
+        content, meta = providers.chat(provider, POLICY_SYSTEM, message, max_tokens=2048)
         try:
             answer = providers.extract_json(content)
             operation, target, confidence = _validate_llm_choice(answer, operations, targets)

@@ -102,12 +102,13 @@ jobs:
           # The text role writes short field values; a small fast model has its own
           # tokens-per-minute allowance, so it neither competes with the executor's
           # reasoning model nor waits behind it.
-          # This organization's Groq catalogue has no Llama models (404, measured), so the
-          # text role uses the 20B sibling of the executor: a different model means a
-          # different tokens-per-minute allowance, which is what it needs.
-          TEXT_MODEL_PROVIDER: groq
-          TEXT_MODEL: openai/gpt-oss-20b
-          TEXT_MODEL_REASONING: low
+          # Free tiers are spent per model and per day (measured: gpt-oss-20b answers
+          # `tokens per day (TPD): Limit 200000` once burned). Groq keeps the executor,
+          # whose quota the whole mission depends on; the text role goes to NVIDIA, and
+          # the planner already lives there.
+          TEXT_MODEL_PROVIDER: nvidia
+          TEXT_MODEL: z-ai/glm-5.3-flash
+          TEXT_MODEL_REASONING: none
         run: |
           if [ -z "${GROQ_API_KEY}" ]; then
             echo "## 🛫 E2E flights" > /tmp/report.md

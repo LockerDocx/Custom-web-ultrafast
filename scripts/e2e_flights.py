@@ -552,10 +552,15 @@ def render_report(outcome, reason, state, seconds, pacing, paced, chrome, note=N
                          f"{step.get('operation') or '—'} | {step.get('page_changed')} |")
         lines.append("")
     page = state.get("final_page") or {}
-    labels = [action.get("label", "")[:60] for action in (page.get("actions") or [])][:12]
+    labels = []
+    for action in (page.get("actions") or [])[:12]:
+        label = f"- {action.get('label', '')[:60]}"
+        if action.get("value"):
+            label += f" — value `{str(action['value'])[:40]}`"
+        labels.append(label)
     if labels:
         lines += ["Controls the agent could see at the end:", ""]
-        lines += [f"- {label}" for label in labels]
+        lines += labels
         lines.append("")
     excerpt = " ".join((page.get("text") or "").split())[:280]
     if excerpt:
