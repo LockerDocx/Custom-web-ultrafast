@@ -395,3 +395,15 @@ def test_delta_broadcasts_stream_to_the_extension(bridge, monkeypatch, tmp_path,
     # throttled: at most one per interval, and the buffer never exceeds the cap
     assert 1 <= len(deltas) <= 5
     assert all(len(m["text"]) <= 600 for m in deltas)
+
+
+def test_a_rate_limit_is_reported_as_capacity_not_as_a_broken_model():
+    """The check is about connectivity: a spent allowance is not a dead model."""
+    from scripts.check_providers import state
+
+    assert state({"ok": True, "latency_ms": 195, "detail": ""})[0] == "🟢"
+    limited = state({"ok": False, "latency_ms": 0,
+                     "detail": 'Model provider returned HTTP 429: Rate limit reached ... on tokens per day (TPD)'})
+    assert limited[0] == "🟡" and "limitado" in limited[1]
+    failed = state({"ok": False, "latency_ms": 0, "detail": "Model connection failed; no action executed."})
+    assert failed[0] == "🔴"
