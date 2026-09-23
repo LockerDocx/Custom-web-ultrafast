@@ -48,6 +48,10 @@ plan general viaja a internet.
 | Coste | **0 €** (self-hosted, air-gapped) | 0,042 $/M tokens |
 | Idiomas | 45 de 51 idiomas >3× azar | sin números publicados |
 
+### ¿Y el Jev original de TypeSafe? → cerrado, no self-hosteable
+
+Verificado el 23-sep-2026: **Jev NO es open source ni descargable**. Lanzado el 15-sep-2026 como API alojada en early access (waitlist, `console.typesafe.ai`); sin pesos publicados, sin recuento de parámetros, sin paper y sin opción on-premise pública (empresas → hablar con ventas). Cada decisión es un round-trip a su API en EE. UU. (0,042 $/M tokens de entrada, salida gratis). Lo único abierto de TypeSafe son los SDKs y un adaptador que responde las mismas preguntas… usando modelos de OpenAI/Anthropic (no Jev). Por eso **no existen "specs para auto-alojar Jev": no hay nada que descargar** — y las specs del patrón abierto equivalente son las de esta misma guía (Laya: ~1 GB y CPU; o cualquier modelo pequeño con Ollama/llama.cpp). Existe también «OpenJev» (aproximación TypeScript del patrón, 20-sep-2026), pero sin licencia aún — mejor esperar.
+
 ### Las dos letras pequeñas (importantísimas)
 
 1. **Zero-shot flojo**: los checkpoints base sacan **~0.36** en su propio benchmark (el 0.766 es del fine-tuned). Los propios autores lo dicen: es «una base rápida para especializar», no un oráculo zero-shot.
