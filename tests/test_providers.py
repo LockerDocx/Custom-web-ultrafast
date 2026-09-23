@@ -682,3 +682,18 @@ def test_the_text_helper_leaves_room_for_a_reasoning_model(monkeypatch):
     value, _meta = model.field_text({"goal": "Find flights to London"})
     assert value == "London"
     assert seen["max_tokens"] >= 2048
+
+
+def test_the_text_helper_says_what_the_model_answered(monkeypatch):
+    """A failure this layer owns must name its cause, not say 'nothing typed'."""
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+
+    def fake_post_json(url, key, body, headers=None):
+        return {"model": "m", "choices": [{"message": {"content": '{"text": "Zurich", "confidence": 9}'}}]}
+
+    monkeypatch.setattr(model, "post_json", fake_post_json)
+    with pytest.raises(ValueError) as failure:
+        model.field_text({"goal": "Find flights from Zurich"})
+    message = str(failure.value)
+    assert "nothing typed" in message
+    assert "confidence" in message, "the reply itself belongs in the message"

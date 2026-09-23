@@ -401,14 +401,19 @@ def field_text(context):
             value = output["text"]
             if set(output) != {"text"} or not isinstance(value, str) or not value.strip() or len(value) > 2000:
                 raise ValueError()
-        except (ValueError, KeyError, TypeError):
+        except (ValueError, KeyError, TypeError) as rejected:
+            # Say what the model actually answered: "nothing typed" alone sent a maintainer
+            # hunting through logs for a field this layer owns.
+            sample = redact(" ".join((content or "").split()))[:160]
+            why = f"{type(rejected).__name__}: {rejected}" if str(rejected) else "no usable text"
+            last = f"last reply: {sample!r}" if sample else "last reply: empty"
             continue  # a small model answers {"text": null} now and then; ask once more
         return value, {
             "model": provider["model"],
             "latency_ms": round((time.perf_counter() - started) * 1000),
             "usage": meta.get("usage", {}),
         }
-    raise ValueError("Text helper returned no valid field value; nothing typed.") from None
+    raise ValueError(f"Text helper returned no valid field value ({why}; {last}); nothing typed.") from None
 
 
 def planning_config():
