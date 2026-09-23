@@ -424,6 +424,19 @@ def render_report(outcome, reason, state, seconds, pacing, paced, chrome, note=N
     ]
     if limits:
         lines.append(f"- Rate limiting: {' · '.join(limits)}")
+    models = []
+    if state.get("planner"):
+        models.append(f"planner `{state['planner']}`")
+    decisions = state.get("decisions") or []
+    if decisions:
+        request = decisions[-1].get("request") or {}
+        name = request.get("model") or decisions[-1].get("model") or "?"
+        models.append(f"policy `{request.get('provider') or '?'}:{name}`")
+    texts = state.get("text_calls") or []
+    if texts:
+        models.append(f"text `{texts[-1].get('model') or '?'}`")
+    if models:
+        lines.append("- Models: " + " · ".join(models))
     warm = state.get("warm_up") or {}
     if warm:
         detail = f"- Warm-up: the page was interactive after {warm.get('ready_s', 0):,.1f} s"

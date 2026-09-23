@@ -320,3 +320,19 @@ def test_the_report_shows_what_the_agent_did_and_what_it_could_see():
     assert "| 1 | Where from?" in report
     assert "Controls the agent could see at the end" in report
     assert "Select flight." in report, "the visible controls are the diagnosis a failed run needs"
+
+
+def test_the_report_names_the_models_that_ran():
+    page = good_page()
+    verification = verify(page)
+    state = {
+        "status": "blocked", "history": [], "final_page": page, "verification": verification,
+        "planner": "z-ai/glm-5.3",
+        "decisions": [{"model": "z-ai/glm-5.3", "request": {"provider": "nvidia", "model": "z-ai/glm-5.3"}}],
+        "text_calls": [{"model": "openai/gpt-oss-20b"}],
+    }
+    report = e2e_flights.render_report("failed", "checks not satisfied: results", state, 20.0, 1.5,
+                                       {"calls": 2, "slept_s": 1.5}, "chrome")
+    assert "planner `z-ai/glm-5.3`" in report
+    assert "policy `nvidia:z-ai/glm-5.3`" in report
+    assert "text `openai/gpt-oss-20b`" in report

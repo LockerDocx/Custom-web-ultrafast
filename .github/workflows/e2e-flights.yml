@@ -87,9 +87,10 @@ jobs:
           BU_CDP_URL: http://127.0.0.1:9333
           PLANNER_PROVIDER: nvidia
           PLANNER_MODEL: z-ai/glm-5.3
-          POLICY_PROVIDER: groq
-          POLICY_MODEL: openai/gpt-oss-20b
-          POLICY_REASONING: low
+          PLANNER_REASONING: none
+          POLICY_PROVIDER: nvidia
+          POLICY_MODEL: z-ai/glm-5.3
+          POLICY_REASONING: none
           TEXT_MODEL_PROVIDER: groq
           TEXT_MODEL: openai/gpt-oss-20b
           TEXT_MODEL_REASONING: low
@@ -104,7 +105,7 @@ jobs:
           set +e
           python scripts/e2e_flights.py \
             --max-seconds "${{ github.event.inputs.max_seconds || 600 }}" \
-            --pacing "${{ github.event.inputs.pacing || 2.4 }}" \
+            --pacing "${{ github.event.inputs.pacing || 1.5 }}" \
             --tpm "${{ github.event.inputs.tpm || 6000 }}" \
             --artifacts artifacts/e2e-flights \
             --json artifacts/e2e-flights.json | tee /tmp/report.md
