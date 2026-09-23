@@ -102,9 +102,12 @@ jobs:
           # The text role writes short field values; a small fast model has its own
           # tokens-per-minute allowance, so it neither competes with the executor's
           # reasoning model nor waits behind it.
+          # This organization's Groq catalogue has no Llama models (404, measured), so the
+          # text role uses the 20B sibling of the executor: a different model means a
+          # different tokens-per-minute allowance, which is what it needs.
           TEXT_MODEL_PROVIDER: groq
-          TEXT_MODEL: llama-3.1-8b-instant
-          TEXT_MODEL_REASONING: none
+          TEXT_MODEL: openai/gpt-oss-20b
+          TEXT_MODEL_REASONING: low
         run: |
           if [ -z "${GROQ_API_KEY}" ]; then
             echo "## 🛫 E2E flights" > /tmp/report.md
