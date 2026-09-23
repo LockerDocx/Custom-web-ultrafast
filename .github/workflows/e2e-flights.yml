@@ -52,11 +52,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --quiet -e . "httpx[http2]" browser-harness==0.1.13
-      - name: Which browser is available
+      - name: Start a dedicated automation Chrome
+        # The harness daemon launches a local Chrome and, on a clean runner, cannot:
+        # headless Chrome with its own profile and an explicit CDP endpoint is the
+        # supported CI path (BU_CDP_URL), and it avoids the default-profile lockdown.
         run: |
-          echo "CHROME_PATH=${CHROME_PATH:-unset}"
-          command -v google-chrome google-chrome-stable chromium || true
-          google-chrome --version || true
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          echo "chrome binary: ${CHROME:-none}"
+          "${CHROME}" --version || true
+          "${CHROME}" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
+            --user-data-dir=/tmp/jev-chrome-profile --remote-debugging-port=9333 \
+            about:blank > /tmp/chrome.log 2>&1 &
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:9333/json/version > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:9333/json/version || { echo "CDP endpoint never came up"; tail -30 /tmp/chrome.log; exit 1; }
       - name: Offline harness self-test (always)
         run: python scripts/e2e_flights.py --selftest
       - name: Live mission
@@ -66,6 +77,7 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           CHROME_PATH: /usr/bin/google-chrome
+          BU_CDP_URL: http://127.0.0.1:9333
           POLICY_PROVIDER: groq
           POLICY_MODEL: openai/gpt-oss-20b
           POLICY_REASONING: low
@@ -81,13 +93,21 @@ jobs:
             exit 0
           fi
           set +e
-          xvfb-run -a python scripts/e2e_flights.py \
+          python scripts/e2e_flights.py \
             --max-seconds "${{ github.event.inputs.max_seconds || 300 }}" \
             --pacing "${{ github.event.inputs.pacing || 2.4 }}" \
             --artifacts artifacts/e2e-flights \
             --json artifacts/e2e-flights.json | tee /tmp/report.md
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          # `tee` would swallow the real status; PIPESTATUS[0] is the mission's.
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
           exit 0
+      - name: Daemon and Chrome diagnostics
+        if: always()
+        run: |
+          echo "=== chrome.log ==="; tail -30 /tmp/chrome.log 2>/dev/null || true
+          echo "=== CDP /json/version ==="; curl -s http://127.0.0.1:9333/json/version || true
+          echo "=== harness daemon log ==="
+          tail -40 "$HOME/.config/browser-harness/tmp/bu-default.log" 2>/dev/null || echo "(no daemon log)"
       - name: Upload the artifacts
         if: always()
         uses: actions/upload-artifact@v4

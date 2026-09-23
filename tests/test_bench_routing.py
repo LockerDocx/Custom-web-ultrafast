@@ -61,16 +61,32 @@ def test_measure_stack_reports_raw_laya_next_to_the_gated_stack(monkeypatch):
     assert stack["gate"] == laya_local.CONFIDENCE_GATE
 
 
-def test_measure_stack_counts_a_confident_wrong_laya_as_dangerous(monkeypatch):
+def test_measure_stack_corrects_a_confident_wrong_call_when_the_mission_has_a_tool_signal(monkeypatch):
+    """CI caught Laya answering `browser` at 0.81 for a German file mission.
+
+    The keyword veto sends it to the tool loop anyway, so the dangerous confusion
+    disappears from the effective stack — while the raw-Laya column still reports the
+    miss, because hiding it would be dishonest about the open model's quality.
+    """
     mission = "Descarga el PDF del informe"
-    fake = FakeLaya({mission: ("browser", 0.99)})  # above the gate: the stack follows it
+    fake = FakeLaya({mission: ("browser", 0.99)})
     monkeypatch.setattr(laya_local, "engine", lambda: fake)
 
     cases = [{"id": "r0001", "lang": "es", "kind": "core", "mission": mission, "expected": "orchestrated"}]
     stack = bench_routing.measure_stack(cases, bench_routing.laya_decider())
 
-    assert stack["raw_hits"] == 0
-    assert len(stack["dangerous"]) == 1, "a confident wrong call is exactly what the report must surface"
+    assert stack["raw_hits"] == 0, "raw Laya is measured as-is"
+    assert stack["hits"] == 1
+    assert len(stack["dangerous"]) == 0, "the tool signal outranks the confident page answer"
+
+
+def test_measure_stack_still_surfaces_dangerous_confusion_without_a_keyword(monkeypatch):
+    mission = "Analiza los datos de arriba y explícame la tendencia"
+    fake = FakeLaya({mission: ("browser", 0.9)})
+    monkeypatch.setattr(laya_local, "engine", lambda: fake)
+    cases = [{"id": "r0001", "lang": "es", "kind": "extra", "mission": mission, "expected": "orchestrated"}]
+    stack = bench_routing.measure_stack(cases, bench_routing.laya_decider())
+    assert len(stack["dangerous"]) == 1, "with no keyword signal a confident wrong call is the residual risk"
 
 
 def test_measure_stack_counts_abstentions(monkeypatch):

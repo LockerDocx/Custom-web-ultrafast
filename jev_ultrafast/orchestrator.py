@@ -101,17 +101,24 @@ Rules:
 def route_task(goal):
     """'browser' for pure browsing missions; 'orchestrated' when tools are needed.
 
-    Laya (the open System-1 decision engine) routes first when installed — it
-    works in any language, not just the keyword lists below — and the keywords
-    stay as the always-available fallback.
+    Laya (the open System-1 decision engine) decides first when installed — it works
+    in any language, not just the keyword lists below — and the keywords handle every
+    abstention.
+
+    One asymmetry is deliberate: a mission that clearly carries a tool signal (a file,
+    a document, a terminal, the wider web) goes to the tool loop **even when Laya says
+    browser with high confidence**. That mistake cannot self-heal — the browser loop
+    has no tool to accomplish the mission — while the opposite one still completes,
+    just slower. CI caught Laya answering `browser` at 0.81 confidence for
+    "Recherchiere Flüge und erstelle eine Datei mit den Preisen".
     """
     from . import laya_local
 
+    if orchestrated_keyword_match(goal):
+        return "orchestrated"
     decided = laya_local.route_mission(goal)
     if decided is not None:
         return decided
-    if orchestrated_keyword_match(goal):
-        return "orchestrated"
     return "browser"
 
 
