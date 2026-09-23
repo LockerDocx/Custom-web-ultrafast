@@ -88,13 +88,12 @@ jobs:
           PLANNER_PROVIDER: nvidia
           PLANNER_MODEL: z-ai/glm-5.3
           PLANNER_REASONING: none
-          # NVIDIA's GLM-5.3 answers the planner role well but returned empty policy
-          # replies (reasoning tokens with no content), so the executor stays on Groq.
-          POLICY_PROVIDER: groq
-          POLICY_MODEL: openai/gpt-oss-20b
-          # Low reasoning produced valid decisions; the prepared brief carries the guidance,
-          # and medium reasoning answered with an empty generation the endpoint rejected.
-          POLICY_REASONING: low
+          # groq:gpt-oss-20b types the airport name and then refuses to commit the
+          # autocomplete suggestion — the decision this mission kept dying on — so the
+          # executor is the flash model, with reasoning off and 1024 tokens per call.
+          POLICY_PROVIDER: nvidia
+          POLICY_MODEL: z-ai/glm-5.3-flash
+          POLICY_REASONING: none
           TEXT_MODEL_PROVIDER: groq
           TEXT_MODEL: openai/gpt-oss-20b
           TEXT_MODEL_REASONING: low
@@ -128,6 +127,25 @@ jobs:
             } > /tmp/report.md
           fi
           exit 0
+      - name: Publish the report as annotations (always)
+        if: always()
+        # The PR comment is the human channel; annotations are readable from the REST API
+        # even when the job log itself is not, which is how a reviewer without log access
+        # still sees what the mission did.
+        run: |
+          sed -n '3p' /tmp/report.md 2>/dev/null | while IFS= read -r line; do
+            echo "::warning title=e2e::${line}"
+          done
+          grep -E '^- (Model calls|Mission|Warm-up|Rate limiting)' /tmp/report.md 2>/dev/null \
+            | cut -c1-180 | while IFS= read -r line; do
+            echo "::warning title=e2e::${line}"
+          done
+          tail -6 /tmp/report.md 2>/dev/null | cut -c1-200 | while IFS= read -r line; do
+            echo "::warning title=e2e-detail::${line}"
+          done
+          tail -6 /tmp/mission.err 2>/dev/null | cut -c1-200 | while IFS= read -r line; do
+            echo "::warning title=e2e-stderr::${line}"
+          done
       - name: Daemon and Chrome diagnostics
         if: always()
         run: |
