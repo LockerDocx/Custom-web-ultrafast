@@ -122,6 +122,8 @@ def _decide(state, questions, question_id, valid):
     confidence = answer.get("confidence")
     if choice in valid and isinstance(confidence, (int, float)) and confidence >= CONFIDENCE_GATE:
         return choice, confidence
+    if isinstance(confidence, (int, float)):
+        return None, confidence  # decided, but below the confidence gate → fall back
     return None, None
 
 

@@ -39,7 +39,7 @@ SKILL_CASES = [
 
 
 def main():
-    from jev_ultrafast import laya_local
+    from jev_ultrafast import laya_local, orchestrator, skills
     from jev_ultrafast.skills import load_skills
 
     checkpoint = os.environ.get("LAYA_CHECKPOINT", "multilingual")
@@ -52,54 +52,77 @@ def main():
     load_s = time.perf_counter() - started
     print(f"Model loaded in {load_s:.1f} s (`{laya_local.status()}`)\n")
 
+    all_tools = {
+        "web_search", "read_page", "download_file", "list_files", "read_file",
+        "write_file", "parse_document", "run_command", "browser_task",
+    }
+    loaded = load_skills()
+
     rows = []
-    correct = 0
+    laya_correct = 0
+    effective_correct = 0
     total = 0
     latencies = []
     for language, goal, expected in ROUTE_CASES:
         t0 = time.perf_counter()
-        got = laya_local.route_mission(goal)
+        raw_choice, confidence = laya_local._decide(
+            {"mission": goal}, laya_local.ROUTE_QUESTIONS, "route", {"browser", "orchestrated"}
+        )
         latencies.append((time.perf_counter() - t0) * 1000)
+        effective = orchestrator.route_task(goal)  # Laya first, keywords as fallback
         total += 1
-        ok = got == expected
-        correct += ok
+        laya_ok = raw_choice == expected
+        effective_ok = effective == expected
+        laya_correct += laya_ok
+        effective_correct += effective_ok
+        raw_text = (
+            f"`{raw_choice}` ({confidence:.2f})" if raw_choice
+            else f"⚠️ low confidence ({confidence:.2f}) → fallback" if isinstance(confidence, (int, float))
+            else "— not decided"
+        )
         rows.append(
-            f"| {'✅' if ok else '❌'} | {language} | {goal[:46]}… | `{expected}` | `{got}` |"
+            f"| {'✅' if effective_ok else '❌'} | {language} | {goal[:42]}… | `{expected}` | "
+            f"{raw_text} | {'✅' if effective_ok else '❌'} `{effective}` |"
         )
 
     skill_rows = []
-    loaded = load_skills()
     for language, goal, expected in SKILL_CASES:
-        picked = laya_local.pick_skills(goal, loaded, available_tools={
-            "web_search", "read_page", "download_file", "list_files", "read_file",
-            "write_file", "parse_document", "run_command", "browser_task",
-        })
-        got = picked[0]["id"] if picked else "(none)"
+        picked = laya_local.pick_skills(goal, loaded, available_tools=all_tools)
+        raw = picked[0]["id"] if picked else "(none)"
+        effective_list = skills.select_skills(goal, available_tools=all_tools)
+        effective = effective_list[0]["id"] if effective_list else "(none)"
         total += 1
-        ok = got == expected
-        correct += ok
-        skill_rows.append(f"| {'✅' if ok else '❌'} | {language} | {goal[:46]}… | `{expected}` | `{got}` |")
+        laya_ok = raw == expected
+        effective_ok = effective == expected
+        laya_correct += laya_ok
+        effective_correct += effective_ok
+        skill_rows.append(
+            f"| {'✅' if effective_ok else '❌'} | {language} | {goal[:42]}… | `{expected}` | "
+            f"`{raw}` | {'✅' if effective_ok else '❌'} `{effective}` |"
+        )
 
-    print("| | Lang | Mission | Expected | Laya said |")
-    print("|---|---|---|---|---|")
+    print("| Agent ✓ | Lang | Mission | Expected | Laya raw (conf) | Effective |")
+    print("|---|---|---|---|---|---|")
     print("\n".join(rows))
     print("\n**Skill picking**\n")
-    print("| | Lang | Mission | Expected | Laya said |")
-    print("|---|---|---|---|---|")
+    print("| Agent ✓ | Lang | Mission | Expected | Laya raw | Effective |")
+    print("|---|---|---|---|---|---|")
     print("\n".join(skill_rows))
 
-    accuracy = correct / total if total else 0
+    laya_accuracy = laya_correct / total if total else 0
+    effective_accuracy = effective_correct / total if total else 0
     p50 = sorted(latencies)[len(latencies) // 2] if latencies else 0
     print(
-        f"\n**Result: {correct}/{total} correct ({accuracy:.0%})** · decision latency p50 "
-        f"{p50:.0f} ms (CPU, runner) · load {load_s:.0f} s\n"
+        f"\n**Laya alone: {laya_correct}/{total} ({laya_accuracy:.0%}) · effective with the keyword "
+        f"fallback: {effective_correct}/{total} ({effective_accuracy:.0%})** · decision latency p50 "
+        f"{p50:.0f} ms (CPU, runner) · model load {load_s:.0f} s\n"
     )
 
-    floor = float(os.environ.get("LAYA_ACCURACY_FLOOR", "0.7"))
-    if accuracy < floor:
-        print(f"⚠️ Below the {floor:.0%} floor — the keyword fallback keeps covering these cases.")
+    floor = float(os.environ.get("LAYA_ACCURACY_FLOOR", "0.8"))
+    if effective_accuracy < floor:
+        print(f"⚠️ Effective accuracy below the {floor:.0%} floor — review the fallback coverage.")
         return 1
-    print("🟢 Above the accuracy floor; Laya routing/skills are good to use.")
+    print("🟢 The agent decides correctly with Laya + fallback; raw Laya quality is reported above.")
     return 0
 
 
