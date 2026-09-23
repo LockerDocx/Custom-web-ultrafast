@@ -62,7 +62,9 @@ Configuration: `FIREFOX_BRIDGE_PORT` (default 8767), `FIREFOX_BRIDGE_TOKEN` (opt
 - API keys never leave the host process; the sidebar only ever sees model names.
 - The content script executes **only** the model-chosen operation on an **observed** node id — the same no-selectors, no-code contract as the Chrome path. Freshness guards (document key, form values, target guard) are re-checked before every click/select.
 - Tool files are jailed to the per-task `workspace/` directory (path traversal rejected); downloads cap at 25 MB; every tool result is size-capped.
-- Terminal commands follow a three-way policy: read-only allow-list (`ls`, `git status`, …) runs, destructive patterns (`sudo`, `rm -rf`, `curl | sh`, …) are denied, and anything else — including redirects and compound commands — requires an explicit sidebar approval. Unanswered approvals fail closed.
+- Terminal commands follow a three-way policy: read-only allow-list (`ls`, `git status`, …) runs — and only with arguments inside the workspace (`cat ~/.ssh/id_rsa` asks first) — destructive patterns (`sudo`, `rm -rf`, `curl | sh`, …) are denied, and anything else — including redirects and compound commands — requires an explicit sidebar approval. Unanswered approvals fail closed. On POSIX, approved commands also run under rlimits (CPU seconds, 2 GB address space, 512 MB file writes).
+- Every tool call appends one record to `artifacts/audit.jsonl` (tool, arguments, command verdict, approval, duration, exit code) tagged with the task's trace id — the same id that ties the run record in `runs.jsonl` and every state broadcast.
+- All error surfaces pass a redaction layer that masks API-key-shaped strings before they reach logs, artifacts, or the sidebar.
 
 ## Bridge protocol (extension ⇄ host)
 

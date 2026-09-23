@@ -5,6 +5,14 @@
 > estaba desactualizado se corrige, y se añade un agujero real que la evaluación original
 > rozó sin detectar. Al final: roadmap 0.1 → 1.0 con archivos concretos.
 
+> **Actualización (segunda pasada — implementación, no solo diagnóstico)**: los puntos 2, 3 y 10
+> ya están ejecutados: redacción de secretos en todos los bordes (`jev_ultrafast/redact.py`),
+> audit log por acción con trace ID (`artifacts/audit.jsonl`), límites de recursos POSIX para
+> comandos aprobados, y guía de ciclo de vida de credenciales en `providers.md`. Los puntos 5 y 7
+> ganaron infraestructura de medición: el workflow «Executor duel» enfrenta GPT-OSS-20B real vs
+> Laya real en CI (routing + elección de elementos). Pendiente de verdad: contenedor, E2E de
+> navegador, XPI firmado y batería de routing a gran escala.
+
 **Estado verificado del repo**: PR #1 = **25 commits, +8.983/−64 líneas, 65 archivos** sobre
 `main` (que sigue apuntando a un commit del upstream). Release `v0.1.0` = commit `d034750`,
 es decir, **anterior a TODO el trabajo MVP-1/3/4/6** (orquestador, tools, catálogo, streaming,

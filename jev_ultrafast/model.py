@@ -9,6 +9,7 @@ import httpx
 
 from . import providers
 from .questions import MAX_PLAN_STEPS, NEXT_ACTION, PLANNER_SYSTEM, POLICY_SYSTEM, TARGET, TEXT_VALUE
+from .redact import redact
 
 CLIENT = httpx.Client(http2=True, timeout=25)
 
@@ -24,7 +25,7 @@ def post_json(url, key, body, headers=None):
             continue
         if response.is_error:
             # Include the provider's own message so the exact cause is visible in the sidebar.
-            detail = " ".join(response.text.split())[:300]
+            detail = redact(" ".join(response.text.split()))[:300]
             raise RuntimeError(f"Model provider returned HTTP {response.status_code}: {detail}; no action executed.")
         try:
             return response.json()
@@ -55,7 +56,7 @@ def post_stream(url, key, body, headers=None, on_delta=None):
                     time.sleep(0.5 * 2**attempt)
                     continue
                 if response.is_error:
-                    detail = " ".join(response.read().decode("utf-8", "replace").split())[:300]
+                    detail = redact(" ".join(response.read().decode("utf-8", "replace").split()))[:300]
                     raise RuntimeError(
                         f"Model provider returned HTTP {response.status_code}: {detail}; no action executed."
                     )

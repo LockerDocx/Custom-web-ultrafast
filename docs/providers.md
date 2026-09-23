@@ -199,6 +199,17 @@ emits them; endpoints that reject streaming fall back to a single request automa
 `artifacts/runs.jsonl` (timestamp, mode, goal, status, steps, elapsed, tokens) — plain
 JSONL, easy to inspect or reset by deleting the file.
 
+## Credential lifecycle: configure → validate → rotate → revoke
+
+Keys live in exactly one place: your local `.env` (the sidebar's model config stores model *names*, never keys). The whole lifecycle:
+
+1. **Configure** — paste the key on its line in `.env` (`NVIDIA_API_KEY=...`, no quotes; the loader strips accidental quotes and BOMs). Or use the starters: the first run opens the file for you.
+2. **Validate** — press **Test setup** in the sidebar (or check the PR comments from the *Provider check* workflow). Each role shows 🟢 with latency, or the provider's exact error (401/403 = bad key, 404 = bad model id).
+3. **Rotate** — generate the fresh key at the provider (links in the table above), replace the line in `.env`, restart the host, press **Test setup** again. Nothing else to clean: no other file ever stored the old key.
+4. **Revoke** — delete the key at the provider's console, then remove (or comment) its line in `.env` and restart.
+
+Guarantees: every error message, log line, and broadcast passes through a redaction layer that masks anything shaped like an API key (`gsk_…`, `nvapi-…`, `sk-…`, `KEY=value`, `Bearer …`) before it reaches the sidebar, `runs.jsonl`, or the audit trail — variable *names* survive so diagnostics stay useful. The browser extension only ever receives model names, never keys.
+
 ## Troubleshooting
 
 - **`POLICY_API_KEY is not set or one of OPENROUTER_API_KEY...`** — provide the key in either form.

@@ -33,6 +33,7 @@ from .parameters import (
     save_config,
     save_profile,
 )
+from .redact import redact
 
 
 def check_providers():
@@ -444,6 +445,7 @@ class TaskRunner:
         self.approvals = None
         self.mode = "browser"
         self.orchestrated = None
+        self._trace = None  # per-task id tying runs.jsonl, the audit log, and broadcasts
         self._typesafe_key = os.environ.get("TYPESAFE_API_KEY")  # kept so the UI can switch back
         self._workspace = Path(workspace) if workspace else Path.cwd() / "workspace"
         self._lock = threading.Lock()  # held by a running task
@@ -461,6 +463,7 @@ class TaskRunner:
         typesafe = bool(self._typesafe_key or os.environ.get("TYPESAFE_API_KEY"))
         common = {
             "mode": self.mode,
+            "trace": self._trace,
             "policy": policy_description(),
             "error": self.last_error,
             "providers": self.provider_check,
@@ -528,6 +531,7 @@ class TaskRunner:
         self.stopped = False
         self.last_error = None
         self.approvals = None
+        self._trace = secrets.token_hex(6)
         from .orchestrator import route_task
 
         self.mode = route_task(goal)
@@ -556,8 +560,8 @@ class TaskRunner:
                     break
         except (ValueError, RuntimeError, BridgeError, StalePage) as error:
             # Keep the failure in the state so the sidebar shows it until the next run.
-            self.last_error = str(error)
-            self.bridge.broadcast({"type": "error", "message": str(error)})
+            self.last_error = redact(str(error))
+            self.bridge.broadcast({"type": "error", "message": redact(str(error))})
         finally:
             snap = self.agent.snapshot() if self.agent is not None else {}
             self._record_run(
@@ -624,7 +628,9 @@ class TaskRunner:
         try:
             gate = ApprovalGate(self.bridge)
             self.approvals = gate
-            toolbox = ToolBox(self._workspace, request_approval=gate.request, browser_runner=browser_runner)
+            toolbox = ToolBox(
+                self._workspace, request_approval=gate.request, browser_runner=browser_runner, trace_id=self._trace
+            )
             selected = select_skills(goal, available_tools=toolbox.registry)
             self.orchestrated["skills"] = [skill["id"] for skill in selected]
             self._broadcast()
@@ -636,10 +642,10 @@ class TaskRunner:
                 latency_ms=result.get("latency_ms"),
             )
         except (ValueError, RuntimeError, BridgeError, StalePage) as error:
-            self.last_error = str(error)
+            self.last_error = redact(str(error))
             if self.orchestrated is not None:
                 self.orchestrated["status"] = "error"
-            self.bridge.broadcast({"type": "error", "message": str(error)})
+            self.bridge.broadcast({"type": "error", "message": redact(str(error))})
         finally:
             self.approvals = None
             self.orchestrated = self.orchestrated or {}
@@ -695,7 +701,7 @@ class TaskRunner:
         try:
             apply_model(role, provider_name, model_id)
         except (ValueError, KeyError) as error:
-            self.bridge.send({"type": "error", "message": f"Could not switch model: {error}"})
+            self.bridge.send({"type": "error", "message": redact(f"Could not switch model: {error}")})
             return
         self._broadcast()
         threading.Thread(target=self.run_provider_check, daemon=True).start()
@@ -711,7 +717,7 @@ class TaskRunner:
             else:
                 raise ValueError(f"Unknown profile action: {action}")
         except (ValueError, KeyError) as error:
-            self.bridge.send({"type": "error", "message": f"Profile error: {error}"})
+            self.bridge.send({"type": "error", "message": redact(f"Profile error: {error}")})
             return
         self._broadcast()
         if action == "apply":
@@ -724,6 +730,7 @@ class TaskRunner:
             with RUNS_LOG.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps({
                     "ts": time.time(),
+                    "trace": self._trace,
                     "mode": mode,
                     "goal": goal[:200],
                     "status": status,
@@ -743,7 +750,7 @@ class TaskRunner:
             else:
                 apply_params(str(message.get("role", "")), message.get("params") or {})
         except (ValueError, KeyError) as error:
-            self.bridge.send({"type": "error", "message": f"Could not apply parameters: {error}"})
+            self.bridge.send({"type": "error", "message": redact(f"Could not apply parameters: {error}")})
             return
         self._broadcast()
 

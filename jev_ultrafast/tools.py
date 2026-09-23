@@ -9,15 +9,21 @@ Safety model:
 """
 
 import html
+import json
+import os
 import re
 import shlex
 import subprocess
+import time
 import urllib.parse
 from pathlib import Path
+
+from .redact import redact
 
 MAX_TOOL_OUTPUT = 8000
 MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024
 COMMAND_TIMEOUT_SECONDS = 120
+AUDIT_LOG = Path(os.environ.get("JEV_AUDIT_LOG", "artifacts/audit.jsonl"))
 
 READ_ONLY_COMMANDS = (
     "pwd", "ls", "cat", "head", "tail", "wc", "file", "echo", "grep", "find",
@@ -83,14 +89,31 @@ def classify_command(command):
     return "approve"
 
 
+def _subprocess_limits():
+    """Bound approved commands: CPU seconds, address space, and file writes.
+
+    POSIX only (preexec_fn is not available on Windows, where the wall-clock
+    timeout plus the approval gate remain the guards). setrlimit only —
+    allocation-free, the pattern subprocess documents for preexec_fn.
+    """
+    import resource
+
+    cpu = COMMAND_TIMEOUT_SECONDS
+    resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu + 5))
+    resource.setrlimit(resource.RLIMIT_AS, (2 * 1024 ** 3, 2 * 1024 ** 3))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (512 * 1024 ** 2, 512 * 1024 ** 2))
+
+
 class ToolBox:
     """One workspace-scoped set of tools for a single orchestrated task."""
 
-    def __init__(self, workspace, request_approval=None, browser_runner=None):
+    def __init__(self, workspace, request_approval=None, browser_runner=None, audit_path=None, trace_id=None):
         self.workspace = Path(workspace).resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.request_approval = request_approval or (lambda _command: False)
         self.browser_runner = browser_runner
+        self.audit_path = Path(audit_path) if audit_path else AUDIT_LOG
+        self.trace_id = trace_id
         self.registry = {
             "web_search": (self.web_search, "query, max_results=5 → titled URLs and snippets from the web"),
             "read_page": (self.read_page, "url → the page's readable text (truncated)"),
@@ -109,13 +132,43 @@ class ToolBox:
         return "\n".join(f"- {name}({signature})" for name, (_fn, signature) in sorted(self.registry.items()))
 
     def call(self, name, args):
-        if name not in self.registry:
-            raise ToolError(f"Unknown tool '{name}'. Available: {', '.join(sorted(self.registry))}.")
-        if not isinstance(args, dict):
-            raise ToolError("Tool arguments must be a JSON object.")
-        function = self.registry[name][0]
-        result = function(**args)
-        return _cap(result)
+        started = time.perf_counter()
+        ok, error, result = False, None, None
+        try:
+            if name not in self.registry:
+                raise ToolError(f"Unknown tool '{name}'. Available: {', '.join(sorted(self.registry))}.")
+            if not isinstance(args, dict):
+                raise ToolError("Tool arguments must be a JSON object.")
+            function = self.registry[name][0]
+            result = function(**args)
+            ok = True
+            return _cap(result)
+        except Exception as caught:  # noqa: BLE001 - audited, then re-raised to the model loop
+            error = str(caught)[:200]
+            raise
+        finally:
+            if name != "run_command":  # run_command writes its own richer entry
+                self._audit(
+                    name, args, ok=ok, error=error,
+                    duration_ms=round((time.perf_counter() - started) * 1000),
+                    preview=redact(str(result))[:120] if result is not None else None,
+                )
+
+    def _audit(self, tool, args, **extra):
+        """Append one action record; audit failures never break a tool call."""
+        try:
+            self.audit_path.parent.mkdir(parents=True, exist_ok=True)
+            entry = {
+                "ts": time.time(),
+                "trace": self.trace_id,
+                "tool": tool,
+                "args": redact(json.dumps(args, ensure_ascii=False, default=str))[:400],
+                **extra,
+            }
+            with self.audit_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
 
     def _resolve(self, path):
         candidate = (self.workspace / path).resolve()
@@ -254,9 +307,14 @@ class ToolBox:
             raise ToolError("Empty command.")
         verdict = classify_command(command)
         if verdict == "deny":
+            self._audit("run_command", {"command": command}, verdict=verdict, approved=False,
+                        ok=False, error="blocked by the safety policy")
             raise ToolError("That command is blocked by the safety policy (destructive or system-wide).")
         if verdict == "approve" and not self.request_approval(command):
+            self._audit("run_command", {"command": command}, verdict=verdict, approved=False,
+                        ok=False, error="not approved by the user")
             raise ToolError("The user did not approve this command.")
+        started = time.perf_counter()
         try:
             completed = subprocess.run(
                 command,
@@ -265,10 +323,18 @@ class ToolBox:
                 capture_output=True,
                 text=True,
                 timeout=COMMAND_TIMEOUT_SECONDS,
+                preexec_fn=_subprocess_limits if os.name == "posix" else None,
             )
         except subprocess.TimeoutExpired:
+            self._audit("run_command", {"command": command}, verdict=verdict, approved=True,
+                        ok=False, error=f"timed out after {COMMAND_TIMEOUT_SECONDS}s",
+                        duration_ms=round((time.perf_counter() - started) * 1000))
             raise ToolError(f"Command timed out after {COMMAND_TIMEOUT_SECONDS}s.") from None
         output = (completed.stdout or "") + (("\n[stderr]\n" + completed.stderr) if completed.stderr else "")
+        self._audit("run_command", {"command": command}, verdict=verdict, approved=True,
+                    ok=completed.returncode == 0, exit=completed.returncode,
+                    duration_ms=round((time.perf_counter() - started) * 1000),
+                    preview=redact(output)[:120])
         return f"exit code {completed.returncode}\n{output.strip() or '(no output)'}"
 
     # ── browser ───────────────────────────────────────────────────────────────
