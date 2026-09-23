@@ -697,3 +697,18 @@ def test_the_text_helper_says_what_the_model_answered(monkeypatch):
     message = str(failure.value)
     assert "nothing typed" in message
     assert "confidence" in message, "the reply itself belongs in the message"
+
+
+def test_the_text_retry_points_at_the_goal_when_the_model_says_null(monkeypatch):
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    seen = []
+
+    def fake_post_json(url, key, body, headers=None):
+        seen.append(body["messages"][1]["content"])
+        return {"model": "m", "choices": [{"message": {"content": '{"text": null}'}}]}
+
+    monkeypatch.setattr(model, "post_json", fake_post_json)
+    with pytest.raises(ValueError):
+        model.field_text({"goal": "Type London into the Where to? field"})
+    assert len(seen) == 2
+    assert "goal states the value" in seen[1], "a null answer needs a targeted retry, not a repeat"

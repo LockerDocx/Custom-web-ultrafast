@@ -391,7 +391,8 @@ def field_text(context):
     for attempt in range(2):
         message = request
         if attempt:
-            message += '\n\nYour previous reply was rejected. Reply with ONLY {"text": "the exact field value"}.'
+            message += ('\n\nYour previous reply was rejected. The goal states the value this field needs: '
+                        'reply with ONLY {"text": "that value, exactly as the goal writes it"}.')
         # A reasoning model spends part of this budget thinking, and a field value is
         # short: 1024 tokens was enough for the answer and not for the thinking, which is
         # how a two-attempt retry came back empty on the live mission.
