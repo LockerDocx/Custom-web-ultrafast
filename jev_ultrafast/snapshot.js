@@ -76,7 +76,12 @@
       const value='value' in e ? String(e.value) :
         e.isContentEditable || rname==='combobox' ? e.innerText.trim() : '';
       actions.push({...base,kind:editable?'fill':'click',value});
-      if (editable) actions.push({...base,kind:'click',value,label:'Open '+base.label});
+      // While a combobox already shows its list (aria-expanded), the "Open" affordance
+      // does nothing, and offering it invites exactly the wrong click: the live flights
+      // mission clicked "Open Where to?" three times with a suggestion list on screen
+      // instead of clicking the suggestion that commits the value.
+      if (editable && base.expanded!=='true')
+        actions.push({...base,kind:'click',value,label:'Open '+base.label});
     }
   }
   const words=[], walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
