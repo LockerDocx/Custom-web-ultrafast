@@ -101,7 +101,7 @@ jobs:
           # so the live mission never competes with another workflow for its allowance.
           TEXT_MODEL_PROVIDER: groq
           TEXT_MODEL: openai/gpt-oss-120b
-          TEXT_MODEL_REASONING: low
+          TEXT_MODEL_REASONING: none
         run: |
           if [ -z "${GROQ_API_KEY}" ]; then
             echo "## 🛫 E2E flights" > /tmp/report.md

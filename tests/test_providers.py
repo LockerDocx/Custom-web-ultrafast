@@ -667,3 +667,18 @@ def test_the_policy_prompt_trims_the_page_text_but_keeps_the_elements():
     assert "x" * POLICY_TEXT_CHARS in request
     assert "x" * (POLICY_TEXT_CHARS + 1) not in request
     assert "Where from?" in request, "the element table is the part that decides"
+
+
+def test_the_text_helper_leaves_room_for_a_reasoning_model(monkeypatch):
+    """A field value is short; the budget is for the model's thinking, not the answer."""
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    seen = {}
+
+    def fake_post_json(url, key, body, headers=None):
+        seen.update(body)
+        return {"model": "m", "choices": [{"message": {"content": '{"text": "London"}'}}]}
+
+    monkeypatch.setattr(model, "post_json", fake_post_json)
+    value, _meta = model.field_text({"goal": "Find flights to London"})
+    assert value == "London"
+    assert seen["max_tokens"] >= 2048

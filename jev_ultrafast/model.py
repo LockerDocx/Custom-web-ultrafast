@@ -392,7 +392,10 @@ def field_text(context):
         message = request
         if attempt:
             message += '\n\nYour previous reply was rejected. Reply with ONLY {"text": "the exact field value"}.'
-        content, meta = providers.chat(provider, TEXT_VALUE, message, max_tokens=1024)
+        # A reasoning model spends part of this budget thinking, and a field value is
+        # short: 1024 tokens was enough for the answer and not for the thinking, which is
+        # how a two-attempt retry came back empty on the live mission.
+        content, meta = providers.chat(provider, TEXT_VALUE, message, max_tokens=2048)
         try:
             output = providers.extract_json(content)
             value = output["text"]
