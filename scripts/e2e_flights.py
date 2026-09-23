@@ -223,6 +223,53 @@ def classify(page, verification, error=None, timed_out=False):
     return "failed", "checks not satisfied: " + ", ".join(failed)
 
 
+CONSENT_BUTTONS = ("accept all", "accept cookies", "i agree", "agree to all", "got it")
+FORM_MARKERS = ("one way", "round trip", "where from", "where to", "departure", "return")
+
+
+def _interactive(page):
+    """True once the flights form itself is on screen, not a skeleton page."""
+    labels = " ".join(action.get("label", "") for action in page.get("actions") or []).lower()
+    return any(marker in labels for marker in FORM_MARKERS)
+
+
+def _worth_retrying(state, error, timed_out):
+    """A mission that died before its first action met a page that had not loaded yet."""
+    if error or timed_out or not state or state.get("history"):
+        return False
+    return state.get("status") == "blocked"
+
+
+def warm_up(seconds=25.0, poll=1.0, sleeper=time.sleep, factory=None):
+    """Open the page and wait until the form is really there; clear a cookie wall first.
+
+    A cold Chrome navigates and the agent's first observation can catch Google Flights
+    before it renders. A policy model looking at an empty page answers BLOCKED, and the
+    whole run dies in two seconds for a reason that has nothing to do with the product.
+    """
+    from jev_ultrafast.browser import Browser
+
+    browser = (factory or Browser)(URL)
+    started = time.perf_counter()
+    notes = {"consent": False, "ready_s": 0.0}
+    while True:
+        page = browser.observe(screenshot=False)
+        buttons = [action for action in page.get("actions") or []
+                   if action.get("label", "").strip().lower() in CONSENT_BUTTONS]
+        if buttons and not notes["consent"]:
+            try:
+                browser.act(buttons[0], page)  # what a user does with a cookie wall
+                notes["consent"] = True
+            except Exception:  # noqa: BLE001 - a stale wall is simply looked at again
+                pass
+            sleeper(poll)
+            continue
+        if _interactive(page) or time.perf_counter() - started >= seconds:
+            notes["ready_s"] = round(time.perf_counter() - started, 1)
+            return browser, page, notes
+        sleeper(poll)
+
+
 def preflight():
     """Every reason to skip, collected before a browser is opened."""
     reasons = []
@@ -245,17 +292,21 @@ def preflight():
     return chrome, [reason for reason in reasons if reason]
 
 
-def run_mission(max_seconds, artifacts):
-    """Run the live mission, bounded in time; returns (state, error, timed_out, seconds)."""
-    from jev_ultrafast import Agent
-
-    started = time.perf_counter()
-    error, timed_out, last = None, False, None
-    collected = []
+def _attempt(agent_class, max_seconds, started, warm_up_seconds=25.0):
+    """One live attempt: warm the page up, then run the agent to its own verdict."""
+    browser, warm = None, None
     try:
-        agent = Agent(URL, GOALS)
+        browser, _page, warm = warm_up(seconds=warm_up_seconds)
+        agent = agent_class(URL, GOALS, browser=browser)
     except Exception as failure:  # noqa: BLE001 - a browser that will not start is a run failure
-        return None, f"{type(failure).__name__}: {failure}", False, round(time.perf_counter() - started, 1)
+        if browser is not None:
+            try:
+                browser.close()
+            except Exception:  # noqa: BLE001 - closing is best effort
+                pass
+        return None, f"{type(failure).__name__}: {failure}", False, warm
+
+    error, timed_out, last, collected = None, False, None, []
     try:
         for state in agent.run():
             last = state
@@ -282,16 +333,44 @@ def run_mission(max_seconds, artifacts):
             state["verification"] = verify(final_page)
             state["browser_version"] = agent.browser.call("Browser.getVersion")["product"]
             state["error"] = error
-            if artifacts:
-                folder = Path(artifacts)
-                folder.mkdir(parents=True, exist_ok=True)
-                (folder / "state.json").write_text(json.dumps(state, indent=2, ensure_ascii=False))
             result = state
         except Exception as failure:  # noqa: BLE001 - an unreadable page is still a result
             result = last or {"history": [], "error": f"{type(failure).__name__}: {failure}"}
             result.setdefault("final_page", {"url": "", "text": "", "actions": []})
             result["verification"] = {"passed": False, "checks": {}, "visible_flights": []}
         agent.close()
+    return result, error, timed_out, warm
+
+
+def run_mission(max_seconds, artifacts, attempts=2):
+    """Run the live mission, bounded in time; returns (state, error, timed_out, seconds).
+
+    A cold page can beat the agent's first observation; a run that died before its
+    first action is retried once, on the time that is left, and the report says so.
+    """
+    from jev_ultrafast import Agent
+
+    started = time.perf_counter()
+    result, error, timed_out, warm = None, None, False, None
+    for attempt in range(1, max(1, attempts) + 1):
+        state, error, timed_out, warm = _attempt(Agent, max_seconds, started)
+        if state is None:  # nothing ran at all: there is no state to decorate
+            result = None
+            break
+        state["attempt"] = attempt
+        if warm:
+            state["warm_up"] = warm
+        result = state
+        if (error or timed_out or attempt == attempts or not _worth_retrying(state, error, timed_out)
+                or time.perf_counter() - started > max_seconds * 0.5):
+            break
+        print(f"attempt {attempt}: the page was not ready for its first decision; starting a fresh run",
+              file=sys.stderr, flush=True)
+        time.sleep(2)
+    if artifacts and result:
+        folder = Path(artifacts)
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "state.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
     return result, error, timed_out, round(time.perf_counter() - started, 1)
 
 
@@ -324,6 +403,14 @@ def render_report(outcome, reason, state, seconds, pacing, paced, chrome, note=N
     ]
     if limits:
         lines.append(f"- Rate limiting: {' · '.join(limits)}")
+    warm = state.get("warm_up") or {}
+    if warm:
+        detail = f"- Warm-up: the page was interactive after {warm.get('ready_s', 0):,.1f} s"
+        if warm.get("consent"):
+            detail += " · cookie wall dismissed"
+        lines.append(detail)
+    if state.get("attempt", 1) > 1:
+        lines.append(f"- Attempts: **{state['attempt']}** (an earlier run met a page that had not rendered)")
     lines.append("")
     if checks:
         lines += ["| Check | Result |", "|---|---|"]
@@ -419,7 +506,29 @@ def selftest(pacing):
     finally:
         model.post_json = original
 
-    # 4. the seven page checks accept a correct result page and reject a wrong one
+    # 4. the warm-up clears a cookie wall and waits for the real form
+    class FakeBrowser:
+        def __init__(self, url):
+            self.clicks = []
+            self.pages = [
+                {"url": url, "text": "", "actions": []},
+                {"url": url, "text": "Before you continue to Google", "actions": [
+                    {"id": "a1", "label": "Accept all", "kind": "click"}]},
+                {"url": url, "text": "Flights", "actions": [
+                    {"id": "b1", "label": "One way", "kind": "click"}]},
+            ]
+
+        def observe(self, screenshot=True):
+            return self.pages.pop(0) if len(self.pages) > 1 else self.pages[0]
+
+        def act(self, action, page, text=None):
+            self.clicks.append(action["label"])
+
+    browser, page, warm = warm_up(seconds=5.0, poll=0.0, sleeper=lambda seconds: None, factory=FakeBrowser)
+    checks.append(("the cookie wall is dismissed before the mission", browser.clicks == ["Accept all"]))
+    checks.append(("the warm-up waits for the real form", _interactive(page)))
+
+    # 5. the seven page checks accept a correct result page and reject a wrong one
     good = {
         "url": "https://www.google.com/travel/flights/search?tfs=CBwQAhooEgoyMDI2LTA5LTIw&hl=en",
         "text": "departing 2026-09-20",
@@ -437,7 +546,7 @@ def selftest(pacing):
     wrong = {**good, "actions": [a for a in good["actions"] if "Select flight" not in a["label"]]}
     checks.append(("a page without matching results fails", verify(wrong)["passed"] is False))
 
-    # 5. the three verdicts, including the infrastructure one
+    # 6. the three verdicts, including the infrastructure one
     consent = {"url": "https://consent.google.com/ml?continue=...", "text": "Before you continue to Google",
                "actions": []}
     outcome, _ = classify(consent, verify(consent))
@@ -449,7 +558,7 @@ def selftest(pacing):
     ok, _ = classify(good, passed)
     checks.append(("a verified page is a pass", ok == "passed"))
 
-    # 6. the report never claims a pass it did not measure
+    # 7. the report never claims a pass it did not measure
     report = render_report("failed", "checks not satisfied: results", {"verification": passed}, 12.0, pacing,
                            {"calls": 4, "slept_s": 3 * pacing}, "/usr/bin/google-chrome")
     checks.append(("the report labels the outcome", "🔴 **failed**" in report))
@@ -507,6 +616,8 @@ def main():
             "tokens_held": paced.get("tokens", 0.0),
             "throttled_retries": paced.get("retries", 0),
             "throttled_s": paced.get("throttled_s", 0.0),
+            "attempts": (state or {}).get("attempt", 1),
+            "warm_up": (state or {}).get("warm_up"),
             "verification": verification,
             "final_url": page.get("url"),
             "error": error,

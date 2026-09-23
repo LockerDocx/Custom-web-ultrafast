@@ -99,12 +99,12 @@ tokens); un precio inventado es peor que ningún precio.
 ## 4. E2E real: vuelos Zúrich → Londres
 
 ```
-python scripts/e2e_flights.py --selftest                  # offline, 16 comprobaciones
+python scripts/e2e_flights.py --selftest                  # offline, 18 comprobaciones
 xvfb-run -a python scripts/e2e_flights.py --max-seconds 600
 ```
 
 La misión del demo (solo ida, Zúrich–Londres, 20 de septiembre de 2026, un adulto,
-economía; nunca selecciona ni reserva) sobre Google Flights real, con cuatro decisiones
+economía; nunca selecciona ni reserva) sobre Google Flights real, con cinco decisiones
 de diseño que importan en un runner:
 
 - **Pacing**: cada llamada al modelo se separa `--pacing` segundos (2.4 por defecto)
@@ -117,6 +117,12 @@ de diseño que importan en un runner:
   reintenta esperando lo que el proveedor pide («try again in 4.5s»). El workflow
   ejecuta una sola misión por commit (`concurrency` por PR/rama) porque todo comparte
   el mismo presupuesto.
+- **Página lista antes de decidir**: un Chrome frío navega y la primera observación
+  puede pillar Google Flights sin renderizar; el modelo ve una página vacía, contesta
+  `BLOCKED` y la misión muere en 1.8 s (pasó en CI). El driver espera a que el
+  formulario esté en pantalla y descarta el muro de cookies con el propio
+  `Browser.act`; si aun así una corrida termina sin ejecutar ninguna acción, se
+  reintenta una vez con el presupuesto que quede y el informe dice cuántos intentos hubo.
 - **Verificación**: el veredicto sale de `examples.flights.verify`, **siete
   comprobaciones sobre la página final** (página de búsqueda, solo ida, origen,
   destino, fecha, año, resultados que coinciden), nunca del `DONE` del modelo.
@@ -129,7 +135,7 @@ de diseño que importan en un runner:
 | Workflow | Recurso real | Qué publica |
 |---|---|---|
 | `Routing battery` | pesos abiertos de Laya (caché de HF) + Groq para la muestra | tabla por idioma, confusión peligrosa, antes/después de la capa de keywords |
-| `E2E flights` | Chrome + xvfb + Groq/NVIDIA + Google Flights | las 7 comprobaciones, llamadas al modelo, pacing, URL final, artefactos |
+| `E2E flights` | Chrome + xvfb + Groq/NVIDIA + Google Flights | las 7 comprobaciones, warm-up, presupuesto de tokens, reintentos, URL final, artefactos |
 | `Provider check`, `Laya check`, `Executor duel` (0.2.0/0.3.0) | claves reales del repo | ya existían; ahora comentan en **el PR de la rama**, no en el PR #1 |
 
 Los cuatro workflows que comentan usan `scripts/comment_on_pr.sh`, que resuelve el PR

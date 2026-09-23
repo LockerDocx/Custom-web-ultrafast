@@ -141,11 +141,11 @@ def test_main_skips_cleanly_without_preconditions(monkeypatch, tmp_path, capsys)
 
 
 def test_run_mission_reports_a_browser_that_will_not_start(monkeypatch):
-    class ExplodingAgent:
-        def __init__(self, *args, **kwargs):
-            raise RuntimeError("chrome not found")
+    def exploding(*args, **kwargs):
+        raise RuntimeError("chrome not found")
 
-    monkeypatch.setattr("jev_ultrafast.Agent", ExplodingAgent)
+    monkeypatch.setattr(e2e_flights, "warm_up", exploding)
+    monkeypatch.setattr("jev_ultrafast.Agent", exploding)
     state, error, timed_out, _seconds = e2e_flights.run_mission(5, "")
     assert state is None
     assert "chrome not found" in error
@@ -216,10 +216,75 @@ def test_the_report_names_the_rate_limiting_it_had_to_do():
     verification = verify(page)
     report = e2e_flights.render_report(
         "passed", "every page-state check holds",
-        {"status": "done", "history": [1], "final_page": page, "verification": verification},
+        {"status": "done", "history": [1], "final_page": page, "verification": verification,
+         "attempt": 2, "warm_up": {"ready_s": 1.5, "consent": True}},
         90.0, 2.4, {"calls": 12, "slept_s": 26.4, "retries": 3, "throttled_s": 15.5,
                     "tpm": 6000.0, "window_s": 60.0, "tokens": 5400.0},
         "/usr/bin/google-chrome")
     assert "Rate limiting" in report
     assert "**3** throttled retries" in report
     assert "token budget 6,000/min" in report
+    assert "cookie wall dismissed" in report
+    assert "Attempts: **2**" in report
+
+
+def fake_browser_class():
+    class FakeBrowser:
+        def __init__(self, url):
+            self.url = url
+            self.clicks = []
+            self.pages = [
+                {"url": url, "text": "", "actions": []},
+                {"url": url, "text": "Before you continue to Google", "actions": [
+                    {"id": "a1", "label": "Accept all", "kind": "click"}]},
+                {"url": url, "text": "Flights", "actions": [
+                    {"id": "b1", "label": "One way", "kind": "click"}]},
+            ]
+
+        def observe(self, screenshot=True):
+            return self.pages.pop(0) if len(self.pages) > 1 else self.pages[0]
+
+        def act(self, action, page, text=None):
+            self.clicks.append(action["label"])
+
+    return FakeBrowser
+
+
+def test_warm_up_waits_for_the_form_and_clears_the_cookie_wall():
+    browser, page, notes = e2e_flights.warm_up(seconds=5.0, poll=0.0, sleeper=lambda seconds: None,
+                                               factory=fake_browser_class())
+    assert browser.clicks == ["Accept all"], "a fresh profile meets the wall before the form"
+    assert notes["consent"] is True
+    assert e2e_flights._interactive(page), "the warm-up returns only once the form is on screen"
+
+
+def test_a_run_that_died_before_its_first_action_is_retried():
+    blocked = {"history": [], "status": "blocked"}
+    assert e2e_flights._worth_retrying(blocked, None, False) is True
+    assert e2e_flights._worth_retrying({"history": [1], "status": "blocked"}, None, False) is False
+    assert e2e_flights._worth_retrying(blocked, "RuntimeError: boom", False) is False
+    assert e2e_flights._worth_retrying({"history": [], "status": "done"}, None, False) is False
+    assert e2e_flights._worth_retrying(blocked, None, True) is False
+
+
+def test_run_mission_retries_a_page_that_was_not_ready(monkeypatch):
+    calls = []
+
+    def fake_attempt(agent_class, max_seconds, started, warm_up_seconds=25.0):
+        calls.append(1)
+        if len(calls) == 1:
+            return ({"history": [], "status": "blocked", "final_page": {"url": "", "text": "", "actions": []},
+                     "verification": {"passed": False, "checks": {}}}, None, False,
+                    {"ready_s": 0.4, "consent": False})
+        page = good_page()
+        return ({"history": [1], "status": "done", "final_page": page, "verification": verify(page)},
+                None, False, {"ready_s": 1.2, "consent": True})
+
+    monkeypatch.setattr(e2e_flights, "_attempt", fake_attempt)
+    monkeypatch.setattr(e2e_flights.time, "sleep", lambda seconds: None)
+    state, error, timed_out, _seconds = e2e_flights.run_mission(60, "")
+    assert len(calls) == 2, "the run that never touched the page is retried once"
+    assert state["attempt"] == 2
+    assert state["verification"]["passed"] is True
+    assert state["warm_up"]["consent"] is True
+    assert error is None and timed_out is False
