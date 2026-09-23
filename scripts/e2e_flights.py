@@ -162,12 +162,19 @@ def paced_requests(pacing, tpm=0.0, window=60.0, retries=3, clock=time.monotonic
     state = {"calls": 0, "attempts": 0, "retries": 0, "slept_s": 0.0, "throttled_s": 0.0, "tokens": 0.0,
              "tpm": float(tpm or 0.0), "window_s": float(window), "budgets": {}}
 
-    def budget_for(url):
-        """One budget per provider: a slow planner must not throttle the policy model."""
+    def budget_for(url, body):
+        """One budget per model, not per host.
+
+        Measured live: Groq's minute is spent per model, so sharing one budget across a
+        Groq planner and a Groq executor is what produced `HTTP 429 ... gpt-oss-20b ...
+        Used 7314` while the budget still showed room on the host.
+        """
         if not tpm or tpm <= 0:
             return None
         host = urlparse(url).hostname or "unknown"
-        return budgets.setdefault(host, TokenWindow(tpm, window=window, clock=clock, sleeper=sleeper))
+        model = (body or {}).get("model") if isinstance(body, dict) else None
+        return budgets.setdefault(f"{host}/{model}" if model else host,
+                                  TokenWindow(tpm, window=window, clock=clock, sleeper=sleeper))
 
     def collect():
         state["tokens"] = sum(one.used() for one in budgets.values())
@@ -175,7 +182,7 @@ def paced_requests(pacing, tpm=0.0, window=60.0, retries=3, clock=time.monotonic
 
     def perform(original, args, kwargs):
         body = args[2] if len(args) > 2 else kwargs.get("body")
-        budget = budget_for(args[0])
+        budget = budget_for(args[0], body)
         estimate = _estimate_tokens(body)
         attempt = 0
         while True:

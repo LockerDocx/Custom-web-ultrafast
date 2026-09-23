@@ -291,7 +291,7 @@ def test_run_mission_retries_a_page_that_was_not_ready(monkeypatch):
     assert error is None and timed_out is False
 
 
-def test_each_provider_gets_its_own_token_budget(monkeypatch):
+def test_each_model_gets_its_own_token_budget(monkeypatch):
     slept = []
 
     def fake_post_json(url, key, body, headers=None):
@@ -300,10 +300,13 @@ def test_each_provider_gets_its_own_token_budget(monkeypatch):
     monkeypatch.setattr(model, "post_json", fake_post_json)
     with e2e_flights.paced_requests(0.0, tpm=100, retries=0, sleeper=slept.append) as paced:
         for _ in range(3):
-            model.post_json("https://api.groq.com/openai/v1/chat/completions", "k", {"max_tokens": 4})
-        # A different provider must not inherit the first one's spent allowance.
-        model.post_json("https://integrate.api.nvidia.com/v1/chat/completions", "k", {"max_tokens": 4})
-    assert paced["budgets"] == {"api.groq.com": 90.0, "integrate.api.nvidia.com": 30.0}
+            model.post_json("https://api.groq.com/openai/v1/chat/completions", "k",
+                            {"model": "m", "max_tokens": 4})
+        # A different model must not inherit the first one's spent allowance.
+        model.post_json("https://api.groq.com/openai/v1/chat/completions", "k",
+                        {"model": "other", "max_tokens": 4})
+    # Groq spends its minute per model, so each model gets its own window.
+    assert paced["budgets"] == {"api.groq.com/m": 90.0, "api.groq.com/other": 30.0}
     assert not slept, "three 30-token calls fit in a 100-token minute"
 
 
