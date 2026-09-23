@@ -88,11 +88,13 @@ jobs:
           PLANNER_PROVIDER: nvidia
           PLANNER_MODEL: z-ai/glm-5.3
           PLANNER_REASONING: none
-          # groq:gpt-oss-20b types the airport name and then refuses to commit the
-          # autocomplete suggestion — the decision this mission kept dying on — so the
-          # executor is the flash model, with reasoning off and 1024 tokens per call.
-          POLICY_PROVIDER: nvidia
-          POLICY_MODEL: z-ai/glm-5.3-flash
+          # Two walls measured live: gpt-oss-20b types the airport name and then refuses
+          # to commit the autocomplete suggestion, and NVIDIA's NIM endpoint answered the
+          # much larger policy prompt with connection timeouts (25 s client limit). So the
+          # executor is a bigger model on the fast endpoint, with reasoning off and 1024
+          # tokens per call.
+          POLICY_PROVIDER: groq
+          POLICY_MODEL: llama-3.3-70b-versatile
           POLICY_REASONING: none
           TEXT_MODEL_PROVIDER: groq
           TEXT_MODEL: openai/gpt-oss-20b
