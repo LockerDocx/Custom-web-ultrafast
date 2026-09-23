@@ -5,8 +5,10 @@ This is the only test that exercises the whole stack against a live third-party 
 real Chrome through the CDP harness, the real policy/text providers, the real agent
 loop, and an independent verification of the resulting page.
 
-The mission is the documented demo — one-way Zurich to London, September 20 2026,
-one adult, economy — and it never selects or books anything.
+The mission is the documented demo — one-way Zurich to London for one adult in
+economy, never selecting or booking anything — with a target date that stays in the
+future (`examples.flights` computes it), because a past date is not sellable and the
+run could never satisfy its own checks.
 
 Design notes that matter on a CI runner:
 
@@ -43,7 +45,7 @@ from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from examples.flights import GOALS, URL, verify  # noqa: E402
+from examples.flights import FIELD_DATE, GOALS, ISO_DATE, OPTION_DATE, URL, verify  # noqa: E402
 
 BLOCK_MARKERS = (
     "before you continue", "consent", "captcha", "unusual traffic",
@@ -418,6 +420,7 @@ def render_report(outcome, reason, state, seconds, pacing, paced, chrome, note=N
         f"- Model calls: **{paced.get('calls', 0)}** with {pacing:,.1f} s pacing "
         f"({paced.get('slept_s', 0.0):,.1f} s slept) · Chrome: `{chrome or 'not found'}`",
         f"- Final URL: {state.get('final_page', {}).get('url', '—')}",
+        f"- Target: one-way Zurich → London on **{ISO_DATE}** (never selected or booked)",
     ]
     if limits:
         lines.append(f"- Rate limiting: {' · '.join(limits)}")
@@ -567,13 +570,13 @@ def selftest(pacing):
     # 5. the seven page checks accept a correct result page and reject a wrong one
     good = {
         "url": "https://www.google.com/travel/flights/search?tfs=CBwQAhooEgoyMDI2LTA5LTIw&hl=en",
-        "text": "departing 2026-09-20",
+        "text": f"departing {ISO_DATE}",
         "actions": [
             {"label": "Change ticket type. One way", "value": "One way", "kind": "click"},
             {"label": "Where from?", "value": "Zürich", "kind": "fill"},
             {"label": "Where to?", "value": "London", "kind": "fill"},
-            {"label": "Departure", "value": "Sun, Sep 20", "kind": "fill"},
-            {"label": "Select flight. Sunday, September 20 · 07:00 - 08:05, 1 stop, from 120 EUR",
+            {"label": "Departure", "value": FIELD_DATE, "kind": "fill"},
+            {"label": f"Select flight. {OPTION_DATE} · 07:00 - 08:05, 1 stop, from 120 EUR",
              "value": "", "kind": "click"},
         ],
     }

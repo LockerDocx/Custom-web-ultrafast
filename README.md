@@ -152,11 +152,14 @@ Keyword-matched **skills** (`skills/` directories with a manifest + instructions
 ## Use the library
 
 ```python
+from datetime import date, timedelta
+
 from jev_ultrafast import Agent
 
+target = date.today() + timedelta(days=30)  # a date Google Flights can still sell
 with Agent(
     "https://www.google.com/travel/flights?hl=en",
-    "Find one-way flights from Zurich to London on September 20, 2026, "
+    f"Find one-way flights from Zurich to London on {target:%B} {target.day}, {target.year}, "
     "for one adult in economy. Stop when matching flight options are visible.",
 ) as agent:
     for state in agent.run():

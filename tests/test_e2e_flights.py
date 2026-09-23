@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from examples.flights import verify
+from examples.flights import FIELD_DATE, ISO_DATE, OPTION_DATE, verify
 from jev_ultrafast import model, providers
 from scripts import e2e_flights
 
@@ -13,13 +13,13 @@ from scripts import e2e_flights
 def good_page():
     return {
         "url": "https://www.google.com/travel/flights/search?tfs=CBwQAhooEgoyMDI2LTA5LTIw&hl=en",
-        "text": "departing 2026-09-20",
+        "text": f"departing {ISO_DATE}",
         "actions": [
             {"label": "Change ticket type. One way", "value": "One way", "kind": "click"},
             {"label": "Where from?", "value": "Zürich", "kind": "fill"},
             {"label": "Where to?", "value": "London", "kind": "fill"},
-            {"label": "Departure", "value": "Sun, Sep 20", "kind": "fill"},
-            {"label": "Select flight. Sunday, September 20 · 07:00 - 08:05, 1 stop, from 120 EUR",
+            {"label": "Departure", "value": FIELD_DATE, "kind": "fill"},
+            {"label": f"Select flight. {OPTION_DATE} · 07:00 - 08:05, 1 stop, from 120 EUR",
              "value": "", "kind": "click"},
         ],
     }
