@@ -715,8 +715,8 @@ def main():
     parser.add_argument("--selftest", action="store_true", help="offline: no browser, no network, no keys")
     parser.add_argument("--max-seconds", type=float, default=600.0)
     parser.add_argument("--pacing", type=float, default=2.4, help="seconds between model calls")
-    parser.add_argument("--tpm", type=float, default=6000.0,
-                        help="token budget per minute (the free Groq tier allows 8000); 0 disables it")
+    parser.add_argument("--tpm", type=float, default=7500.0,
+                        help="token budget per minute per model (the free Groq tier allows 8000); 0 disables it")
     parser.add_argument("--window", type=float, default=60.0, help="seconds of the token budget window")
     parser.add_argument("--retries", type=int, default=3, help="throttled retries per model call")
     parser.add_argument("--mission", choices=["prepared", "cold"], default="prepared",

@@ -271,10 +271,17 @@ def typesafe_choose(state, goal, history):
     }
 
 
+POLICY_TEXT_CHARS = 2500
+
+
 def _policy_request(goal, state, elements, operations, history):
     lines = [f"GOAL: {goal}", "", f"PAGE: {state['url']} — {state['title']}"]
     if state.get("text"):
-        lines.append(f"PAGE TEXT (excerpt): {state['text']}")
+        # The indexed element table below carries the actionable detail; the free text is
+        # context. Measured on the live flights mission, sending all 6000 observed
+        # characters cost most of a free tier's minute per decision, so the excerpt is
+        # trimmed here and the full text stays in the page state for verification.
+        lines.append(f"PAGE TEXT (excerpt): {state['text'][:POLICY_TEXT_CHARS]}")
     lines.append("")
     lines.append("ELEMENTS (index · role · label · current value · operations):")
     for element in elements:

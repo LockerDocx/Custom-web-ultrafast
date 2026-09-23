@@ -648,3 +648,22 @@ def test_the_text_helper_asks_once_more_before_giving_up(monkeypatch):
     assert value == "Zürich"
     assert post.call_count == 2
     assert "rejected" in post.call_args.args[2]["messages"][1]["content"]
+
+
+def test_the_policy_prompt_trims_the_page_text_but_keeps_the_elements():
+    """A 6000-character excerpt cost most of a free tier's minute per decision."""
+    from jev_ultrafast.model import POLICY_TEXT_CHARS, _policy_request
+
+    state = {
+        "url": "https://www.google.com/travel/flights?hl=en",
+        "title": "Flights",
+        "text": "x" * 6000,
+        "actions": [{"id": "e1", "node": 11, "label": "Where from?", "role": "textbox",
+                     "kind": "fill", "operations": ["TYPE_TEXT"]}],
+    }
+    elements, targets, _controls = model.action_space(state["actions"])
+    operations = model.operation_catalog(targets, {})
+    request = _policy_request("Find flights", {**state}, elements, operations, [])
+    assert "x" * POLICY_TEXT_CHARS in request
+    assert "x" * (POLICY_TEXT_CHARS + 1) not in request
+    assert "Where from?" in request, "the element table is the part that decides"
