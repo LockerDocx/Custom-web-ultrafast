@@ -330,7 +330,7 @@ def provider_choose(state, goal, history):
         message = user
         if attempt:
             message += "\n\nYour previous reply was rejected. Respond again with ONLY the JSON object."
-        content, meta = providers.chat(provider, POLICY_SYSTEM, message, max_tokens=512)
+        content, meta = providers.chat(provider, POLICY_SYSTEM, message, max_tokens=1024)
         try:
             answer = providers.extract_json(content)
             operation, target, confidence = _validate_llm_choice(answer, operations, targets)

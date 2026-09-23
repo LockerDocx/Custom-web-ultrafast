@@ -282,7 +282,19 @@ def warm_up(seconds=25.0, poll=1.0, sleeper=time.sleep, factory=None):
         sleeper(poll)
     notes["ready_s"] = round(time.perf_counter() - started, 1)
     page = _set_one_way(browser, page, notes, poll, sleeper)
+    notes["planner"] = _probe_planner(page)
     return browser, page, notes
+
+
+def _probe_planner(page, mission="prepared"):
+    """One planner call, reported: the agent swallows a failing planner by design."""
+    from jev_ultrafast import model
+
+    try:
+        steps = model.plan_steps(goals_for(mission), page)
+    except Exception as failure:  # noqa: BLE001 - the probe exists to name the failure
+        return f"failed: {type(failure).__name__}: {failure}"
+    return f"ok: {len(steps)} steps" if steps else "answered with no steps"
 
 
 def _set_one_way(browser, page, notes, poll=1.0, sleeper=time.sleep):
@@ -476,6 +488,8 @@ def render_report(outcome, reason, state, seconds, pacing, paced, chrome, note=N
             detail += " · cookie wall dismissed"
         if warm.get("ticket_type"):
             detail += f" · ticket type {warm['ticket_type']}"
+        if warm.get("planner"):
+            detail += f" · planner {warm['planner']}"
         lines.append(detail)
     if state.get("attempt", 1) > 1:
         lines.append(f"- Attempts: **{state['attempt']}** (an earlier run met a page that had not rendered)")
