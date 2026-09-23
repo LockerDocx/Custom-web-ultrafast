@@ -282,25 +282,25 @@ def test_fingerprint_tracks_values_and_identity_not_screenshots():
 
 @pytest.mark.parametrize("changed", ["Departure", "Where from?", "Where to?", "year"])
 def test_flight_verification_rejects_wrong_trip(changed):
-    from examples.flights import verify
+    from examples.flights import FIELD_DATE, ISO_DATE, OPTION_DATE, TARGET_DATE, verify
 
     actual = {
         "url": "https://www.google.com/travel/flights/search?tfs=example",
-        "text": "Track prices from Zürich to London departing 2026-09-20",
+        "text": f"Track prices from Zürich to London departing {ISO_DATE}",
         "actions": [
             {"label": k, "value": v}
             for k, v in [
                 ("Change ticket type. One way", "One way"),
                 ("Where from?", "Zürich"),
                 ("Where to?", "London"),
-                ("Departure", "Sun, Sep 20"),
-                ("Nonstop flight on Sunday, September 20. Select flight", ""),
+                ("Departure", FIELD_DATE),
+                (f"Nonstop flight on {OPTION_DATE}. Select flight", ""),
             ]
         ],
     }
     assert verify(actual)["passed"]
     if changed == "year":
-        actual["text"] = actual["text"].replace("2026", "2027")
+        actual["text"] = actual["text"].replace(str(TARGET_DATE.year), str(TARGET_DATE.year + 1))
     else:
         next(a for a in actual["actions"] if a["label"] == changed)["value"] = "wrong"
     assert not verify(actual)["passed"]
@@ -322,3 +322,42 @@ def test_navigation_during_prediction_reobserves_without_action(runner):
     assert runner.state["status"] == "ready"
     assert runner.state["decision"] is None
     runner.state["browser"].act.assert_not_called()
+
+
+def test_a_repeated_fill_commits_the_suggestion_instead_of_typing_again(runner, monkeypatch):
+    """Measured live: the field held "London", the suggestion was on screen, the model typed again."""
+    p = page()
+    p["actions"] = [
+        # The wrapper carries no value; the input inside it holds the text the model typed.
+        {"id": "e1", "kind": "fill", "label": "Where to?", "role": "combobox", "value": "", "node": 9},
+        {"id": "e2", "kind": "fill", "label": "Where to?", "role": "textbox", "value": "London", "node": 10},
+        {"id": "e9", "kind": "click", "label": "London, United Kingdom", "role": "option", "value": "0", "node": 11},
+    ]
+    p["fingerprint"] = fingerprint(p)
+    runner.state.update(page=p, decision=decision("e1"),
+                        history=[{"choice": "e0", "kind": "fill", "action": "Where to?",
+                                  "text": "London"}])
+    monkeypatch.setattr(loop, "field_text", Mock(return_value=("London", {"model": "test", "latency_ms": 5})))
+    runner.command("act", {"fingerprint": p["fingerprint"]})
+    clicked = runner.state["browser"].act.call_args.args[0]
+    assert clicked["id"] == "e9", "committing the suggestion is the step the goal still needs"
+    assert clicked["kind"] == "click"
+    assert runner.state["history"][-1]["recovered"] == "London, United Kingdom"
+    assert runner.state["history"][-1]["kind"] == "click"
+
+
+def test_a_first_fill_with_a_fresh_field_still_types_the_value(runner, monkeypatch):
+    p = page()
+    p["actions"] = [
+        {"id": "e1", "kind": "fill", "label": "Where to?", "role": "textbox", "value": "", "node": 10},
+        {"id": "e9", "kind": "click", "label": "London, United Kingdom", "role": "option", "value": "0", "node": 11},
+    ]
+    p["fingerprint"] = fingerprint(p)
+    runner.state.update(page=p, decision=decision("e1"), history=[
+        {"choice": "e0", "kind": "click", "action": "One way", "text": None}])
+    monkeypatch.setattr(loop, "field_text", Mock(return_value=("London", {"model": "test", "latency_ms": 5})))
+    runner.command("act", {"fingerprint": p["fingerprint"]})
+    act = runner.state["browser"].act.call_args
+    assert act.args[0]["id"] == "e1" and act.args[0]["kind"] == "fill"
+    assert act.kwargs["text"] == "London"
+    assert runner.state["history"][-1]["recovered"] is None

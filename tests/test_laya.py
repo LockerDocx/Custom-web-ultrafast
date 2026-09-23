@@ -57,18 +57,22 @@ def test_status_reports_each_state(monkeypatch):
 
 
 def test_route_task_uses_laya_when_confident():
+    # No explicit tool signal in the mission, so Laya is the deciding vote.
     fake = FakeLaya({"route": ("orchestrated", 0.91)})
     laya_local._engine = fake
-    assert orchestrator.route_task("Recherchiere Flüge und erstelle eine Datei") == "orchestrated"
+    assert orchestrator.route_task("Analiza lo que hay en esta página y dime qué ves") == "orchestrated"
     state, questions = fake.calls[0]
-    assert "Recherchiere" in state["mission"]
+    assert "Analiza lo que hay" in state["mission"]
     assert set(questions["route"]["criteria"]) == {"browser", "orchestrated"}
 
 
 def test_route_task_falls_back_below_the_confidence_gate():
-    laya_local._engine = FakeLaya({"route": ("orchestrated", 0.41)})  # below 0.55
-    # German mission with no keyword match → the keyword router says browser
-    assert orchestrator.route_task("Recherchiere Flüge und erstelle eine Datei") == "browser"
+    laya_local._engine = FakeLaya({"route": ("orchestrated", 0.41)})  # below the 0.75 gate
+    # A German tool mission is now caught by the keyword fallback: 0.4.0 extended the
+    # list from Spanish/English to six languages (measured in scripts/bench_routing.py).
+    assert orchestrator.route_task("Recherchiere Flüge und erstelle eine Datei") == "orchestrated"
+    # A page mission still stays in the browser loop, in German too.
+    assert orchestrator.route_task("Klicke auf den Login-Button auf dieser Seite") == "browser"
 
 
 def test_route_task_falls_back_when_laya_is_off_or_missing(monkeypatch):
@@ -158,3 +162,17 @@ def test_firefox_runner_routes_through_laya(monkeypatch):
     runner.start("Recherchiere Flüge und erstelle eine Datei", "https://example.com", 7)
     assert calls and calls[0][0] == "orchestrated"
     runner._lock.release()  # the mocked _run did not release what start() acquired
+
+
+def test_a_clear_tool_signal_outranks_a_confident_browser_answer():
+    """Measured in CI: Laya answered `browser` at 0.81 for a German file mission.
+
+    The under-routed direction cannot self-heal, so a strong tool signal wins over a
+    confident page answer; the opposite direction still completes, just slower.
+    """
+    laya_local._engine = FakeLaya({"route": ("browser", 0.95)})
+    assert orchestrator.route_task("Recherchiere Flüge und erstelle eine Datei mit den Preisen") == "orchestrated"
+    # With no tool signal in the mission, Laya still decides — and wins in both directions.
+    assert orchestrator.route_task("Find flights on this page") == "browser"
+    laya_local._engine = FakeLaya({"route": ("orchestrated", 0.9)})
+    assert orchestrator.route_task("Find flights on this page") == "orchestrated"

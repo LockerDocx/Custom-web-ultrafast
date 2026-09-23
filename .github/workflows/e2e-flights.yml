@@ -1,0 +1,197 @@
+name: E2E flights
+
+# The whole stack against the real Google Flights page: real Chrome through the CDP
+# harness, the real policy/text providers, the real agent loop, and an independent
+# verification of the resulting page (7 checks). Model calls are paced at 2.4 s so a
+# free provider tier is not hammered.
+#
+# Outcomes are reported honestly: a consent wall or CAPTCHA is infrastructure (the
+# step warns and exits 0); a mission that ran and did not satisfy the page checks is
+# a regression (exit 1).
+
+on:
+  workflow_dispatch:
+    inputs:
+      pacing:
+        description: "Seconds between model calls"
+        default: "2.4"
+      max_seconds:
+        description: "Mission time budget in seconds"
+        default: "900"
+      tpm:
+        description: "Token budget per minute per model (free Groq tier allows 8000)"
+        default: "7500"
+  pull_request:
+    paths:
+      - ".github/workflows/e2e-flights.yml"
+      - "scripts/e2e_flights.py"
+      - "examples/flights.py"
+      - "jev_ultrafast/agent.py"
+      - "jev_ultrafast/browser.py"
+      - "jev_ultrafast/model.py"
+      - "jev_ultrafast/providers.py"
+      - "jev_ultrafast/orchestrator.py"
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/e2e-flights.yml"
+      - "scripts/e2e_flights.py"
+      - "examples/flights.py"
+
+concurrency:
+  group: e2e-flights-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  flights:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install --quiet -e . "httpx[http2]" browser-harness==0.1.13
+      - name: Start a dedicated automation Chrome
+        # The harness daemon launches a local Chrome and, on a clean runner, cannot:
+        # headless Chrome with its own profile and an explicit CDP endpoint is the
+        # supported CI path (BU_CDP_URL), and it avoids the default-profile lockdown.
+        run: |
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)
+          echo "chrome binary: ${CHROME:-none}"
+          "${CHROME}" --version || true
+          "${CHROME}" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
+            --user-data-dir=/tmp/jev-chrome-profile --remote-debugging-port=9333 \
+            about:blank > /tmp/chrome.log 2>&1 &
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:9333/json/version > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:9333/json/version || { echo "CDP endpoint never came up"; tail -30 /tmp/chrome.log; exit 1; }
+      - name: Offline harness self-test (always)
+        run: python scripts/e2e_flights.py --selftest
+      - name: Live mission
+        id: mission
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CHROME_PATH: /usr/bin/google-chrome
+          BU_CDP_URL: http://127.0.0.1:9333
+          PLANNER_PROVIDER: nvidia
+          PLANNER_MODEL: z-ai/glm-5.3
+          PLANNER_REASONING: none
+          # Two walls measured live: gpt-oss-20b types the airport name and then refuses
+          # to commit the autocomplete suggestion, and NVIDIA's NIM endpoint answered the
+          # much larger policy prompt with connection timeouts (25 s client limit). So the
+          # executor is a bigger model on the fast endpoint, with reasoning off and 1024
+          # tokens per call.
+          POLICY_PROVIDER: groq
+          POLICY_MODEL: openai/gpt-oss-120b
+          POLICY_REASONING: low
+          # The routing battery samples groq:openai/gpt-oss-20b at the same time, and Groq
+          # spends the minute per model: the text role uses the executor's model instead,
+          # so the live mission never competes with another workflow for its allowance.
+          # The text role writes short field values; a small fast model has its own
+          # tokens-per-minute allowance, so it neither competes with the executor's
+          # reasoning model nor waits behind it.
+          # Free tiers are spent per model and per day (measured: `tokens per day (TPD):
+          # Limit 200000`; a mission costs roughly half of that), and the 20B allowance is
+          # spent first. So the mission runs on the one allowance that can carry it —
+          # Groq's 120B, executor and text writer together — and the planner on NVIDIA,
+          # which is optional: the prepared brief already carries the plan, and the agent
+          # proceeds without a planner when the endpoint refuses.
+          TEXT_MODEL_PROVIDER: groq
+          TEXT_MODEL: openai/gpt-oss-120b
+          TEXT_MODEL_REASONING: low
+        run: |
+          if [ -z "${GROQ_API_KEY}" ]; then
+            echo "## 🛫 E2E flights" > /tmp/report.md
+            echo "" >> /tmp/report.md
+            echo "Skipped: no GROQ_API_KEY secret in this repository." >> /tmp/report.md
+            cat /tmp/report.md
+            exit 0
+          fi
+          set +e
+          python scripts/e2e_flights.py \
+            --max-seconds "${{ github.event.inputs.max_seconds || 900 }}" \
+            --pacing "${{ github.event.inputs.pacing || 1.5 }}" \
+            --tpm "${{ github.event.inputs.tpm || 7500 }}" \
+            --artifacts artifacts/e2e-flights \
+            --json artifacts/e2e-flights.json 2> /tmp/mission.err | tee /tmp/report.md
+          # `tee` would swallow the real status; PIPESTATUS[0] is the mission's.
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          if [ ! -s /tmp/report.md ]; then
+            # A driver that crashed before printing still owes the PR an explanation.
+            {
+              echo "## 🛫 E2E flights — Zurich → London on the live Google Flights page"
+              echo ""
+              echo "🔴 **failed** — the driver wrote no report. stderr:"
+              echo ""
+              echo '```'
+              tail -30 /tmp/mission.err 2>/dev/null || echo "(no stderr)"
+              echo '```'
+            } > /tmp/report.md
+          fi
+          exit 0
+      - name: Publish the report as annotations (always)
+        if: always()
+        # The PR comment is the human channel; annotations are readable from the REST API
+        # even when the job log itself is not, which is how a reviewer without log access
+        # still sees what the mission did.
+        run: |
+          sed -n '3p' /tmp/report.md 2>/dev/null | while IFS= read -r line; do
+            echo "::warning title=e2e::${line}"
+          done
+          grep -E '^- (Model calls|Mission|Warm-up|Rate limiting)' /tmp/report.md 2>/dev/null \
+            | cut -c1-180 | while IFS= read -r line; do
+            echo "::warning title=e2e::${line}"
+          done
+          grep -E '^\| [0-9]+ \|' /tmp/report.md 2>/dev/null | cut -c1-170 | while IFS= read -r line; do
+            echo "::warning title=e2e-step::${line}"
+          done
+          grep -E '^- ' /tmp/report.md 2>/dev/null | tail -8 | cut -c1-200 | while IFS= read -r line; do
+            echo "::warning title=e2e-detail::${line}"
+          done
+          tail -6 /tmp/mission.err 2>/dev/null | cut -c1-200 | while IFS= read -r line; do
+            echo "::warning title=e2e-stderr::${line}"
+          done
+      - name: Daemon and Chrome diagnostics
+        if: always()
+        run: |
+          echo "=== chrome.log ==="; tail -30 /tmp/chrome.log 2>/dev/null || true
+          echo "=== CDP /json/version ==="; curl -s http://127.0.0.1:9333/json/version || true
+          echo "=== harness daemon log ==="
+          tail -40 "$HOME/.config/browser-harness/tmp/bu-default.log" 2>/dev/null || echo "(no daemon log)"
+          echo "=== mission json ==="
+          cat artifacts/e2e-flights.json 2>/dev/null || echo "(no mission json)"
+      - name: Upload the artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-flights
+          path: |
+            artifacts/e2e-flights.json
+            artifacts/e2e-flights/state.json
+          if-no-files-found: ignore
+      - name: Comment on the pull request
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/comment_on_pr.sh /tmp/report.md | tee /tmp/comment.log
+          tail -3 /tmp/comment.log | cut -c1-200 | while IFS= read -r line; do
+            echo "::warning title=e2e-comment::${line}"
+          done
+      - name: Fail the job when the mission ran and failed
+        if: steps.mission.outputs.exit_code != '0'
+        run: |
+          echo "The live flights mission reported a failure (exit ${{ steps.mission.outputs.exit_code }})."
+          exit 1

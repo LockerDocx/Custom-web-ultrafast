@@ -1,0 +1,78 @@
+name: Routing battery
+
+# The 0.4.0 quality gate with real resources: loads the REAL open Laya weights,
+# routes all 241 labelled missions through the shipped stack (Laya above the 0.75
+# gate, multilingual keyword router below it), and comments the report on the PR.
+#
+# The headline metric is dangerous confusion: a tool mission sent to the browser
+# loop cannot self-heal. The keyword layer is also measured against the frozen
+# 0.3.0 baseline, so the effect of a change is a number, not an opinion.
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - ".github/workflows/routing-battery.yml"
+      - "scripts/bench_routing.py"
+      - "scripts/routing_cases.py"
+      - "jev_ultrafast/orchestrator.py"
+      - "jev_ultrafast/laya_local.py"
+  push:
+    branches: ["main", "arena/**"]
+    paths:
+      - ".github/workflows/routing-battery.yml"
+      - "scripts/bench_routing.py"
+      - "scripts/routing_cases.py"
+      - "jev_ultrafast/orchestrator.py"
+      - "jev_ultrafast/laya_local.py"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  battery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Cache the Laya weights
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: laya-weights-multilingual-v1
+      - name: Install (CPU torch first, so the runner stays light)
+        run: |
+          python -m pip install --upgrade pip
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet -e ".[laya]" "httpx[http2]" browser-harness==0.1.13
+      - name: Run the 241-mission battery with the real weights
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          POLICY_PROVIDER: groq
+          POLICY_MODEL: openai/gpt-oss-20b
+          POLICY_REASONING: low
+          LAYA_CHECKPOINT: multilingual
+        run: |
+          SAMPLE=0
+          if [ -n "${GROQ_API_KEY}" ]; then SAMPLE=24; fi
+          python scripts/bench_routing.py \
+            --sample "${SAMPLE}" \
+            --json artifacts/routing-battery.json \
+            --floor 0.85 \
+            --dangerous-max 5 | tee /tmp/report.md
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: routing-battery
+          path: artifacts/routing-battery.json
+          if-no-files-found: ignore
+      - name: Comment on the pull request
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/comment_on_pr.sh /tmp/report.md

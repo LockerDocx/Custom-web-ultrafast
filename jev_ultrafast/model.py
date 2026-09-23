@@ -271,10 +271,18 @@ def typesafe_choose(state, goal, history):
     }
 
 
+POLICY_TEXT_CHARS = 2500
+FIELD_TEXT_CHARS = 2000
+
+
 def _policy_request(goal, state, elements, operations, history):
     lines = [f"GOAL: {goal}", "", f"PAGE: {state['url']} — {state['title']}"]
     if state.get("text"):
-        lines.append(f"PAGE TEXT (excerpt): {state['text']}")
+        # The indexed element table below carries the actionable detail; the free text is
+        # context. Measured on the live flights mission, sending all 6000 observed
+        # characters cost most of a free tier's minute per decision, so the excerpt is
+        # trimmed here and the full text stays in the page state for verification.
+        lines.append(f"PAGE TEXT (excerpt): {state['text'][:POLICY_TEXT_CHARS]}")
     lines.append("")
     lines.append("ELEMENTS (index · role · label · current value · operations):")
     for element in elements:
@@ -330,7 +338,9 @@ def provider_choose(state, goal, history):
         message = user
         if attempt:
             message += "\n\nYour previous reply was rejected. Respond again with ONLY the JSON object."
-        content, meta = providers.chat(provider, POLICY_SYSTEM, message, max_tokens=512)
+        # Same reasoning as the text helper: a thinking model needs room for the
+        # thought and the answer, and a truncated reply is an invalid choice.
+        content, meta = providers.chat(provider, POLICY_SYSTEM, message, max_tokens=2048)
         try:
             answer = providers.extract_json(content)
             operation, target, confidence = _validate_llm_choice(answer, operations, targets)
@@ -371,27 +381,43 @@ def field_context(goal, action, page, history):
     return {
         "goal": goal,
         "field": {k: action.get(k) for k in ("label", "role", "value")},
-        "page": {"title": page["title"], "text": page["text"][:6000]},
+        "page": {"title": page["title"], "text": page["text"][:FIELD_TEXT_CHARS]},
         "recent_actions": [{k: h.get(k) for k in ("action", "text")} for h in history[-6:]],
     }
 
 
 def field_text(context):
     provider = providers.resolve("text")
+    request = json.dumps(context)
     started = time.perf_counter()
-    content, meta = providers.chat(provider, TEXT_VALUE, json.dumps(context), max_tokens=1024)
-    try:
-        output = providers.extract_json(content)
-        value = output["text"]
-        if set(output) != {"text"} or not isinstance(value, str) or not value.strip() or len(value) > 2000:
-            raise ValueError()
-    except (ValueError, KeyError, TypeError):
-        raise ValueError("Text helper returned no valid field value; nothing typed.") from None
-    return value, {
-        "model": provider["model"],
-        "latency_ms": round((time.perf_counter() - started) * 1000),
-        "usage": meta.get("usage", {}),
-    }
+    content, meta = None, None
+    for attempt in range(2):
+        message = request
+        if attempt:
+            message += ('\n\nYour previous reply was rejected. The goal states the value this field needs: '
+                        'reply with ONLY {"text": "that value, exactly as the goal writes it"}.')
+        # A reasoning model spends part of this budget thinking, and a field value is
+        # short: 1024 tokens was enough for the answer and not for the thinking, which is
+        # how a two-attempt retry came back empty on the live mission.
+        content, meta = providers.chat(provider, TEXT_VALUE, message, max_tokens=2048)
+        try:
+            output = providers.extract_json(content)
+            value = output["text"]
+            if set(output) != {"text"} or not isinstance(value, str) or not value.strip() or len(value) > 2000:
+                raise ValueError()
+        except (ValueError, KeyError, TypeError) as rejected:
+            # Say what the model actually answered: "nothing typed" alone sent a maintainer
+            # hunting through logs for a field this layer owns.
+            sample = redact(" ".join((content or "").split()))[:160]
+            why = f"{type(rejected).__name__}: {rejected}" if str(rejected) else "no usable text"
+            last = f"last reply: {sample!r}" if sample else "last reply: empty"
+            continue  # a small model answers {"text": null} now and then; ask once more
+        return value, {
+            "model": provider["model"],
+            "latency_ms": round((time.perf_counter() - started) * 1000),
+            "usage": meta.get("usage", {}),
+        }
+    raise ValueError(f"Text helper returned no valid field value ({why}; {last}); nothing typed.") from None
 
 
 def planning_config():

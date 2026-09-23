@@ -241,7 +241,9 @@ def test_choose_uses_the_provider_when_typesafe_is_unset(monkeypatch):
     assert d["probabilities"] == {"e3": 0.9}
     assert d["target_confidence"] == 0.9 and d["target_probabilities"] == {}
     body = post.call_args.args[2]
-    assert body["model"] == "test-model" and body["max_tokens"] == 512
+    assert body["model"] == "test-model" and body["max_tokens"] == 2048, (
+        "a policy model that reasons needs room for its thinking and its answer"
+    )
     user = body["messages"][1]["content"]
     assert "GOAL: Find a book" in user
     assert "[1] textbox · Search" in user and "[2] button · Go" in user
@@ -621,3 +623,102 @@ def test_chat_gives_up_when_the_error_is_not_a_parameter_issue(monkeypatch):
     monkeypatch.setattr(model, "post_json", Mock(side_effect=RuntimeError("HTTP 401: invalid api key")))
     with pytest.raises(RuntimeError, match="401"):
         providers.chat(providers.resolve("policy"), "s", "u")
+
+
+def test_a_rejected_json_schema_is_dropped_instead_of_killing_the_run():
+    from jev_ultrafast.providers import _droppable_param
+
+    groq_error = ('Model provider returned HTTP 400: {"error":{"message":"Failed to validate JSON. '
+                  'Please adjust your prompt. See \'failed_generation\' for more details.",'
+                  '"code":"json_validate_failed"}}')
+    assert _droppable_param(groq_error, set(), "openai") == "response_format"
+    assert _droppable_param(groq_error, {"response_format"}, "openai") is None
+    # A plain bad request stays a bad request.
+    assert _droppable_param("Model provider returned HTTP 400: bad request", set(), "openai") is None
+
+
+def test_the_text_helper_asks_once_more_before_giving_up(monkeypatch):
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    post = Mock(side_effect=[
+        {"model": "m", "choices": [{"message": {"content": '{"text": null}'}}]},
+        {"model": "m", "choices": [{"message": {"content": '{"text": "Zürich"}'}}]},
+    ])
+    monkeypatch.setattr(model, "post_json", post)
+    value, _meta = model.field_text({"goal": "Find flights from Zurich to London"})
+    assert value == "Zürich"
+    assert post.call_count == 2
+    assert "rejected" in post.call_args.args[2]["messages"][1]["content"]
+
+
+def test_the_policy_prompt_trims_the_page_text_but_keeps_the_elements():
+    """A 6000-character excerpt cost most of a free tier's minute per decision."""
+    from jev_ultrafast.model import POLICY_TEXT_CHARS, _policy_request
+
+    state = {
+        "url": "https://www.google.com/travel/flights?hl=en",
+        "title": "Flights",
+        "text": "x" * 6000,
+        "actions": [{"id": "e1", "node": 11, "label": "Where from?", "role": "textbox",
+                     "kind": "fill", "operations": ["TYPE_TEXT"]}],
+    }
+    elements, targets, _controls = model.action_space(state["actions"])
+    operations = model.operation_catalog(targets, {})
+    request = _policy_request("Find flights", {**state}, elements, operations, [])
+    assert "x" * POLICY_TEXT_CHARS in request
+    assert "x" * (POLICY_TEXT_CHARS + 1) not in request
+    assert "Where from?" in request, "the element table is the part that decides"
+
+
+def test_the_text_helper_leaves_room_for_a_reasoning_model(monkeypatch):
+    """A field value is short; the budget is for the model's thinking, not the answer."""
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    seen = {}
+
+    def fake_post_json(url, key, body, headers=None):
+        seen.update(body)
+        return {"model": "m", "choices": [{"message": {"content": '{"text": "London"}'}}]}
+
+    monkeypatch.setattr(model, "post_json", fake_post_json)
+    value, _meta = model.field_text({"goal": "Find flights to London"})
+    assert value == "London"
+    assert seen["max_tokens"] >= 2048
+
+
+def test_the_text_helper_says_what_the_model_answered(monkeypatch):
+    """A failure this layer owns must name its cause, not say 'nothing typed'."""
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+
+    def fake_post_json(url, key, body, headers=None):
+        return {"model": "m", "choices": [{"message": {"content": '{"text": "Zurich", "confidence": 9}'}}]}
+
+    monkeypatch.setattr(model, "post_json", fake_post_json)
+    with pytest.raises(ValueError) as failure:
+        model.field_text({"goal": "Find flights from Zurich"})
+    message = str(failure.value)
+    assert "nothing typed" in message
+    assert "confidence" in message, "the reply itself belongs in the message"
+
+
+def test_the_text_retry_points_at_the_goal_when_the_model_says_null(monkeypatch):
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    seen = []
+
+    def fake_post_json(url, key, body, headers=None):
+        seen.append(body["messages"][1]["content"])
+        return {"model": "m", "choices": [{"message": {"content": '{"text": null}'}}]}
+
+    monkeypatch.setattr(model, "post_json", fake_post_json)
+    with pytest.raises(ValueError):
+        model.field_text({"goal": "Type London into the Where to? field"})
+    assert len(seen) == 2
+    assert "goal states the value" in seen[1], "a null answer needs a targeted retry, not a repeat"
+
+
+def test_the_field_context_keeps_the_page_text_short():
+    """A field value does not need the whole page: the excerpt is context, the goal is the source."""
+    from jev_ultrafast.model import FIELD_TEXT_CHARS, field_context
+
+    page = {"title": "Flights", "text": "y" * 6000}
+    context = field_context("Type London into Where to?", {"label": "Where to?", "role": "textbox"}, page, [])
+    assert len(context["page"]["text"]) == FIELD_TEXT_CHARS
+    assert context["field"]["label"] == "Where to?"

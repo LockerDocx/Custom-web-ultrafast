@@ -3,16 +3,56 @@
 import argparse
 import base64
 import json
+import os
+from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from jev_ultrafast import Agent
 
 URL = "https://www.google.com/travel/flights?hl=en"
+
+# The demo used to hard-code 20 September 2026. That date has passed, and Google Flights
+# cannot sell a past date, so the run could never satisfy its own checks. The target is
+# computed at import time and stays DAYS_AHEAD out: far enough to be a real trip, close
+# enough to sit in the calendar the picker opens on. Override with FLIGHTS_DAYS_AHEAD.
+DAYS_AHEAD = int(os.environ.get("FLIGHTS_DAYS_AHEAD", "30"))
+TARGET_DATE = date.today() + timedelta(days=DAYS_AHEAD)
+ISO_DATE = TARGET_DATE.isoformat()
+FIELD_DATE = f"{TARGET_DATE:%a, %b} {TARGET_DATE.day}"  # what the Departure field shows
+OPTION_DATE = f"{TARGET_DATE:%A, %B} {TARGET_DATE.day}"  # what a flight option says
 GOALS = (
-    "Find one-way flights from Zurich to London on September 20, 2026, for one adult in economy. "
+    f"Find one-way flights from Zurich to London on {TARGET_DATE:%B} {TARGET_DATE.day}, "
+    f"{TARGET_DATE.year}, for one adult in economy. "
     "Stop when matching flight options are visible. Do not select or book a flight."
 )
+
+
+STEPS = [
+    "The ticket type is already set to one way and that control reads "
+    "'Change ticket type. One way' — do not touch it.",
+    "Type Zurich into the 'Where from?' field, then choose the Zürich, Switzerland option from the list.",
+    "Type London into the 'Where to?' field, then choose the London, United Kingdom option from the list.",
+    f"Open the departure date picker, choose {OPTION_DATE}, and confirm it.",
+    "Wait until matching one-way flight options are visible. Do not select or book a flight.",
+]
+# The demo video was a prepared run (docs/flights-prepared-measurement.json): a written
+# plan removes the free-form part of the task and keeps the part the stack is being
+# tested on — reading the page, filling the fields, and verifying the result.
+PREPARED_GOALS = (
+    "Find one-way flights from Zurich to London for one adult in economy, following this "
+    "documented plan exactly, one step at a time:\n"
+    + "\n".join(f"{number}. {step}" for number, step in enumerate(STEPS, 1))
+)
+MISSIONS = {"cold": GOALS, "prepared": PREPARED_GOALS}
+
+
+def goals_for(mission="prepared"):
+    """The mission brief for a named mode; an unknown name is a caller error, not a default."""
+    try:
+        return MISSIONS[mission]
+    except KeyError:
+        raise ValueError(f"Unknown mission {mission!r}; known: {', '.join(sorted(MISSIONS))}") from None
 
 
 def verify(page):
@@ -20,7 +60,7 @@ def verify(page):
     parsed = urlparse(page["url"])
     encoded = parse_qs(parsed.query).get("tfs", [""])[0]
     try:
-        date_in_url = b"2026-09-20" in base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+        date_in_url = ISO_DATE.encode() in base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
     except ValueError:
         date_in_url = False
     actions = page["actions"]
@@ -31,9 +71,9 @@ def verify(page):
         "one_way": values.get("Change ticket type. One way") == "One way",
         "origin": values.get("Where from?") == "Zürich",
         "destination": values.get("Where to?") == "London",
-        "date": values.get("Departure") == "Sun, Sep 20",
-        "year": date_in_url or "departing 2026-09-20" in page["text"],
-        "results": bool(flights) and all("Sunday, September 20" in f for f in flights),
+        "date": values.get("Departure") == FIELD_DATE,
+        "year": date_in_url or f"departing {ISO_DATE}" in page["text"],
+        "results": bool(flights) and all(OPTION_DATE in f for f in flights),
     }
     return {"passed": all(checks.values()), "checks": checks, "visible_flights": flights}
 

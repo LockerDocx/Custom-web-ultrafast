@@ -97,6 +97,41 @@ class Agent:
         state["replans"] = state.get("replans", 0) + 1
         return True
 
+    def _suggestion_for_repeated_fill(self, page, action, selected, text):
+        """The offered suggestion that commits a fill the model is repeating.
+
+        Measured on the live flights mission: the destination field already held
+        "London", the suggestion "London, United Kingdom" was on screen, and the model
+        typed the same value into the same field twice more, and again, until the run's
+        budget was gone. A repeated fill whose value the field already holds is not an
+        instruction to type again: the goal needs the suggestion clicked.
+        """
+        previous = self.state["history"][-1] if self.state["history"] else None
+        if not previous or previous.get("kind") != "fill":
+            return None
+        # The same field is observed twice — the input and its combobox wrapper are separate
+        # elements — so the last action, not the element id, is what says "we just typed this".
+        if (previous.get("text") or "").strip().lower() != text.strip().lower():
+            return None
+        label = (action.get("label") or "").strip().lower()
+        previous_label = (previous.get("action") or "").strip().lower()
+        if previous_label != label:
+            return None
+        # The field is observed more than once (input and combobox wrapper) and only one of
+        # those elements carries the text, so "already filled" is asked of the whole field.
+        wanted = text.strip().lower()
+        holds = any((candidate.get("label") or "").strip().lower() == label
+                    and str(candidate.get("value") or "").strip().lower().startswith(wanted)
+                    for candidate in page.get("actions") or [])
+        if not holds:
+            return None
+        for candidate in page.get("actions") or []:
+            if candidate.get("id") == action.get("id") or candidate.get("kind") != "click":
+                continue
+            if wanted and wanted in candidate.get("label", "").strip().lower():
+                return candidate
+        return None
+
     def command(self, name, body=None):
         body = body or {}
         state = self.state
@@ -162,7 +197,7 @@ class Agent:
             if len(state["history"]) >= MAX_STEPS:
                 state["status"] = "blocked"
                 raise ValueError(f"Stopped at the {MAX_STEPS}-action demo budget")
-            text, helper = None, None
+            text, helper, suggestion = None, None, None
             if action["kind"] == "fill":
                 if not state["browser"].fresh(page):
                     raise StalePage("Page changed before text generation. Choose again.")
@@ -173,6 +208,10 @@ class Agent:
                     text, helper = field_text(context)
                     self.pending_text = (context, text, helper)
                     state["text_calls"].append({**helper, "field": action["label"], "value": text})
+                suggestion = self._suggestion_for_repeated_fill(page, action, selected, text)
+                if suggestion is not None:
+                    # The typing is already done; committing it is the step that remains.
+                    action, text = suggestion, None
             # Browser.act checks freshness immediately before input, including after text generation.
             state["browser"].act(action, page, text=text)
             self.pending_text = None
@@ -193,6 +232,7 @@ class Agent:
                     "operation": decision["operation"],
                     "target": decision["target"],
                     "page_changed": None,
+                    "recovered": suggestion["label"] if suggestion is not None else None,
                     "url": page["url"],
                     "usage": decision["usage"],
                     "executed_ms": round((time.perf_counter() - state["started_at"]) * 1000),
