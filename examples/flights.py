@@ -29,8 +29,8 @@ GOALS = (
 
 
 STEPS = [
-    "Check the ticket type: it is correct only when that control reads 'Change ticket type. One way'. "
-    "If it reads '... Round trip', set it to one way; if it already reads One way, leave it alone.",
+    "The ticket type is already set to one way and that control reads "
+    "'Change ticket type. One way' — do not touch it.",
     "Type Zurich into the 'Where from?' field, then choose the Zürich, Switzerland option from the list.",
     "Type London into the 'Where to?' field, then choose the London, United Kingdom option from the list.",
     f"Open the departure date picker, choose {OPTION_DATE}, and confirm it.",

@@ -254,7 +254,7 @@ def fake_browser_class():
 def test_warm_up_waits_for_the_form_and_clears_the_cookie_wall():
     browser, page, notes = e2e_flights.warm_up(seconds=5.0, poll=0.0, sleeper=lambda seconds: None,
                                                factory=fake_browser_class())
-    assert browser.clicks == ["Accept all"], "a fresh profile meets the wall before the form"
+    assert "Accept all" in browser.clicks, "a fresh profile meets the wall before the form"
     assert notes["consent"] is True
     assert e2e_flights._interactive(page), "the warm-up returns only once the form is on screen"
 

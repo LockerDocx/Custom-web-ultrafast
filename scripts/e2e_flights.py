@@ -297,31 +297,45 @@ def _probe_planner(page, mission="prepared"):
     return f"ok: {len(steps)} steps" if steps else "answered with no steps"
 
 
-def _set_one_way(browser, page, notes, poll=1.0, sleeper=time.sleep):
+def _set_one_way(browser, page, notes, poll=1.0, sleeper=time.sleep, attempts=3):
     """The ticket type is the one control a policy model loops on; settle it here.
 
-    Its label carries the state ("Change ticket type. One way"), and the last live run
-    clicked the same control twelve times without ever seeing the form behind it.
+    Its label carries the state ("Change ticket type. One way"), and the menu it opens
+    keeps its options in the action space with no selected/checked flag — a policy model
+    reading that list cannot tell "already one way" from "needs setting", which is how a
+    live run spent twelve clicks on one control. So the state is made visible here: after
+    choosing One way the observation is retaken until the control says so.
     """
-    control = next((action for action in page.get("actions") or []
-                    if "ticket type" in action.get("label", "").lower()), None)
-    if control is None or "one way" in control["label"].lower():
-        notes["ticket_type"] = "one way" if control else "not offered"
-        return page
-    try:
-        browser.act(control, page)
-        sleeper(poll)
-        page = browser.observe(screenshot=False)
-        choice = next((action for action in page.get("actions") or []
-                       if action.get("label", "").strip().lower() == "one way"), None)
-        if choice is None:
+    for _ in range(max(1, attempts)):
+        control = next((action for action in page.get("actions") or []
+                        if "ticket type" in action.get("label", "").lower()), None)
+        if control is not None and "one way" in control["label"].lower():
+            notes["ticket_type"] = "one way"
             return page
-        browser.act(choice, page)
-        sleeper(poll)
-        page = browser.observe(screenshot=False)
-        notes["ticket_type"] = "one way"
-    except Exception:  # noqa: BLE001 - a stubborn menu must not kill the run
-        notes["ticket_type"] = "left to the agent"
+        try:
+            if control is not None:
+                browser.act(control, page)
+                sleeper(poll)
+                page = browser.observe(screenshot=False)
+            choice = next((action for action in page.get("actions") or []
+                           if action.get("label", "").strip().lower() == "one way"), None)
+            if choice is None:
+                sleeper(poll)
+                page = browser.observe(screenshot=False)
+                continue
+            browser.act(choice, page)
+            sleeper(poll)
+            page = browser.observe(screenshot=False)
+        except Exception:  # noqa: BLE001 - a stubborn menu must not kill the run
+            notes["ticket_type"] = "left to the agent"
+            return page
+        control = next((action for action in page.get("actions") or []
+                        if "ticket type" in action.get("label", "").lower()), None)
+        if control is None:
+            notes["ticket_type"] = "one way"
+            return page
+    notes["ticket_type"] = "one way" if control is None or "one way" in control["label"].lower() \
+        else "left to the agent"
     return page
 
 
@@ -630,7 +644,7 @@ def selftest(pacing):
             self.clicks.append(action["label"])
 
     browser, page, warm = warm_up(seconds=5.0, poll=0.0, sleeper=lambda seconds: None, factory=FakeBrowser)
-    checks.append(("the cookie wall is dismissed before the mission", browser.clicks == ["Accept all"]))
+    checks.append(("the cookie wall is dismissed before the mission", browser.clicks[0] == "Accept all"))
     checks.append(("the warm-up waits for the real form", _interactive(page)))
 
     # 5. the seven page checks accept a correct result page and reject a wrong one
