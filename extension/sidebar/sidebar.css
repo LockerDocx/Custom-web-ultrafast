@@ -182,6 +182,33 @@ select:focus, input[type="number"]:focus { outline: 1px solid var(--accent); }
 .task-step .res { color: var(--muted); font-size: 11px; word-break: break-word; }
 .task-step .err { color: #ffb3c1; font-size: 11px; word-break: break-word; }
 .task-step.bad { border-color: #7a2b3f; }
+.thinking {
+  background: var(--bg);
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: 11px/1.5 ui-monospace, Consolas, monospace;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.profile-row { flex-wrap: wrap; }
+.profile-row input[type="text"] {
+  flex: 1;
+  min-width: 120px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12px;
+}
+.chip.profile { display: inline-flex; align-items: center; gap: 6px; }
+.chip.profile .del { font-style: normal; color: var(--muted); padding: 0 2px; }
+.chip.profile .del:hover { color: #ffb3c1; }
 .final {
   background: var(--bg);
   border: 1px solid var(--accent);

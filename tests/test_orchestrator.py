@@ -28,7 +28,7 @@ class ScriptedChat:
         self.replies = list(replies)
         self.calls = []
 
-    def __call__(self, provider, system, conversation, max_tokens=1024):
+    def __call__(self, provider, system, conversation, max_tokens=1024, on_delta=None):
         self.calls.append((system, conversation))
         reply = self.replies.pop(0) if self.replies else '{"final": "done"}'
         return reply, {"usage": {"input_tokens": 10, "output_tokens": 5}}

@@ -161,6 +161,27 @@ Si no respondes en 2 minutos, se considera **Deny** (máxima seguridad). Los com
 
 ---
 
+## 🥔 PC modesto o cero claves: modo 100% gratis y offline (opcional)
+
+Si tu PC va justo de RAM o no quieres usar ninguna clave, el agente puede pensar **dentro de tu propio ordenador** con un modelo pequeño y gratis. Guía completa con tablas de modelos según tu RAM/GRÁFICA: **`docs/modelos-locales.md`** (en español). Versión rápida:
+
+1. Entra en **https://ollama.com/download** y descarga Ollama (botón grande de tu sistema).
+2. Instálalo con doble clic (siguiente, siguiente). Verás un icono de llama 🦙 en la barra.
+3. Abre la aplicación **Terminal / Símbolo del sistema** y escribe exactamente:
+   `ollama pull qwen3.5:4b` → Enter → espera la descarga (~2,7 GB; con 8 GB de RAM usa `ollama pull phi4-mini` en su lugar).
+4. Prueba que va: `ollama run qwen3.5:4b "di hola"` → debe contestar → escribe `/bye`.
+5. Abre el `.env` del proyecto (Bloc de notas) y cambia estas líneas para que digan:
+   ```
+   POLICY_PROVIDER=ollama
+   POLICY_MODEL=qwen3.5:4b
+   TEXT_MODEL_PROVIDER=ollama
+   TEXT_MODEL=qwen3.5:4b
+   ```
+   (el planner puedes dejarlo en la nube gratis como estaba — es lo que mejor funciona)
+6. Guarda, arranca el starter y pulsa **Test setup** → 🟢 sin haber pegado ninguna clave.
+
+> Qué esperar: cada paso del navegador tarda **3-8 segundos** en CPU (Groq tardaba menos de 1), pero todo ocurre en tu PC, gratis y sin internet. Si se atasca mucho, usa un modelo mayor o vuelve a Groq.
+
 ## 🔧 Problemas comunes
 
 | Veo esto… | Solución |
@@ -182,6 +203,9 @@ Si no respondes en 2 minutos, se considera **Deny** (máxima seguridad). Los com
 | *"Missing library for .pdf files"* al analizar un PDF | Cierra la ventana negra y vuelve a arrancar con el **starter nuevo** (instala el soporte de PDF/Word/Excel solo). Si persiste: en la carpeta del proyecto ejecuta `pip install -e ".[documents]"` y reinicia |
 | No aparece el aviso 🔐 pero el comando no se ejecuta | Es lo esperado: sin respuesta en 2 minutos se considera "Deny". Vuelve a lanzar la misión y pulsa **Approve** cuando aparezca |
 | La sección **Steps** se queda mucho en "working…" | Las misiones con búsqueda web tardan más (varias llamadas al modelo). El botón **Stop** funciona igual |
+| Uso Ollama y en **Test setup** sale 🔴 "connection refused" | Ollama no está arrancado → ábrelo (icono 🦙) o ejecuta `ollama serve` en la terminal, y pulsa Test setup otra vez |
+| Elegí un modelo local y el agente va **muy lento** | Normal en CPU (3-8 s/paso). Guía de modelos según tu máquina: `docs/modelos-locales.md`. Con GRÁFICA de 6 GB+ prueba `qwen3.5:9b` |
+| El desplegable del panel no muestra los modelos de Ollama | Pulsa **Refresh catalogue** con Ollama encendido; solo lista modelos ya descargados (`ollama pull …`) |
 
 ## ❓ Preguntas rápidas
 

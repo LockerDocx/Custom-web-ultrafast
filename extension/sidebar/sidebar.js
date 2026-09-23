@@ -47,10 +47,13 @@ function renderLive(live) {
     blocked: "blocked",
   };
   $("status").textContent = labels[live.status] || live.status || "";
-  $("step-count").textContent =
-    live.history && live.history.length
-      ? `${live.history.length} actions · ${(live.elapsed_ms / 1000).toFixed(1)} s`
-      : "";
+  $("step-count").textContent = [
+    live.history && live.history.length ? `${live.history.length} actions` : "",
+    live.elapsed_ms ? `${(live.elapsed_ms / 1000).toFixed(1)} s` : "",
+    state.tokens ? `${state.tokens >= 1000 ? (state.tokens / 1000).toFixed(1) + "k" : state.tokens} tokens` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
   if (live.page.screenshot) $("screenshot").src = `data:image/jpeg;base64,${live.page.screenshot}`;
   $("screenshot").alt = live.page.title || live.page.url;
   const plan = live.plan || [];
@@ -90,6 +93,7 @@ function renderTask(task) {
   ]
     .filter(Boolean)
     .join(" · ");
+  $("thinking").hidden = true; // a step arrived: the live model output is now a step entry
   const skills = task.skills || [];
   $("task-skills").innerHTML = skills.length
     ? skills.map((s) => `<span class="chip" title="Skill guiding this mission">🧩 ${escape(s)}</span>`).join("")
@@ -163,7 +167,7 @@ function modelOptions(roleKey, selection, registryData) {
 
 function renderModelsPanel() {
   if (!state || !state.selection || !state.schema) return;
-  const signature = JSON.stringify([state.selection, state.presets, state.schema, registry]);
+  const signature = JSON.stringify([state.selection, state.presets, state.schema, state.profiles, registry]);
   if (signature === modelsSignature) return; // don't rebuild while the user interacts
   modelsSignature = signature;
   const roles = state.schema.roles || [];
@@ -175,6 +179,13 @@ function renderModelsPanel() {
         `<button class="chip" data-preset="${escape(key)}" title="${escape(p.description || "")}">${escape(p.label)}</button>`,
     )
     .join("");
+  $("profiles").innerHTML = (state.profiles || [])
+    .map(
+      (name) =>
+        `<span class="chip profile" data-profile="${escape(name)}" title="Click to apply this profile">${escape(name)}` +
+        `<i class="del" data-profile-del="${escape(name)}" title="Delete profile">×</i></span>`,
+    )
+    .join("") || '<span class="hint">none saved yet</span>';
   $("model-roles").innerHTML = roles
     .map((role) => {
       const sel = state.selection[role.key] || {};
@@ -244,6 +255,19 @@ function wireModelsPanel() {
   document.querySelectorAll("[data-preset]").forEach((button) => {
     button.addEventListener("click", async () => {
       const reply = await browser.runtime.sendMessage({ cmd: "params", preset: button.dataset.preset });
+      if (reply && reply.error) showError(reply.error);
+    });
+  });
+  document.querySelectorAll("[data-profile]").forEach((chip) => {
+    chip.addEventListener("click", async () => {
+      const reply = await browser.runtime.sendMessage({ cmd: "profile", action: "apply", name: chip.dataset.profile });
+      if (reply && reply.error) showError(reply.error);
+    });
+  });
+  document.querySelectorAll("[data-profile-del]").forEach((del) => {
+    del.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const reply = await browser.runtime.sendMessage({ cmd: "profile", action: "delete", name: del.dataset.profileDel });
       if (reply && reply.error) showError(reply.error);
     });
   });
@@ -318,6 +342,10 @@ browser.runtime.onMessage.addListener((message) => {
     if (state) render();
   }
   if (message.type === "approval_request") showApproval(message);
+  if (message.type === "delta") {
+    $("thinking").textContent = message.text || "";
+    $("thinking").hidden = false;
+  }
 });
 
 $("run").addEventListener("click", async () => {
@@ -344,6 +372,14 @@ $("refresh-models").addEventListener("click", async () => {
   $("registry-status").textContent = "refreshing…";
   const reply = await browser.runtime.sendMessage({ cmd: "models", refresh: true });
   if (reply && reply.error) showError(reply.error);
+});
+
+$("profile-save").addEventListener("click", async () => {
+  const name = $("profile-name").value.trim();
+  if (!name) return;
+  const reply = await browser.runtime.sendMessage({ cmd: "profile", action: "save", name });
+  if (reply && reply.error) showError(reply.error);
+  else $("profile-name").value = "";
 });
 
 $("approval-yes").addEventListener("click", () => answerApproval(true));

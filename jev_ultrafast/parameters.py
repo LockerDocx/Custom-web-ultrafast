@@ -9,6 +9,7 @@ selection is persisted to artifacts/model-config.json and re-applied over
 import json
 import os
 import re
+import time
 from pathlib import Path
 
 CONFIG_PATH = Path(os.environ.get("JEV_MODEL_CONFIG", "artifacts/model-config.json"))
@@ -158,14 +159,64 @@ def apply_model(role, provider_name, model_id):
     """Switch one role's provider+model in the environment and config file."""
     if role not in ROLE_MODEL_ENV:
         raise ValueError(f"Unknown role: {role}")
-    if ":" in model_id or not model_id.strip():
-        raise ValueError("Invalid model id")
+    model_id = model_id.strip()
+    if not model_id or any(character.isspace() for character in model_id):
+        raise ValueError("Invalid model id")  # colons are fine: Ollama tags look like qwen3.5:4b
     provider_env, model_env = ROLE_MODEL_ENV[role]
     os.environ[provider_env] = provider_name
     os.environ[model_env] = model_id.strip()
     config = load_config()
     config.setdefault("models", {})[role] = {"provider": provider_name, "model": model_id.strip()}
     save_config(config)
+
+
+def save_profile(name):
+    """Snapshot the current models + parameters as a named profile."""
+    name = (name or "").strip()
+    if not name or len(name) > 40:
+        raise ValueError("Profile name must be 1-40 characters")
+    selection = current_selection()
+    config = load_config()
+    config.setdefault("profiles", {})[name] = {
+        "savedAt": time.time(),
+        "models": {
+            role: {"provider": data["provider"], "model": data["model"]}
+            for role, data in selection.items()
+            if data.get("provider") and data.get("model")
+        },
+        "params": {role: data.get("params") or {} for role, data in selection.items()},
+    }
+    save_config(config)
+    return config["profiles"][name]
+
+
+def apply_profile(name):
+    """Restore a saved profile into the environment and the config file."""
+    profile = (load_config().get("profiles") or {}).get((name or "").strip())
+    if not profile:
+        raise ValueError(f"Unknown profile: {name}")
+    for role, selection in (profile.get("models") or {}).items():
+        if role in ROLE_MODEL_ENV and selection.get("provider") and selection.get("model"):
+            apply_model(role, selection["provider"], selection["model"])
+    for role, params in (profile.get("params") or {}).items():
+        if role in ROLE_MODEL_ENV and isinstance(params, dict):
+            kept = {key: value for key, value in params.items() if value is not None}
+            if kept:
+                apply_params(role, kept)
+    return profile
+
+
+def delete_profile(name):
+    config = load_config()
+    profiles = config.get("profiles") or {}
+    if (name or "").strip() not in profiles:
+        raise ValueError(f"Unknown profile: {name}")
+    del profiles[(name or "").strip()]
+    save_config(config)
+
+
+def profile_names():
+    return sorted((load_config().get("profiles") or {}).keys())
 
 
 def load_config():

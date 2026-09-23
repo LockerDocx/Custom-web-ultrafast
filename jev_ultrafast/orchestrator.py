@@ -78,11 +78,12 @@ def _validate_call(answer, toolbox):
     return (tool, args), None
 
 
-def run_orchestration(goal, toolbox, on_step=None, max_steps=MAX_ORCHESTRATOR_STEPS):
+def run_orchestration(goal, toolbox, on_step=None, max_steps=MAX_ORCHESTRATOR_STEPS, on_delta=None):
     """Run the tool loop; returns {'final', 'steps', 'usage'}.
 
     The provider is the planner role (the deep model); every step is reported
-    through on_step so the sidebar can show the activity live.
+    through on_step so the sidebar can show the activity live, and raw model
+    output is streamed through on_delta chunk by chunk while it is generated.
     """
     provider = providers.resolve("planner")
     selected = select_skills(goal, available_tools=toolbox.registry)
@@ -103,7 +104,9 @@ def run_orchestration(goal, toolbox, on_step=None, max_steps=MAX_ORCHESTRATOR_ST
             on_step(step)
 
     for step_number in range(1, max_steps + 1):
-        content, meta = providers.chat(provider, system, _render(conversation), max_tokens=2048)
+        content, meta = providers.chat(
+            provider, system, _render(conversation), max_tokens=2048, on_delta=on_delta
+        )
         usage_total = _add_usage(usage_total, meta.get("usage") or {})
         try:
             answer = extract_json(content)

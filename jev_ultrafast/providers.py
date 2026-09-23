@@ -8,6 +8,7 @@ POLICY_* / TEXT_MODEL_* variables, falls back to the provider's own key variable
 import json
 import os
 import re
+import urllib.parse
 
 PROVIDERS = {
     "openai": {
@@ -85,6 +86,37 @@ PROVIDERS = {
         "keys_url": "https://aistudio.google.com/apikey",
     },
     "custom": {"dialect": "openai"},
+    # Local runtimes — OpenAI-compatible servers on 127.0.0.1, no API key
+    # needed. Ideal for free/offline runs of the policy or text roles with
+    # small quantized models (see docs/modelos-locales.md).
+    "ollama": {
+        "base_url": "http://127.0.0.1:11434/v1",
+        "dialect": "openai",
+        "key_env": [],
+        "local": True,
+        "keys_url": "https://ollama.com",
+    },
+    "lmstudio": {
+        "base_url": "http://127.0.0.1:1234/v1",
+        "dialect": "openai",
+        "key_env": [],
+        "local": True,
+        "keys_url": "https://lmstudio.ai",
+    },
+    "llamacpp": {
+        "base_url": "http://127.0.0.1:8080/v1",
+        "dialect": "openai",
+        "key_env": [],
+        "local": True,
+        "keys_url": "https://github.com/ggml-org/llama.cpp",
+    },
+    "jan": {
+        "base_url": "http://127.0.0.1:1337/v1",
+        "dialect": "openai",
+        "key_env": [],
+        "local": True,
+        "keys_url": "https://jan.ai",
+    },
 }
 
 ALIASES = {
@@ -98,6 +130,10 @@ ALIASES = {
     "grok": "xai",
     "google": "gemini",
     "omni": "omniroute",
+    "lm-studio": "lmstudio",
+    "llama.cpp": "llamacpp",
+    "llama-server": "llamacpp",
+    "llamacpp-server": "llamacpp",
 }
 
 ROLE_ENV = {
@@ -172,6 +208,11 @@ def reasoning_params(setting, name, dialect):
     return {}
 
 
+def _is_loopback_url(base_url):
+    host = (urllib.parse.urlparse(base_url or "").hostname or "").lower()
+    return host in {"127.0.0.1", "localhost", "::1"}
+
+
 def resolve(role):
     """Build one provider config from the environment for the given role."""
     env = ROLE_ENV[role]
@@ -181,6 +222,9 @@ def resolve(role):
     name, preset = "", None
     if raw.startswith(("http://", "https://")):
         base, name, preset = (base or raw), "custom", PROVIDERS["custom"]
+        detected = detect_preset(base)
+        if detected:  # e.g. http://127.0.0.1:1234/v1 → lmstudio (no key needed)
+            name, preset = detected
     elif raw:
         name = ALIASES.get(raw.lower(), raw.lower())
         preset = PROVIDERS.get(name)
@@ -201,6 +245,10 @@ def resolve(role):
             if (os.environ.get(key_name) or "").strip():
                 key = os.environ[key_name].strip()
                 break
+    if not key and preset and preset.get("local"):
+        key = "local"  # localhost servers ignore auth; the header keeps the request path uniform
+    if not key and _is_loopback_url(base):
+        key = "local"  # any server on this machine (custom port, llama-server, ...) needs no key
     if not key:
         if preset and preset.get("key_env"):
             extra = f" or one of {', '.join(preset['key_env'])}"
@@ -300,18 +348,35 @@ def parse_response(provider, result):
     return text, meta
 
 
-def chat(provider, system, user, max_tokens=1024):
+def chat(provider, system, user, max_tokens=1024, on_delta=None):
     """Send one chat request; adaptively drop params a strict endpoint rejects.
 
     OpenAI-compatible providers disagree on response_format, reasoning controls,
     temperature, and max_tokens vs max_completion_tokens. Instead of failing,
     retry without the rejected parameter so a model change never breaks a run.
+
+    With on_delta, the reply is streamed over SSE and every text chunk is passed
+    to the callback as it arrives; if the endpoint rejects streaming, the call
+    falls back to a single request and on_delta simply fires once.
     """
-    from . import model  # one shared HTTP seam; tests patch model.post_json
+    from . import model  # one shared HTTP seam; tests patch model.post_json / model.post_stream
 
     dropped = set()
     while True:
         url, headers, body = build_request(provider, system, user, max_tokens, omit=dropped)
+        if on_delta is not None and "stream" not in dropped:
+            body = {**body, "stream": True}
+            try:
+                text, usage, model_id = model.post_stream(
+                    url, provider["key"], body, headers=headers, on_delta=on_delta
+                )
+                return text, {"model": model_id or provider["model"], "usage": usage, "provider": provider["name"]}
+            except RuntimeError as error:
+                drop = _droppable_param(str(error), dropped, provider["dialect"], allow_stream_drop=True)
+                if drop is None:
+                    raise
+                dropped.add(drop)
+                continue
         try:
             if headers is None:
                 result = model.post_json(url, provider["key"], body)
@@ -326,11 +391,13 @@ def chat(provider, system, user, max_tokens=1024):
         return parse_response(provider, result)
 
 
-def _droppable_param(error, dropped, dialect):
+def _droppable_param(error, dropped, dialect, allow_stream_drop=False):
     """The canonical parameter to drop next for a rejected request, or None."""
     if dialect == "anthropic":
         return None
     lowered = error.lower()
+    if allow_stream_drop and "stream" in lowered and "stream" not in dropped:
+        return "stream"
     if "response_format" in lowered and "response_format" not in dropped:
         return "response_format"
     if ("reasoning_effort" in lowered or "'reasoning'" in lowered) and "reasoning" not in dropped:

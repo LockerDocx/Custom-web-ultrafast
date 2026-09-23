@@ -79,21 +79,23 @@ def test_discover_caches_for_24h(monkeypatch):
 
     monkeypatch.setattr(discovery, "fetch_models", fake_fetch)
     registry = discovery.discover()
-    assert set(registry["providers"]) == {"groq", "nvidia"}
+    # the two keyed cloud providers plus the four keyless local runtimes
+    assert {"groq", "nvidia", "ollama", "lmstudio", "llamacpp", "jan"} <= set(registry["providers"])
     assert discovery.REGISTRY_PATH.exists()
-    assert sorted(calls) == ["groq", "nvidia"]
+    assert len(calls) == 6
 
     second = discovery.discover()  # served from the cache, no refetch
     assert second == registry
-    assert sorted(calls) == ["groq", "nvidia"]
+    assert len(calls) == 6
 
     discovery.discover(refresh=True)  # forced refresh
-    assert sorted(calls) == ["groq", "groq", "nvidia", "nvidia"]
+    assert len(calls) == 12
 
 
 def test_discover_reports_failures_without_breaking(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "gsk-test")
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
+    monkeypatch.setattr(discovery, "DISCOVERABLE", ("groq", "nvidia"))  # focus: cloud failures
 
     def fake_fetch(name):
         if name == "groq":

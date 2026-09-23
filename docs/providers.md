@@ -137,6 +137,19 @@ The provider policy preserves the loop's core contract: **one request per decisi
   - Effort levels map to `reasoning_effort` (OpenAI) and `reasoning.effort` (OpenRouter). Unverified combinations are omitted rather than sent.
 - `POLICY_JSON_MODE` / `TEXT_MODEL_JSON_MODE`: `on`/`off` override. JSON mode (OpenAI `response_format`) is enabled only for presets that honor it across their catalog; everywhere else the reply is parsed robustly (fences and prose tolerated). Set it to `off` if your endpoint rejects the parameter.
 
+## Local runtimes (free, offline, no API key)
+
+Four local OpenAI-compatible runtimes are first-class presets, so no base URL and no key are needed:
+
+| `POLICY_PROVIDER=` | Server | Default port |
+|---|---|---|
+| `ollama` | [Ollama](https://ollama.com) | 127.0.0.1:11434 |
+| `lmstudio` | [LM Studio](https://lmstudio.ai) | 127.0.0.1:1234 |
+| `llamacpp` | [llama.cpp](https://github.com/ggml-org/llama.cpp) `llama-server` | 127.0.0.1:8080 |
+| `jan` | [Jan](https://jan.ai) | 127.0.0.1:1337 |
+
+A raw URL is auto-detected too (`POLICY_PROVIDER=http://127.0.0.1:1234/v1` → `lmstudio`). JSON mode is off by default for local runtimes (server support varies; the reply parser already tolerates prose and fences), reasoning params are never sent to them, and the sidebar catalogue lists the models the running server exposes. Model recommendations by hardware tier (sub-32 GB RAM, CPU/iGPU/VRAM): [modelos-locales.md](modelos-locales.md).
+
 ## The sidebar catalogue and parameters (MVP-1)
 
 The Firefox sidebar's **⚙️ Models & parameters** panel replaces `.env` editing for everyday changes:
@@ -156,6 +169,19 @@ Related environment variables (all optional):
 | `JEV_MODEL_CONFIG` | where the sidebar's model/parameter choices persist |
 | `JEV_MODEL_REGISTRY` | where the model catalogue cache persists |
 | `JEV_SKILLS_DIR` | override the `skills/` directory (default: next to the package) |
+| `JEV_RUNS_LOG` | where the per-run history is appended (default `artifacts/runs.jsonl`) |
+
+**Profiles.** The panel can also save the *current* models + parameters as a named profile
+(`Save` button) and re-apply it later with one click — handy for switching between a
+"research" setup (deep planner) and a "local" setup (offline executor).
+
+**Streaming.** Orchestrated tasks stream the model's raw output to the sidebar live
+(the dashed "thinking" box between steps), including reasoning tokens when the model
+emits them; endpoints that reject streaming fall back to a single request automatically.
+
+**Run history.** Every finished task (browser or orchestrated) appends one line to
+`artifacts/runs.jsonl` (timestamp, mode, goal, status, steps, elapsed, tokens) — plain
+JSONL, easy to inspect or reset by deleting the file.
 
 ## Troubleshooting
 

@@ -1,0 +1,185 @@
+# Modelos locales y gratis para el agente (PCs "patata", sin API keys)
+
+> Investigación a septiembre de 2026. Objetivo: reemplazar el **modelo Jev / de pago** por
+> modelos **gratis y auto-alojados** que corran en equipos modestos (**menos de 32 GB de RAM**,
+> con o sin GPU) y, si hay tarjeta gráfica, que **aprovechen la VRAM**.
+
+---
+
+## 1. Resumen ejecutivo — qué usar con este agente
+
+El agente usa **3 roles de modelo** (ver `docs/providers.md`). No todos necesitan la misma
+calidad, y esa es la clave para que quepa en un PC modesto:
+
+| Rol | Qué hace | Recomendación local | Por qué |
+|---|---|---|---|
+| **Executor (policy)** | Elige 1 acción de una tabla numerada; responde un JSON pequeño | **Qwen3.5 4B** (Q4) · alternativa: **Phi-4-mini 3.8B** | Es la llamada más frecuente: necesita velocidad + JSON fiable, no "inteligencia" enorme |
+| **Text writer** | Redacta valores de campos | **El mismo modelo que el executor** | Misma necesidad de latencia baja |
+| **Planner** | Parte la misión en pasos (1 llamada por tarea) | **Qwen3.5 9B** (si tienes 16 GB+) — o déjalo en una API gratis (Groq) | Aquí sí importa la calidad; solo se llama una vez |
+
+**Doble configuración estrella para PC patata**: planner en la nube gratis (Groq, no ve tus
+acciones) + executor/text 100% locales (no ven tu misión completa). Coste: 0 €, y solo el
+plan general viaja a internet.
+
+**Configuración 100% offline**: los tres roles en local (necesita ~16 GB de RAM para ir bien).
+
+---
+
+## 2. Qué le pasa al agente con un modelo pequeño (y por qué aguanta bien)
+
+Este agente **no genera código ni selectores**: el executor solo elige `{"operation", "target"}`
+entre elementos **observados y numerados**, y toda respuesta inválida se rechaza antes de
+ejecutarse (con un reintento correctivo). Además `extract_json` tolera respuestas con texto,
+vallas ```json o razonamiento alrededor. Eso es exactamente el tipo de tarea donde un modelo
+de 2-4B cuantizado rinde sorprendentemente bien.
+
+Lo que sí NOTARÁS respecto a Groq/NVIDIA:
+
+| | API gratis (Groq GPT-OSS-20B) | Local CPU (Qwen3.5 4B) | Local GPU 8 GB (Qwen3.5 4B) |
+|---|---|---|---|
+| Latencia por paso | ~0,3 s | ~3-8 s (15-25 tok/s) | ~0,5-1 s (40+ tok/s) |
+| Privacidad | la acción viaja al proveedor | **todo en tu PC** | **todo en tu PC** |
+| Coste / límites | cuota gratuita | 0 €, sin límites | 0 €, sin límites |
+| Funciona sin internet | ❌ | ✅ | ✅ |
+
+---
+
+## 3. Modelos recomendados (estado 2026)
+
+Todos cuantizados en **Q4_K_M** (4 bits), el estándar de calidad/tamaño; "RAM" = memoria
+total que necesitas libre (modelo + contexto):
+
+| Modelo | Parámetros | RAM (Q4) | Velocidad CPU típica | Licencia | Notas |
+|---|---|---|---|---|---|
+| **Qwen3.5 4B** ⭐ | 4B | ~4,5 GB | 12-25 tok/s | Apache 2.0 | *Recomendado*. Function calling + salida estructurada nativos, 262K contexto, 201 idiomas (español incluido) |
+| **Qwen3.5 2B / 0.8B** | 2B / 0.8B | ~3,5 GB | 25-40+ tok/s | Apache 2.0 | Para PCs de 8 GB; el 0.8B es de "emergencia" |
+| **Phi-4-mini** | 3.8B | ~2,5 GB | 15-25 tok/s (hasta 30-50) | MIT | La mejor relación calidad/RAM en CPU; muy buen siguiendo instrucciones |
+| **Gemma 4 E2B** | 2.3B efect. | ~2 GB | ~20-30 tok/s | Apache 2.0 | Diseñado para móviles/edge; 128K contexto; opción audio |
+| **Llama 3.2 1B** | 1B | ~1,3 GB | 60-90 tok/s | Llama (uso propio OK) | El más rápido absoluto; solo para tareas muy simples |
+| **Llama 3.2 3B** | 3B | ~2,5 GB | 20-35 tok/s | Llama | Mucho soporte comunitario, 128K contexto |
+| **Qwen2.5 3B** | 3B | ~2 GB | ~25 tok/s | Apache 2.0 | Function calling sólido |
+| **Qwen3.5 9B** (planner) | 9B | ~7-8 GB | 6-12 tok/s | Apache 2.0 | El "cerebro" local si tienes 16 GB |
+| Llama 3.1 8B / Qwen3 8B | 8B | ~5-6 GB | 8-15 tok/s | Llama / Apache 2.0 | Alternativa al 9B; con GPU de 8 GB vuelan (40+ tok/s) |
+
+> ⚠️ Regla práctica: tu **memoria libre (RAM+VRAM) debe superar el tamaño del archivo GGUF**.
+> llama.cpp puede "desbordar" a disco, pero va mucho más lento.
+
+### Y si tienes GPU (VRAM)
+
+| VRAM | Modelo cómodo | Velocidad esperada |
+|---|---|---|
+| 2-4 GB | Qwen3.5 2B / Phi-4-mini / Gemma 4 E2B (Q4) | 30-70 tok/s |
+| 4-6 GB | **Qwen3.5 4B** entero en GPU | 40-80 tok/s |
+| 6-8 GB | Qwen3.5 4B/9B, Llama 3.1 8B, Qwen3 8B (Q4) | 40+ tok/s |
+| 12 GB+ | Qwen3.5 9B holgado, Gemma 3 12B, Qwen3 14B | 40-70 tok/s |
+
+Con **menos VRAM que el modelo**, el offload parcial (70% GPU / 30% CPU) da ~10-15 tok/s —
+mejor que CPU puro (3-6 tok/s). Las **iGPUs** (Intel Iris, AMD Vega/Radeon) también aceleran
+vía Vulkan (LM Studio lo hace muy bien): 12-20 tok/s con un Qwen3.5 4B.
+
+---
+
+## 4. Runtimes (el "motor" que ejecuta el modelo)
+
+Todos exponen la **API compatible con OpenAI** que este agente ya habla; solo cambia el puerto:
+
+| Runtime | Puerto | Para quién | Puntos fuertes | Puntos débiles |
+|---|---|---|---|---|
+| **Ollama** ⭐ | 11434 | La mayoría | 1 comando por modelo (`ollama pull qwen3.5:4b`), coloca en GPU solo, servicio en segundo plano | Un pelín más lento que llama.cpp puro |
+| **LM Studio** | 1234 | Quien quiera GUI | Interfaz gráfica, slider de capas en GPU, gráficos de tok/s, genial con iGPU | Hay que encender el servidor a mano |
+| **llama.cpp** (`llama-server`) | 8080 | Máximo control | El más liviano y rápido, `--reasoning off`, soporta modelos nuevos antes que nadie | Todo por comandos |
+| **Jan** | 1337 | 100% open source | App de escritorio offline | Menos mantenido para servidores |
+
+(vLLM y similares son para servidores con GPUs grandes — descartados para PCs patata.)
+
+---
+
+## 5. Paso a paso: agente 100% gratis en tu PC
+
+### Opción A — Ollama (la más fácil, recomendada)
+
+1. Descarga Ollama de **https://ollama.com/download** e instálalo (Windows/macOS/Linux).
+2. Abre una terminal y descarga el modelo (≈2,7 GB):
+   ```bash
+   ollama pull qwen3.5:4b
+   ```
+   (PC de 8 GB: `ollama pull phi4-mini` · solo planner local: `ollama pull qwen3.5:9b`)
+3. Comprueba que responde: `ollama run qwen3.5:4b "di hola"` → escribe `/bye` para salir.
+   Ollama queda escuchando en `http://127.0.0.1:11434` **automáticamente**.
+4. Edita el `.env` del proyecto (con el starter: se abre solo la primera vez):
+   ```ini
+   POLICY_PROVIDER=ollama
+   POLICY_MODEL=qwen3.5:4b
+
+   TEXT_MODEL_PROVIDER=ollama
+   TEXT_MODEL=qwen3.5:4b
+
+   # Planner: o lo dejas en la nube gratis (recomendado)...
+   PLANNER_PROVIDER=nvidia
+   PLANNER_MODEL=z-ai/glm-5.3
+   # ...o también local (100% offline):
+   # PLANNER_PROVIDER=ollama
+   # PLANNER_MODEL=qwen3.5:9b
+   ```
+   **No hace falta ninguna API key** para las líneas `ollama`.
+5. Arranca el starter → panel → **Test setup** → 🟢 en los roles locales.
+   También verás los modelos de Ollama en el desplegable del panel «⚙️ Models & parameters»
+   (botón *Refresh catalogue*).
+
+### Opción B — LM Studio (con interfaz gráfica)
+
+1. Instala desde **https://lmstudio.ai** → pestaña de búsqueda → descarga `Qwen3.5 4B` (elige
+   la variante **Q4_K_M**).
+2. Pestaña **Developer** (o "Local Server") → **Start Server** (puerto 1234).
+3. `.env`: `POLICY_PROVIDER=lmstudio` y `POLICY_MODEL=` el nombre exacto que muestra la app
+   (p. ej. `qwen3.5-4b`).
+
+### Opción C — llama.cpp (máximo rendimiento)
+
+```bash
+# descarga un binary release de https://github.com/ggml-org/llama.cpp
+llama-server -m Qwen3.5-4B-Q4_K_M.gguf -ngl 99 --port 8080 --reasoning off
+```
+
+`.env`: `POLICY_PROVIDER=llamacpp` y `POLICY_MODEL=` el archivo cargado. `-ngl 99` mete todo
+en GPU; sin GPU, omítelo. `--reasoning off` evita que el modelo "piense" de más (latencia).
+
+> Si tu servidor local usa otro puerto o URL, siempre puedes usar la forma genérica:
+> `POLICY_PROVIDER=http://127.0.0.1:1234/v1` — el agente detecta el runtime solo.
+
+### Ajustes finos
+
+- El **modo "thinking"** de Qwen alarga la respuesta: en Ollama usa etiquetas tipo
+  `qwen3.5:4b` en modo instruct (o `/no_think` si tu build lo soporta), en llama.cpp
+  `--reasoning off`, en LM Studio desactiva "Reasoning" en los ajustes del modelo.
+- `POLICY_TEMPERATURE=0.2` en `.env` (o en el panel avanzado) reduce la creatividad —
+  para elegir acciones es mejor ser aburrido y preciso.
+- Presets del panel: **Browser** o **Fast** para modelos pequeños.
+
+---
+
+## 6. Límites y expectativas honestas
+
+- Un 1-2B **fallará más** en misiones largas de navegador: si el executor se atasca, sube al
+  4B. El agente reintenta y valida, pero la calidad de decisión sí depende del modelo.
+- El **planner** con un modelo pequeño produce planes peores (pasos redundantes o vagos);
+  es el rol donde una API gratis rinde más por coste cero.
+- Velocidades CPU: dependen de tu RAM (banda de memoria manda: DDR4-3200 ≈ mitad de rápido
+  que DDR5-5600) y de los AVX de tu procesador.
+- Ollama descarga el modelo la primera vez que lo usas; ten disco libre (2-6 GB por modelo).
+
+## 7. Licencias (resumen)
+
+- **Apache 2.0** (Qwen3.5, Gemma 4, Qwen2.5, SmolLM): uso comercial sin restricciones.
+- **MIT** (Phi-4-mini, DeepSeek-R1 distills): igual de permisivo.
+- **Llama license** (Llama 3.x): uso personal/comercial permitido con condiciones ligeras
+  (límite 700M usuarios mensuales, etc.).
+- **Runtimes**: Ollama (MIT), llama.cpp (MIT), LM Studio (gratis para uso personal y
+  laboral), Jan (Apache 2.0).
+
+## 8. Fuentes (septiembre 2026)
+
+- Panorámica de modelos pequeños 2026 y tamaños Q4: [promptquorum — Best Local LLMs 2026](https://www.promptquorum.com/local-llms/best-local-llms-2026), [codersera — Best Small LLMs](https://codersera.com/blog/best-small-llms-to-run-locally-a-comprehensive-guide/)
+- Hardware por tier de RAM/VRAM y velocidades CPU: [promptquorum — Hardware guide 2026](https://www.promptquorum.com/local-llms/local-llm-hardware-guide-2026), [promptquorum — Fastest LLMs for low-end PCs](https://www.promptquorum.com/local-llms/fastest-local-llms-low-end-pcs), [localllm.in — Ollama VRAM guide](https://localllm.in/blog/ollama-vram-requirements-for-local-llms)
+- Qwen3.5 (tamaños, contexto, licencia, hardware): [unsloth.ai — Qwen3.5](https://unsloth.ai/docs/models/qwen3.5), [mindstudio — Gemma 4 vs Qwen 3.5](https://www.mindstudio.ai/blog/gemma-4-vs-qwen-3-5-open-weight-comparison)
+- Runtimes comparados: [glukhov.org — llama.cpp vs Ollama](https://www.glukhov.org/llm-hosting/comparisons/llama-cpp-vs-ollama/), [datallmlab — Ollama alternatives](https://www.datallmlab.com/blog/ollama-alternatives.html), [khimananda — Ollama vs LM Studio](https://khimananda.com/blog/ollama-vs-lm-studio-for-local-llms)

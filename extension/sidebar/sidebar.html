@@ -40,6 +40,12 @@
         <summary>⚙️ Models &amp; parameters</summary>
         <div class="presets-label hint">Presets (apply to every role):</div>
         <div class="presets" id="presets"></div>
+        <div class="presets-label hint">Profiles (click to apply, × to delete):</div>
+        <div class="presets" id="profiles"></div>
+        <div class="row profile-row">
+          <input type="text" id="profile-name" placeholder="profile name…" maxlength="40" />
+          <button id="profile-save" title="Save the current models and parameters under this name">Save</button>
+        </div>
         <div id="model-roles"></div>
         <div class="row">
           <button id="refresh-models" title="Fetch the live model list from every provider">Refresh catalogue</button>
@@ -53,6 +59,7 @@
           <span id="task-meta"></span>
         </div>
         <div id="task-skills" class="chips"></div>
+        <div id="thinking" class="thinking" hidden></div>
         <h3>Steps</h3>
         <div id="task-log" class="task-log"></div>
         <div id="task-final" class="final" hidden></div>

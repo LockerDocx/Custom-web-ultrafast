@@ -208,7 +208,7 @@ def test_orchestrated_run_reports_state_and_final(monkeypatch, tmp_path):
     from jev_ultrafast import orchestrator
     from jev_ultrafast.tools import ToolBox
 
-    def fake_orchestration(goal, toolbox, on_step=None, max_steps=25):
+    def fake_orchestration(goal, toolbox, on_step=None, max_steps=25, on_delta=None):
         assert isinstance(toolbox, ToolBox)
         assert toolbox.browser_runner is not None
         on_step({"step": 1, "tool": "write_file", "args": {"path": "a.txt"}, "result": "Wrote 2 characters"})
@@ -232,7 +232,7 @@ def test_orchestrated_run_reports_state_and_final(monkeypatch, tmp_path):
 def test_orchestrated_run_survives_crashes(monkeypatch, tmp_path):
     from jev_ultrafast import orchestrator
 
-    def exploding(goal, toolbox, on_step=None, max_steps=25):
+    def exploding(goal, toolbox, on_step=None, max_steps=25, on_delta=None):
         raise RuntimeError("planner exploded")
 
     monkeypatch.setattr(orchestrator, "run_orchestration", exploding)
@@ -269,7 +269,7 @@ def test_orchestrated_run_over_the_real_bridge(bridge, monkeypatch, tmp_path):
     thread = threading.Thread(target=reader, daemon=True)
     thread.start()
 
-    def fake_orchestration(goal, toolbox, on_step=None, max_steps=25):
+    def fake_orchestration(goal, toolbox, on_step=None, max_steps=25, on_delta=None):
         on_step({"step": 1, "tool": "list_files", "args": {}, "result": "(empty)"})
         return {"final": "listed", "steps": [], "usage": {}, "latency_ms": 3}
 

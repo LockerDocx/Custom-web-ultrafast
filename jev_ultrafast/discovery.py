@@ -15,7 +15,11 @@ from . import providers
 
 REGISTRY_PATH = Path(os.environ.get("JEV_MODEL_REGISTRY", "artifacts/model-registry.json"))
 REGISTRY_TTL_SECONDS = 24 * 3600
-DISCOVERABLE = ("nvidia", "groq", "openrouter", "deepseek", "together", "mistral", "xai", "gemini", "openai")
+DISCOVERABLE = (
+    "nvidia", "groq", "openrouter", "deepseek", "together", "mistral", "xai", "gemini", "openai",
+    # local runtimes — no API key, listed whenever the server is running
+    "ollama", "lmstudio", "llamacpp", "jan",
+)
 
 # Non-chat model families commonly listed by catalogues.
 _EXCLUDE_MARKERS = (
@@ -65,10 +69,13 @@ def fetch_models(provider_name):
     preset = providers.PROVIDERS.get(provider_name)
     if not preset or not preset.get("base_url"):
         raise RuntimeError(f"Provider {provider_name} has no catalogue endpoint.")
-    key = provider_key(provider_name)
-    if not key:
-        env_names = ", ".join(preset.get("key_env", [])) or "its API key variable"
-        raise RuntimeError(f"No API key for {provider_name} (set {env_names}).")
+    if preset.get("local"):
+        key = "local"  # localhost servers need no auth
+    else:
+        key = provider_key(provider_name)
+        if not key:
+            env_names = ", ".join(preset.get("key_env", [])) or "its API key variable"
+            raise RuntimeError(f"No API key for {provider_name} (set {env_names}).")
     from . import model
 
     url = preset["base_url"].rstrip("/") + "/models"
@@ -116,7 +123,8 @@ def discover(refresh=False):
             return registry
     providers_report = {}
     for name in DISCOVERABLE:
-        if not provider_key(name):
+        preset = providers.PROVIDERS.get(name) or {}
+        if not preset.get("local") and not provider_key(name):
             continue
         try:
             providers_report[name] = {"ok": True, "models": fetch_models(name)}

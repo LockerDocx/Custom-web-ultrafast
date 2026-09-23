@@ -100,6 +100,19 @@ NVIDIA_API_KEY=nvapi-...
 PLANNER_MODEL=z-ai/glm-5.3
 ```
 
+## Run it fully local (free, offline, potato PCs)
+
+Any local OpenAI-compatible runtime works with **no API key**: Ollama (`POLICY_PROVIDER=ollama`), LM Studio (`lmstudio`), llama.cpp's server (`llamacpp`), or Jan — the model pickers in the sidebar list whatever the running server exposes. Recommended small models for the executor role (September 2026): **Qwen3.5 4B** (~4.5 GB, Apache 2.0, structured output) or **Phi-4-mini** (~2.5 GB, MIT) on CPU; Qwen3.5 9B / 8B class with a GPU or 16 GB+ RAM. A popular hybrid keeps the planner on a free cloud API while the executor and text writer run locally. Full hardware tiers, runtime comparison, setup walkthrough, and speed expectations: **[docs/modelos-locales.md](docs/modelos-locales.md)** (Español).
+
+```bash
+# .env — executor + text on a local Ollama, planner on a free API
+POLICY_PROVIDER=ollama
+POLICY_MODEL=qwen3.5:4b
+
+TEXT_MODEL_PROVIDER=ollama
+TEXT_MODEL=qwen3.5:4b
+```
+
 ## Run it inside Firefox
 
 `extension/` is a WebExtension that turns this agent into a Firefox sidebar driving your live tab — the same planner/executor loop, the same indexed action space, no Chrome required:

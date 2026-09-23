@@ -24,10 +24,14 @@ from .parameters import (
     apply_model,
     apply_params,
     apply_preset,
+    apply_profile,
     apply_saved_config,
     current_selection,
+    delete_profile,
     load_config,
+    profile_names,
     save_config,
+    save_profile,
 )
 
 
@@ -85,6 +89,10 @@ def check_providers():
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 DEFAULT_PORT = 8767
 COMMAND_TIMEOUT = 60.0
+
+
+RUNS_LOG = Path(os.environ.get("JEV_RUNS_LOG", "artifacts/runs.jsonl"))
+DELTA_BROADCAST_INTERVAL = 0.15  # seconds between live "thinking" broadcasts
 
 
 class BridgeError(RuntimeError):
@@ -309,6 +317,9 @@ class BridgeServer:
         elif kind == "approval_response":
             if self.runner and self.runner.approvals:
                 self.runner.approvals.respond(message.get("id", ""), message.get("approved"))
+        elif kind in {"profile.save", "profile.apply", "profile.delete"}:
+            if self.runner:
+                self.runner.handle_profile(kind.split(".")[1], message.get("name", ""))
         else:
             self.send({"type": "error", "message": f"Unknown message type: {kind}"})
 
@@ -435,7 +446,8 @@ class TaskRunner:
         self.orchestrated = None
         self._typesafe_key = os.environ.get("TYPESAFE_API_KEY")  # kept so the UI can switch back
         self._workspace = Path(workspace) if workspace else Path.cwd() / "workspace"
-        self._lock = threading.Lock()
+        self._lock = threading.Lock()  # held by a running task
+        self._check_lock = threading.Lock()  # serializes provider self-tests
         try:
             apply_saved_config()
         except Exception:  # noqa: BLE001 - a broken config file must never block startup
@@ -453,6 +465,8 @@ class TaskRunner:
             "schema": PARAMETER_SCHEMA,
             "presets": PRESETS,
             "policy_builtin": typesafe,
+            "profiles": profile_names(),
+            "tokens": self._tokens(),
         }
         if self.mode == "orchestrated":
             # The orchestrated view; the live browser sub-view rides under "browser".
@@ -469,14 +483,37 @@ class TaskRunner:
             state = self.agent.snapshot()
         return {**state, **common, "planner": self.agent.state.get("planner") if self.agent else None}
 
+    def _tokens(self):
+        """Total tokens used by the current/last run, for the sidebar footer."""
+        total = 0
+        entries = []
+        if self.agent is not None:
+            state = self.agent.state
+            entries = list(state.get("decisions") or []) + list(state.get("text_calls") or [])
+        elif self.orchestrated:
+            entries = [{"usage": self.orchestrated.get("usage") or {}}]
+        for entry in entries:
+            usage = entry.get("usage") or {}
+            for field in ("input_tokens", "output_tokens", "prompt_tokens", "completion_tokens"):
+                value = usage.get(field)
+                if isinstance(value, (int, float)):
+                    total += value
+        return total
+
     def run_provider_check(self):
-        """Self-test in the background; the result is carried in every state broadcast."""
-        if not self._lock.acquire(blocking=False):
+        """Self-test in the background; the result is carried in every state broadcast.
+
+        Uses its own lock: a check never blocks (and never gets confused with) a task,
+        so pressing Run right after connecting always works.
+        """
+        if self._lock.locked():
             return  # a task is running; providers are clearly working
+        if not self._check_lock.acquire(blocking=False):
+            return  # another check is already in flight
         try:
             self.provider_check = check_providers()
         finally:
-            self._lock.release()
+            self._check_lock.release()
         self._broadcast()
 
     def start(self, goal, url, tab_id):
@@ -519,6 +556,13 @@ class TaskRunner:
             self.last_error = str(error)
             self.bridge.broadcast({"type": "error", "message": str(error)})
         finally:
+            snap = self.agent.snapshot() if self.agent is not None else {}
+            self._record_run(
+                "browser", goal,
+                status="stopped" if self.stopped else (snap.get("status") or "done"),
+                steps=len(snap.get("history") or []),
+                elapsed_ms=snap.get("elapsed_ms") or 0,
+            )
             self.agent = None
             self._broadcast()
             self._lock.release()
@@ -531,11 +575,21 @@ class TaskRunner:
         from .skills import select_skills
         from .tools import ToolBox
 
+        live = {"text": "", "at": 0.0}
+
         def on_step(step):
+            live["text"] = ""  # a new step begins: reset the live thinking buffer
             if self.orchestrated is not None:
                 self.orchestrated["log"] = (self.orchestrated.get("log") or [])[-40:]
                 self.orchestrated["log"].append(step)
             self._broadcast()
+
+        def on_delta(chunk):
+            live["text"] = (live["text"] + chunk)[-600:]
+            now = time.monotonic()
+            if now - live["at"] >= DELTA_BROADCAST_INTERVAL:
+                live["at"] = now
+                self.bridge.broadcast({"type": "delta", "text": live["text"]})
 
         def browser_runner(browser_goal, browser_url=None):
             """Delegates a browser step to the fast JEV Agent on the live tab."""
@@ -571,7 +625,7 @@ class TaskRunner:
             selected = select_skills(goal, available_tools=toolbox.registry)
             self.orchestrated["skills"] = [skill["id"] for skill in selected]
             self._broadcast()
-            result = run_orchestration(goal, toolbox, on_step=on_step)
+            result = run_orchestration(goal, toolbox, on_step=on_step, on_delta=on_delta)
             self.orchestrated.update(
                 status="done" if not self.stopped else "stopped",
                 final=result["final"],
@@ -588,6 +642,12 @@ class TaskRunner:
             self.orchestrated = self.orchestrated or {}
             self.orchestrated.setdefault("log", [])
             self.orchestrated["status"] = self.orchestrated.get("status") or "stopped"
+            self._record_run(
+                "orchestrated", goal,
+                status=self.orchestrated.get("status") or "stopped",
+                steps=len(self.orchestrated.get("log") or []),
+                elapsed_ms=self.orchestrated.get("latency_ms") or 0,
+            )
             self._broadcast()
             self._lock.release()
 
@@ -636,6 +696,41 @@ class TaskRunner:
             return
         self._broadcast()
         threading.Thread(target=self.run_provider_check, daemon=True).start()
+
+    def handle_profile(self, action, name):
+        try:
+            if action == "save":
+                save_profile(name)
+            elif action == "apply":
+                apply_profile(name)
+            elif action == "delete":
+                delete_profile(name)
+            else:
+                raise ValueError(f"Unknown profile action: {action}")
+        except (ValueError, KeyError) as error:
+            self.bridge.send({"type": "error", "message": f"Profile error: {error}"})
+            return
+        self._broadcast()
+        if action == "apply":
+            threading.Thread(target=self.run_provider_check, daemon=True).start()
+
+    def _record_run(self, mode, goal, status, steps, elapsed_ms):
+        """Append one line to the local run history (artifacts/runs.jsonl)."""
+        try:
+            RUNS_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with RUNS_LOG.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps({
+                    "ts": time.time(),
+                    "mode": mode,
+                    "goal": goal[:200],
+                    "status": status,
+                    "steps": steps,
+                    "elapsed_ms": elapsed_ms,
+                    "tokens": self._tokens(),
+                    "error": self.last_error,
+                }, ensure_ascii=False) + "\n")
+        except OSError:
+            pass  # the history log must never break a run
 
     def handle_params_set(self, message):
         preset = message.get("preset")

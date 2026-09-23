@@ -26,8 +26,104 @@ def post_json(url, key, body, headers=None):
             # Include the provider's own message so the exact cause is visible in the sidebar.
             detail = " ".join(response.text.split())[:300]
             raise RuntimeError(f"Model provider returned HTTP {response.status_code}: {detail}; no action executed.")
-        return response.json()
+        try:
+            return response.json()
+        except ValueError:
+            raise RuntimeError(
+                "Model provider returned a non-JSON response; check that the base URL ends in /v1."
+            ) from None
     raise RuntimeError("Model unavailable")
+
+
+def post_stream(url, key, body, headers=None, on_delta=None):
+    """POST one request and consume the SSE stream; returns (text, usage, model).
+
+    Every text chunk is passed to on_delta as it arrives (reasoning chunks too,
+    for the live "thinking" view — but only content builds the returned text).
+    Raises the same RuntimeErrors as post_json so error handling stays uniform.
+    Retries happen only before the first chunk, never mid-stream.
+    """
+    request_headers = headers or {"Authorization": f"Bearer {key}"}
+    for attempt in range(3):
+        parts = []
+        usage = {}
+        model_id = None
+        served = False
+        try:
+            with CLIENT.stream("POST", url, json=body, headers=request_headers) as response:
+                if response.status_code in {429, 529, 503} and attempt < 2:
+                    time.sleep(0.5 * 2**attempt)
+                    continue
+                if response.is_error:
+                    detail = " ".join(response.read().decode("utf-8", "replace").split())[:300]
+                    raise RuntimeError(
+                        f"Model provider returned HTTP {response.status_code}: {detail}; no action executed."
+                    )
+                for line in response.iter_lines():
+                    content, usage_update, chunk_model, reasoning = _sse_chunk(line)
+                    if model_id is None and chunk_model:
+                        model_id = chunk_model
+                    if usage_update:
+                        usage.update(usage_update)
+                    if reasoning and on_delta:
+                        on_delta(reasoning)
+                    if content:
+                        served = True
+                        parts.append(content)
+                        if on_delta:
+                            on_delta(content)
+                return "".join(parts), usage, model_id
+        except httpx.HTTPError:
+            if served:
+                raise RuntimeError("Model stream failed mid-response; no action executed.") from None
+            if attempt < 2:
+                time.sleep(0.5 * 2**attempt)
+                continue
+            raise RuntimeError("Model connection failed; no action executed.") from None
+    raise RuntimeError("Model unavailable")
+
+
+def _sse_chunk(line):
+    """Parse one SSE line → (content, usage_update, model_id, reasoning).
+
+    Handles the OpenAI shape (choices[].delta.content / delta.reasoning_content,
+    used by Ollama, llama.cpp and LM Studio too) and the Anthropic event shape.
+    """
+    if not line or not line.startswith("data:"):
+        return "", {}, None, ""
+    payload = line[5:].strip()
+    if not payload or payload == "[DONE]":
+        return "", {}, None, ""
+    try:
+        event = json.loads(payload)
+    except ValueError:
+        return "", {}, None, ""
+    if not isinstance(event, dict):
+        return "", {}, None, ""
+    model_id = event.get("model") if isinstance(event.get("model"), str) else None
+    usage = event.get("usage") if isinstance(event.get("usage"), dict) else {}
+    kind = event.get("type")
+    if kind == "content_block_delta":  # Anthropic
+        delta = event.get("delta") or {}
+        thinking = delta.get("thinking") if isinstance(delta.get("thinking"), str) else ""
+        return delta.get("text") or "", {}, model_id, thinking
+    if kind == "message_start":
+        message = event.get("message") or {}
+        return "", message.get("usage") or {}, model_id, ""
+    if kind == "message_delta":
+        return "", event.get("usage") or {}, model_id, ""
+    choices = event.get("choices") or []
+    if choices:
+        delta = (choices[0] or {}).get("delta") or {}
+        reasoning = delta.get("reasoning_content") or delta.get("reasoning") or ""
+        if not isinstance(reasoning, str):
+            reasoning = ""
+        if not usage:  # some servers nest usage inside the choice instead of the event
+            nested = (choices[0] or {}).get("usage")
+            if isinstance(nested, dict):
+                usage = nested
+        return delta.get("content") or "", usage, model_id, reasoning
+    return "", usage, model_id, ""
 
 
 def validate_choice(answer, ids):

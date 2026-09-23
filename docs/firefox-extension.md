@@ -66,9 +66,9 @@ Configuration: `FIREFOX_BRIDGE_PORT` (default 8767), `FIREFOX_BRIDGE_TOKEN` (opt
 
 ## Bridge protocol (extension ⇄ host)
 
-Extension → host: `hello`, `run {goal, url, tabId}`, `stop`, `check`, `models {refresh}`, `models.select {role, provider, model}`, `params.set {preset}` or `params.set {role, params}`, `approval_response {id, approved}`.
+Extension → host: `hello`, `run {goal, url, tabId}`, `stop`, `check`, `models {refresh}`, `models.select {role, provider, model}`, `params.set {preset}` or `params.set {role, params}`, `profile.save|apply|delete {name}`, `approval_response {id, approved}`.
 
-Host → extension: command/response pairs with ids (`open`, `observe`, `act`, `fresh`); broadcasts `welcome`, `state` (carries `mode`, `selection`, `schema`, `presets`, `providers`, and for orchestrated tasks `log`/`final`/`skills` plus the live browser sub-state under `browser`), `models {registry}`, `approval_request {id, command}`, `error`.
+Host → extension: command/response pairs with ids (`open`, `observe`, `act`, `fresh`); broadcasts `welcome`, `state` (carries `mode`, `selection`, `schema`, `presets`, `profiles`, `tokens`, `providers`, and for orchestrated tasks `log`/`final`/`skills` plus the live browser sub-state under `browser`), `models {registry}`, `approval_request {id, command}`, `delta {text}` (live model output during orchestrated steps, throttled), `error`.
 
 ## Known limitations (MVP)
 

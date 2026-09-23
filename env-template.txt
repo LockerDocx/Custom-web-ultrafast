@@ -35,3 +35,12 @@ TEXT_MODEL_REASONING=low
 # JEV_MODEL_CONFIG=artifacts/model-config.json
 # JEV_MODEL_REGISTRY=artifacts/model-registry.json
 # PLANNER_TEMPERATURE=0.5
+
+# ---- 100% free / offline option (no API key) ----
+# Any local OpenAI-compatible runtime: ollama, lmstudio, llamacpp, jan.
+# Example with Ollama (https://ollama.com):  ollama pull qwen3.5:4b
+# POLICY_PROVIDER=ollama
+# POLICY_MODEL=qwen3.5:4b
+# TEXT_MODEL_PROVIDER=ollama
+# TEXT_MODEL=qwen3.5:4b
+# Hardware guide (Spanish): docs/modelos-locales.md
