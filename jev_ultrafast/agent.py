@@ -113,11 +113,18 @@ class Agent:
         # elements — so the last action, not the element id, is what says "we just typed this".
         if (previous.get("text") or "").strip().lower() != text.strip().lower():
             return None
-        if (previous.get("action") or "").strip().lower() != (action.get("label") or "").strip().lower():
+        label = (action.get("label") or "").strip().lower()
+        previous_label = (previous.get("action") or "").strip().lower()
+        if previous_label != label:
             return None
-        if str(action.get("value") or "").strip().lower() != text.strip().lower():
-            return None
+        # The field is observed more than once (input and combobox wrapper) and only one of
+        # those elements carries the text, so "already filled" is asked of the whole field.
         wanted = text.strip().lower()
+        holds = any((candidate.get("label") or "").strip().lower() == label
+                    and str(candidate.get("value") or "").strip().lower().startswith(wanted)
+                    for candidate in page.get("actions") or [])
+        if not holds:
+            return None
         for candidate in page.get("actions") or []:
             if candidate.get("id") == action.get("id") or candidate.get("kind") != "click":
                 continue

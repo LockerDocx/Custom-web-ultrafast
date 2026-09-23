@@ -328,7 +328,9 @@ def test_a_repeated_fill_commits_the_suggestion_instead_of_typing_again(runner, 
     """Measured live: the field held "London", the suggestion was on screen, the model typed again."""
     p = page()
     p["actions"] = [
-        {"id": "e1", "kind": "fill", "label": "Where to?", "role": "textbox", "value": "London", "node": 10},
+        # The wrapper carries no value; the input inside it holds the text the model typed.
+        {"id": "e1", "kind": "fill", "label": "Where to?", "role": "combobox", "value": "", "node": 9},
+        {"id": "e2", "kind": "fill", "label": "Where to?", "role": "textbox", "value": "London", "node": 10},
         {"id": "e9", "kind": "click", "label": "London, United Kingdom", "role": "option", "value": "0", "node": 11},
     ]
     p["fingerprint"] = fingerprint(p)
