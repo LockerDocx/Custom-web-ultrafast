@@ -27,6 +27,18 @@ def test_dangerous_commands_are_denied():
         assert classify_command(command) == "deny", command
 
 
+def test_read_only_commands_cannot_reach_outside_the_workspace():
+    # the allow-list auto-runs only inside the workspace; anything reaching
+    # ~, absolute paths, parent escapes or env expansions must ask first
+    for command in ("cat ~/.ssh/id_rsa", "cat /etc/passwd", "ls /home", "find / -name id_rsa",
+                    "grep -r GROQ_API_KEY ~/.env", "cat $HOME/.env", "cat C:/Users/x/.env",
+                    "cat ./../secret"):
+        assert classify_command(command) == "approve", command
+    for command in ("cat notes.md", "ls -la", "find . -name x", "grep -r pattern .",
+                    "head notes.md", 'cat "my notes.txt"', "wc -l report.txt"):
+        assert classify_command(command) == "allow", command
+
+
 def test_writes_and_compounds_need_approval():
     for command in ("pip install requests", "python3 script.py", "echo hi > /etc/passwd",
                     "echo x > file.txt", "ls; rm x", "cat a | cat b", "echo $(whoami)",

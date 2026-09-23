@@ -10,6 +10,7 @@ Safety model:
 
 import html
 import re
+import shlex
 import subprocess
 import urllib.parse
 from pathlib import Path
@@ -37,6 +38,30 @@ class ToolError(ValueError):
     """A tool rejected the request; the message is safe to show the model."""
 
 
+def _touches_outside_path(command):
+    """True when any argument references a path outside the task workspace.
+
+    Read-only commands are auto-allowed ONLY inside the workspace; ~, absolute
+    paths, parent escapes and environment expansions always require approval
+    (otherwise `cat ~/.ssh/id_rsa` would run unattended).
+    """
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return True  # unparseable quoting: be safe, ask
+    for part in parts[1:]:
+        if not part or part.startswith("-"):
+            continue  # flags and the command word itself
+        if (
+            part.startswith(("~", "/", "$"))
+            or ".." in part
+            or re.match(r"^[A-Za-z]:[\\/]", part)
+            or part.startswith("%")
+        ):
+            return True
+    return False
+
+
 def classify_command(command):
     """'allow' for read-only commands, 'deny' for destructive ones, else 'approve'."""
     stripped = command.strip()
@@ -52,6 +77,8 @@ def classify_command(command):
         return "approve"  # compound or redirecting commands are never auto-allowed
     for allowed in READ_ONLY_COMMANDS:
         if lowered == allowed or lowered.startswith(allowed + " "):
+            if _touches_outside_path(stripped):
+                return "approve"  # read-only, but reaching outside the workspace: ask first
             return "allow"
     return "approve"
 
