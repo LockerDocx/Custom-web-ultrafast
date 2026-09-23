@@ -241,8 +241,8 @@ def test_choose_uses_the_provider_when_typesafe_is_unset(monkeypatch):
     assert d["probabilities"] == {"e3": 0.9}
     assert d["target_confidence"] == 0.9 and d["target_probabilities"] == {}
     body = post.call_args.args[2]
-    assert body["model"] == "test-model" and body["max_tokens"] == 1024, (
-        "a policy model that reasons needs room for its answer: 512 was not enough"
+    assert body["model"] == "test-model" and body["max_tokens"] == 2048, (
+        "a policy model that reasons needs room for its thinking and its answer"
     )
     user = body["messages"][1]["content"]
     assert "GOAL: Find a book" in user
