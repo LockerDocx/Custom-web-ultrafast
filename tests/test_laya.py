@@ -66,9 +66,12 @@ def test_route_task_uses_laya_when_confident():
 
 
 def test_route_task_falls_back_below_the_confidence_gate():
-    laya_local._engine = FakeLaya({"route": ("orchestrated", 0.41)})  # below 0.55
-    # German mission with no keyword match → the keyword router says browser
-    assert orchestrator.route_task("Recherchiere Flüge und erstelle eine Datei") == "browser"
+    laya_local._engine = FakeLaya({"route": ("orchestrated", 0.41)})  # below the 0.75 gate
+    # A German tool mission is now caught by the keyword fallback: 0.4.0 extended the
+    # list from Spanish/English to six languages (measured in scripts/bench_routing.py).
+    assert orchestrator.route_task("Recherchiere Flüge und erstelle eine Datei") == "orchestrated"
+    # A page mission still stays in the browser loop, in German too.
+    assert orchestrator.route_task("Klicke auf den Login-Button auf dieser Seite") == "browser"
 
 
 def test_route_task_falls_back_when_laya_is_off_or_missing(monkeypatch):

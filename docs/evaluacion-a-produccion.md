@@ -174,12 +174,20 @@ validadas que `runs.jsonl` ya graba — pero es un hito 1.x, no de hoy.
 - Guía de rotación/retirada de claves en `docs/providers.md`.
 - (Opcional) modo contenedor: si hay Docker, `run_command` puede ejecutarse dentro.
 
-**v0.4.0 — Calidad a escala** *(archivos: `scripts/check_laya.py`, nuevo `tests/e2e/`, `scripts/bench_providers.py`)*
-- Batería de routing de 200–500 misiones (fixture JSON multilingüe + adversarial) en CI,
-  con métricas: routing accuracy, task completion, false tool call rate, retries, p50/p95.
-- E2E real en CI: Firefox headless + el bridge real, escenarios navegable/descarga/formulario
-  repetidos; o aprovechar la ruta Chrome existente (browser-harness).
-- `scripts/bench_providers.py`: tabla p50/p95/coste por rol y por operación.
+**v0.4.0 — Calidad a escala** *(archivos: `scripts/routing_cases.py`, `scripts/bench_routing.py`,
+`scripts/bench_providers.py`, `scripts/e2e_flights.py`; docs: `docs/calidad-a-escala.md`)* · ✅ construida
+- Batería de routing **241 misiones** etiquetadas (6 idiomas × 36 core + 25 adversariales),
+  escalable a 500 por fixture JSONL, en CI con los pesos reales de Laya y puerta real
+  (≤85% de acierto o >5 confusiones peligrosas → falla). Medido: 0.3.0 77%/54 peligrosas →
+  0.4.0 100%/0 sobre la misma batería, con dos defectos reales corregidos (subcadena
+  `inscription`→`script`, hueco DE/FR/IT/PT).
+- E2E real en CI por la ruta Chrome existente (browser-harness + xvfb): misión de vuelos
+  Zúrich→Londres sobre Google Flights, pacing 2.4 s en la costura HTTP del producto y
+  verificación de 7 comprobaciones sobre la página final; «el sitio nos bloqueó» se
+  distingue de «nuestra misión falló».
+- `scripts/bench_providers.py`: p50/p95/min/max y tokens por rol y por operación real
+  (route/choose/plan/text), con coste proyectado opcional vía `--prices`.
+- Comentario dinámico de PR en los cinco workflows de medición (`scripts/comment_on_pr.sh`).
 
 **v0.5.0 — Distribución** *(archivos: `extension/`, nuevo `docs/publicacion.md`)*
 - XPI firmado (cuenta Mozilla + `web-ext sign`) → instalación permanente con un clic.

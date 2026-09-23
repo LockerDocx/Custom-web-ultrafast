@@ -207,6 +207,8 @@ The same policy opened the requested Wikipedia article in **2.798 s** and passed
 
 A `DONE` choice still requires independent outcome verification. The DOM reader handles common HTML and ARIA controls, not the full accessible-name specification. Shadow roots, frames, canvas, uploads, pop-up tabs, nested scrolling, and arbitrary keyboard widgets remain outside this MVP. Owned tabs share the existing Chrome profile.
 
+**Routing at scale (0.4.0).** A labelled battery of **241 missions** (6 languages × 36, plus 25 adversarial: mixed intent, multi-clause, bilingual, telegraphic, typos) measures the two-way decision on every PR. Measured over the same battery through the real `route_task`: the 0.3.0 Spanish/English keyword layer hit **77% (186/241) with 54 dangerous confusions** (tool missions sent to the browser loop); the 0.4.0 six-language layer with word-start matching hits **100% (241/241) with 0 dangerous**. The battery also caught two real defects, both fixed: `inscription` matched `script` (a form page was routed to the tool loop) and inflected words had no coverage in German, French, Italian or Portuguese. CI adds the raw-Laya column with the real weights, and the whole-stack flights mission runs against live Google Flights with 2.4 s pacing and seven independent page checks. Numbers, ground truth and limits: [calidad-a-escala.md](docs/calidad-a-escala.md).
+
 ## Development
 
 ```bash
@@ -218,6 +220,8 @@ uv build
 ```
 
 Tests are offline. `uv run python scripts/check_guards.py` checks real controls in a local browser without model calls. Live examples and recording scripts make paid API calls. `scripts/record_flights.py <new-folder>` captures original browser timestamps; `scripts/render_demo.py <recording-folder>` renders that verified run at 1× and crops out the Google account strip. Credentials and raw traces stay ignored.
+
+The 0.4.0 quality instruments run offline first: `python scripts/bench_routing.py --selftest` measures the keyword layer over all 241 missions without weights or keys, and `python scripts/e2e_flights.py --selftest` proves the pacing wrapper and the seven page checks in ten offline assertions. `python scripts/bench_providers.py` measures latency and tokens per role and per real operation against the configured providers.
 
 ---
 

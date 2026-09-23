@@ -6,6 +6,9 @@ name: Provider check
 
 on:
   workflow_dispatch: {}
+  pull_request:
+    paths:
+      - "scripts/check_providers.py"
   push:
     paths:
       - ".github/workflows/provider-check.yml"
@@ -46,10 +49,7 @@ jobs:
             exit 0
           fi
           python scripts/check_providers.py | tee /tmp/report.md
-      - name: Comment on the PR
+      - name: Comment on the pull request
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ -f /tmp/report.md ]; then
-            gh pr comment 1 --body-file /tmp/report.md || true
-          fi
+        run: bash scripts/comment_on_pr.sh /tmp/report.md

@@ -1,0 +1,109 @@
+name: E2E flights
+
+# The whole stack against the real Google Flights page: real Chrome through the CDP
+# harness, the real policy/text providers, the real agent loop, and an independent
+# verification of the resulting page (7 checks). Model calls are paced at 2.4 s so a
+# free provider tier is not hammered.
+#
+# Outcomes are reported honestly: a consent wall or CAPTCHA is infrastructure (the
+# step warns and exits 0); a mission that ran and did not satisfy the page checks is
+# a regression (exit 1).
+
+on:
+  workflow_dispatch:
+    inputs:
+      pacing:
+        description: "Seconds between model calls"
+        default: "2.4"
+      max_seconds:
+        description: "Mission time budget in seconds"
+        default: "300"
+  pull_request:
+    paths:
+      - ".github/workflows/e2e-flights.yml"
+      - "scripts/e2e_flights.py"
+      - "examples/flights.py"
+      - "jev_ultrafast/agent.py"
+      - "jev_ultrafast/browser.py"
+      - "jev_ultrafast/model.py"
+      - "jev_ultrafast/providers.py"
+      - "jev_ultrafast/orchestrator.py"
+  push:
+    branches: ["main", "arena/**"]
+    paths:
+      - ".github/workflows/e2e-flights.yml"
+      - "scripts/e2e_flights.py"
+      - "examples/flights.py"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  flights:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install --quiet -e . "httpx[http2]" browser-harness==0.1.13
+      - name: Which browser is available
+        run: |
+          echo "CHROME_PATH=${CHROME_PATH:-unset}"
+          command -v google-chrome google-chrome-stable chromium || true
+          google-chrome --version || true
+      - name: Offline harness self-test (always)
+        run: python scripts/e2e_flights.py --selftest
+      - name: Live mission
+        id: mission
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CHROME_PATH: /usr/bin/google-chrome
+          POLICY_PROVIDER: groq
+          POLICY_MODEL: openai/gpt-oss-20b
+          POLICY_REASONING: low
+          TEXT_MODEL_PROVIDER: groq
+          TEXT_MODEL: openai/gpt-oss-20b
+          TEXT_MODEL_REASONING: low
+        run: |
+          if [ -z "${GROQ_API_KEY}" ]; then
+            echo "## 🛫 E2E flights" > /tmp/report.md
+            echo "" >> /tmp/report.md
+            echo "Skipped: no GROQ_API_KEY secret in this repository." >> /tmp/report.md
+            cat /tmp/report.md
+            exit 0
+          fi
+          set +e
+          xvfb-run -a python scripts/e2e_flights.py \
+            --max-seconds "${{ github.event.inputs.max_seconds || 300 }}" \
+            --pacing "${{ github.event.inputs.pacing || 2.4 }}" \
+            --artifacts artifacts/e2e-flights \
+            --json artifacts/e2e-flights.json | tee /tmp/report.md
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload the artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-flights
+          path: |
+            artifacts/e2e-flights.json
+            artifacts/e2e-flights/state.json
+          if-no-files-found: ignore
+      - name: Comment on the pull request
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/comment_on_pr.sh /tmp/report.md
+      - name: Fail the job when the mission ran and failed
+        if: steps.mission.outputs.exit_code != '0'
+        run: |
+          echo "The live flights mission reported a failure (exit ${{ steps.mission.outputs.exit_code }})."
+          exit 1

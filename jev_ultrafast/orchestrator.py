@@ -7,6 +7,7 @@ per turn — {"tool": ..., "args": ...} to act or {"final": ...} to finish — s
 every chat model works, with or without native tool calling.
 """
 
+import re
 import time
 
 from . import providers
@@ -14,18 +15,69 @@ from .providers import extract_json
 from .skills import select_skills, skill_instructions
 
 ORCHESTRATED_KEYWORDS = (
-    # documents
-    "pdf", "docx", "xlsx", "excel", "spreadsheet", "word document",
-    # files and projects
-    "project", "script", "create a file", "write a file", "save", "download",
-    "crea un", "crea el", "escribe", "descarga", "archivo",
-    # terminal
-    "run the test", "run tests", "install", "command", "terminal", "bash",
-    "npm ", "pip ", "git init", "ejecuta", "instala",
-    # research over multiple sources
-    "research", "investigate", "find information about", "compare",
-    "investiga", "busca información",
+    # documents and data files
+    "pdf", "docx", "xlsx", "excel", "spreadsheet", "word document", "csv", "markdown",
+    "hoja de cálculo*", "folha de cálculo*", "foglio di calcolo*", "tableur*",
+    # files and projects — the word-start anchor below means "file*" matches
+    # "a file" / "the files" and never the "file" inside "profile"
+    "file*", "archivo*", "ficheiro*", "datei*", "fichier*", "dossier*", "carpeta*",
+    "ordner*", "cartella*", "project*", "projekt*", "projeto*", "progetto*", "repository*",
+    "repositorio*", "repositório*", "repo*", "clone*", "clona*", "klone*",
+    # creating, downloading and editing artefacts
+    "script*", "skript*", "create a file*", "write a file*", "save*", "download*", "descarga*",
+    "descarg*", "descarreg*", "baixar*", "scarica*", "herunterlad*", "télécharg*", "telecharg*",
+    "crea un*", "crea el*", "escribe*", "écris*", "ecris*", "escreve*", "scrivi*", "schreib*",
+    "enregistr*", "speicher*", "renombra*", "renomme*", "renomeia*", "rinomina*", "benenne*",
+    "genera*", "génère*", "gera*", "informe*", "rapport*", "bericht*", "relatório*", "report*",
+    # terminal, code and their output
+    "run the test*", "run tests*", "test*", "install*", "instala*", "instal*", "installier*",
+    "installa*", "command*", "terminal*", "terminale*", "bash*", "npm *", "pip *", "git init",
+    "ejecuta*", "exécut*", "execut*", "esegui*", "esegu*", "führe*", "ausführ*",
+    # the wider web: multi-source work no single page can answer
+    "research*", "investigat*", "investiga*", "compare*", "compar*", "find information about",
+    "busca información*", "en internet*", "im internet*", "sur internet*", "na internet*",
+    "su internet*", "on the internet*", "sur le web*", "cerca sul web*", "pesquisa na web*",
+    "search the web*", "on the web*", "varias webs*", "mehreren webseiten*",
+    "verschiedenen webseiten*", "plusieurs sites*", "più siti*", "vários sites*",
+    "several websites*", "enlaces*", "liens*", "links*",
+    # version control and extraction
+    "commits*", "historial de commits*", "cronologia dei commit*", "histórico de commits*",
+    "extract*", "extrae*", "extrai*", "extrait*", "estrai*", "extrahiere*",
 )
+
+# A trailing "*" makes a keyword a prefix match; without it the keyword must be a
+# whole word. Both are anchored at a word start. Substring matching was the 0.3.0
+# behaviour and it misrouted real missions: "inscription" contains "script" and
+# Italian "iscrivimi" contains "scrivi", so plain page forms were sent to the tool
+# loop. The prefix form keeps inflection working ("descarg*" → descargar/descarga)
+# while the word-start anchor keeps compounds out ("profile" is not "file").
+_PATTERN_CACHE = {}
+
+
+def _keyword_pattern(keyword):
+    """One compiled pattern per keyword: anchored at a word start, prefix or whole word."""
+    pattern = _PATTERN_CACHE.get(keyword)
+    if pattern is None:
+        prefix = keyword.endswith("*")
+        core = (keyword[:-1] if prefix else keyword).strip()
+        tail = "" if prefix else r"(?!\w)"
+        pattern = re.compile(r"(?<!\w)" + re.escape(core) + tail, re.IGNORECASE)
+        _PATTERN_CACHE[keyword] = pattern
+    return pattern
+
+
+def orchestrated_keyword_match(goal, keywords=None):
+    """Does this mission need the tool loop, by keyword? (Laya answers first when it can.)"""
+    keywords = ORCHESTRATED_KEYWORDS if keywords is None else tuple(keywords)
+    return any(_keyword_pattern(keyword).search(goal) for keyword in keywords)
+
+
+def legacy_keyword_match(goal, keywords):
+    """The 0.3.0 substring rule, kept only so the benchmark can measure the change."""
+    lowered = goal.lower()
+    return any(keyword.lower() in lowered for keyword in keywords)
+
+
 MAX_ORCHESTRATOR_STEPS = 25
 TOOL_RESULT_BUDGET = 4000
 
@@ -58,8 +110,7 @@ def route_task(goal):
     decided = laya_local.route_mission(goal)
     if decided is not None:
         return decided
-    lowered = goal.lower()
-    if any(keyword in lowered for keyword in ORCHESTRATED_KEYWORDS):
+    if orchestrated_keyword_match(goal):
         return "orchestrated"
     return "browser"
 

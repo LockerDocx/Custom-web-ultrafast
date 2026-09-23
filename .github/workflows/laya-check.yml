@@ -7,6 +7,9 @@ name: Laya check
 
 on:
   workflow_dispatch: {}
+  pull_request:
+    paths:
+      - "jev_ultrafast/laya_local.py"
   push:
     paths:
       - ".github/workflows/laya-check.yml"
@@ -39,10 +42,7 @@ jobs:
         env:
           LAYA_CHECKPOINT: multilingual
         run: python scripts/check_laya.py | tee /tmp/report.md
-      - name: Comment on the PR
+      - name: Comment on the pull request
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ -f /tmp/report.md ]; then
-            gh pr comment 1 --body-file /tmp/report.md || true
-          fi
+        run: bash scripts/comment_on_pr.sh /tmp/report.md

@@ -50,7 +50,8 @@ jobs:
           LOG=/tmp/upload.log
           : > "$LOG"
           report() {
-            gh pr comment 1 --body "Release upload failed for ${GITHUB_REF_NAME}:\n\`\`\`\n$(tail -40 "$LOG")\n\`\`\`" >/dev/null 2>&1 || true
+            printf 'Release upload failed for %s:\n\n```\n%s\n```\n' "${GITHUB_REF_NAME}" "$(tail -40 "$LOG")" > /tmp/report.md
+            bash scripts/comment_on_pr.sh /tmp/report.md >/dev/null 2>&1 || true
           }
           fail() {
             echo "FAILED: $1" | tee -a "$LOG"
