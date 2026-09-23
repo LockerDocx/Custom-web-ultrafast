@@ -70,6 +70,18 @@ plan general viaja a internet.
 
 El único fallo real: una misión alemana con herramientas (Laya se equivocó *con confianza 0.81* — el caso "confidently wrong" que su propia calibración promete mitigar con fine-tune). La tabla completa se regenera en el PR en cada push (workflow «Laya check»).
 
+### Requisitos técnicos (verificados sobre el paquete v0.3.6)
+
+| Pregunta | Respuesta |
+|---|---|
+| **¿Self-hosted?** | **Sí, 100%.** Los pesos (Apache 2.0) se descargan UNA vez de Hugging Face a `~/.cache/huggingface` (Windows: `C:\Users\TU_USUARIO\.cache\huggingface`). Después: cero red, cero clave, cero coste. Borrar esa carpeta = se re-descarga. |
+| **¿Cuánto pesa?** | Solo se baja el subfolder del checkpoint elegido (no el repo entero — verificado en su código): **~1 GB** para `multilingual` (322M parámetros, safetensors + tokenizer). El inglés (421M) es algo mayor. |
+| **RAM en uso** | **~1 GB** (se carga en fp16). Convive con Firefox sin problema en un PC de 8 GB. |
+| **Disco total** | ~1 GB de pesos + torch (~200 MB–1 GB en Windows/macOS; en Linux el instalador `.sh` usa el build CPU liviano — con GPU NVIDIA quita esas líneas del script para el build CUDA). |
+| **¿CPU o GPU?** | Cualquier CPU moderna (AVX2) va fina: **190 ms** por decisión medidos en la CPU de CI (2 núcleos). Si detecta GPU CUDA o Apple Silicon (MPS), la usa sola — 32,8 ms publicado. |
+| **¿Cuándo corre?** | 1 carga al arrancar el host (~20 s la primera vez, luego segundos desde caché) + **~0,2 s por misión** (2 decisiones: ruta y skills). NO corre en cada acción del navegador. |
+| **Python** | El mismo del proyecto (3.12+). Sin servicios externos ni puertos. |
+
 | Cómo | Detalle |
 |---|---|
 | Instalar | Doble clic en `install-laya.bat` (Windows) / `install-laya.command` (macOS) / `install-laya.sh` (Linux) — o `pip install -e ".[laya]"` |
