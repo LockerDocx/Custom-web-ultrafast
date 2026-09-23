@@ -88,9 +88,11 @@ jobs:
           PLANNER_PROVIDER: nvidia
           PLANNER_MODEL: z-ai/glm-5.3
           PLANNER_REASONING: none
-          POLICY_PROVIDER: nvidia
-          POLICY_MODEL: z-ai/glm-5.3
-          POLICY_REASONING: none
+          # NVIDIA's GLM-5.3 answers the planner role well but returned empty policy
+          # replies (reasoning tokens with no content), so the executor stays on Groq.
+          POLICY_PROVIDER: groq
+          POLICY_MODEL: openai/gpt-oss-20b
+          POLICY_REASONING: medium
           TEXT_MODEL_PROVIDER: groq
           TEXT_MODEL: openai/gpt-oss-20b
           TEXT_MODEL_REASONING: low
