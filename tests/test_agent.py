@@ -322,3 +322,39 @@ def test_navigation_during_prediction_reobserves_without_action(runner):
     assert runner.state["status"] == "ready"
     assert runner.state["decision"] is None
     runner.state["browser"].act.assert_not_called()
+
+
+def test_a_repeated_fill_commits_the_suggestion_instead_of_typing_again(runner, monkeypatch):
+    """Measured live: the field held "London", the suggestion was on screen, the model typed again."""
+    p = page()
+    p["actions"] = [
+        {"id": "e1", "kind": "fill", "label": "Where to?", "role": "textbox", "value": "London", "node": 10},
+        {"id": "e9", "kind": "click", "label": "London, United Kingdom", "role": "option", "value": "0", "node": 11},
+    ]
+    p["fingerprint"] = fingerprint(p)
+    runner.state.update(page=p, decision=decision("e1"),
+                        history=[{"choice": "e1", "kind": "fill", "action": "Where to?"}])
+    monkeypatch.setattr(loop, "field_text", Mock(return_value=("London", {"model": "test", "latency_ms": 5})))
+    runner.command("act", {"fingerprint": p["fingerprint"]})
+    clicked = runner.state["browser"].act.call_args.args[0]
+    assert clicked["id"] == "e9", "committing the suggestion is the step the goal still needs"
+    assert clicked["kind"] == "click"
+    assert runner.state["history"][-1]["recovered"] == "London, United Kingdom"
+    assert runner.state["history"][-1]["kind"] == "click"
+
+
+def test_a_first_fill_with_a_fresh_field_still_types_the_value(runner, monkeypatch):
+    p = page()
+    p["actions"] = [
+        {"id": "e1", "kind": "fill", "label": "Where to?", "role": "textbox", "value": "", "node": 10},
+        {"id": "e9", "kind": "click", "label": "London, United Kingdom", "role": "option", "value": "0", "node": 11},
+    ]
+    p["fingerprint"] = fingerprint(p)
+    runner.state.update(page=p, decision=decision("e1"), history=[
+        {"choice": "e0", "kind": "click", "action": "One way"}])
+    monkeypatch.setattr(loop, "field_text", Mock(return_value=("London", {"model": "test", "latency_ms": 5})))
+    runner.command("act", {"fingerprint": p["fingerprint"]})
+    act = runner.state["browser"].act.call_args
+    assert act.args[0]["id"] == "e1" and act.args[0]["kind"] == "fill"
+    assert act.kwargs["text"] == "London"
+    assert runner.state["history"][-1]["recovered"] is None
