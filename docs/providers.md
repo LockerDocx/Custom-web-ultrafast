@@ -1,5 +1,9 @@
 # Model providers
 
+> Per-model parameter surfaces (which controls exist for Kimi vs GLM vs
+> gpt-oss, and how reasoning reaches the wire) live in
+> [model-parameters.md](model-parameters.md).
+
 Three independent model roles drive the agent, and each one can use a different provider at the same time:
 
 - **Planner** — decomposes the mission into a short checklist of browser steps (optional). `PLANNER_*` variables.

@@ -43,6 +43,8 @@ The agent attaches to the tab you are on, observes its elements, plans (if `PLAN
 | Piece | File | Notes |
 | --- | --- | --- |
 | Sidebar UI | `extension/sidebar/` | Chat, plan checklist, activity, models footer. |
+| Model & parameter panel | `extension/sidebar/sidebar.js` | Catalogue, presets, profiles, and controls rendered from the schema of the *selected model* — see [model-parameters.md](model-parameters.md). |
+| Model router | `jev_ultrafast/discovery.py` + `schemas.py` + `parameters.py` | Catalogue → normalized registry → per-model parameter schema → validation → request body. |
 | Bridge client | `extension/background.js` | WebSocket to the host, command routing, screenshots (`tabs.captureTab`). |
 | Tab driver | `extension/content.js` | Validates observed targets, executes click/type/select/scroll, waits for autocomplete — a port of `jev_ultrafast/browser.py`'s executor. |
 | Element indexing | `extension/snapshot.js` | Verbatim copy of `jev_ultrafast/snapshot.js` (a test fails if they drift). |
@@ -55,7 +57,7 @@ The agent attaches to the tab you are on, observes its elements, plans (if `PLAN
 | Permission center | `jev_ultrafast/permissions.py` | Six per-tool scopes (browser, terminal, filesystem, network, clipboard, downloads) with allow / ask / deny levels; persisted in `artifacts/permissions.json`. |
 | Isolated browser | `jev_ultrafast/neko.py` | Neko (Docker + WebRTC) session manager plus a stdlib CDP client: `SandboxBrowser` implements the same observe/act/fresh contract as `FirefoxBrowser`, so the same loop works in either target. |
 
-Configuration: `FIREFOX_BRIDGE_PORT` (default 8767), `FIREFOX_BRIDGE_TOKEN` (optional shared secret; the extension sends it during hello). All model roles (`PLANNER_*`, `POLICY_*`, `TEXT_MODEL_*`) follow [providers.md](providers.md) — e.g. planner on NVIDIA NIM and executor on Groq at the same time.
+Configuration: `FIREFOX_BRIDGE_PORT` (default 8767), `FIREFOX_BRIDGE_TOKEN` (optional shared secret; the extension sends it during hello). All model roles (`PLANNER_*`, `POLICY_*`, `TEXT_MODEL_*`) follow [providers.md](providers.md) — e.g. planner on NVIDIA NIM and executor on Groq at the same time. Each role's parameters (`POLICY_TEMPERATURE`, `POLICY_TOP_P`, `POLICY_MAX_TOKENS`, …) are validated against what that model exposes: [model-parameters.md](model-parameters.md).
 
 ## Security model
 

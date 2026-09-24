@@ -35,6 +35,8 @@ function render() {
     .join("   ·   ") || "no models configured";
   $("models").textContent = footer;
   renderModelsPanel();
+  renderTarget(state);
+  renderPermissions(state.permissions);
   renderProviders(state.providers);
   renderError(state.error);
 }
@@ -134,6 +136,21 @@ function compactArgs(args) {
 }
 
 /* ── models panel (MVP-1) ────────────────────────────────────────── */
+/* Every control below is rendered from the schema the host sends for the
+   model selected in that role — NVIDIA NIM changes its catalogue constantly
+   and each family exposes a different surface, so nothing here is hardcoded
+   per model. Types map to widgets: boolean → toggle, number → slider,
+   integer → numeric field, enum → segmented control, array → tag field. */
+
+const CAP_ICONS = { vision: "👁", reasoning: "🧠", tool_calling: "🛠", coding: "⌨" };
+
+function capabilityChips(capabilities) {
+  if (!capabilities) return "";
+  return Object.entries(CAP_ICONS)
+    .filter(([name]) => capabilities[name])
+    .map(([, icon]) => icon)
+    .join("");
+}
 
 function modelOptions(roleKey, selection, registryData) {
   const current = `${selection.provider || ""}::${selection.model || ""}`;
@@ -149,9 +166,7 @@ function modelOptions(roleKey, selection, registryData) {
       const opts = report.models
         .map((m) => {
           const value = `${provider}::${m.id}`;
-          const caps = m.capabilities
-            ? [m.capabilities.vision ? "👁" : "", m.capabilities.reasoning ? "🧠" : ""].filter(Boolean).join("")
-            : "";
+          const caps = capabilityChips(m.capabilities);
           return `<option value="${escape(value)}"${value === current ? " selected" : ""}>${escape(m.displayName)}${caps ? " " + caps : ""}</option>`;
         })
         .join("");
@@ -166,42 +181,71 @@ function modelOptions(roleKey, selection, registryData) {
   return html + groups.join("");
 }
 
-/* The schema is per model (MVP-1): the host sends one parameter surface per
-   role for the model that role currently resolves to. */
-function roleSchema(roleKey) {
-  const models = (state.schema && state.schema.modelSchemas) || {};
-  if (models[roleKey] && models[roleKey].parameters) return models[roleKey];
-  const parameters = (state.schema && state.schema.parameters) || {};
-  return { parameters, simple: Object.keys(parameters), advanced: [], fallback: true };
-}
-
-function paramControl(roleKey, name, schema, value) {
-  const current = value === undefined || value === null ? "" : String(value);
-  const attrs = `class="param" data-param="${escape(name)}" data-role="${escape(roleKey)}" title="${escape(schema.description || name)}"`;
+/* One widget per schema type (spec §5.3). */
+function renderControl(roleKey, name, schema, value) {
+  const attrs = `data-param="${escape(name)}" data-role="${escape(roleKey)}" data-type="${escape(schema.type)}"`;
+  const label = escape(schema.label || name);
+  const title = escape(schema.description || "");
+  const mark = schema.verified ? '<i class="verified" title="Accepted by this endpoint in a real request">✓</i>' : "";
+  let widget = "";
   if (schema.type === "enum") {
-    const options = [`<option value=""${current === "" ? " selected" : ""}>Default</option>`]
-      .concat(
-        (schema.values || []).map(
-          (v) => `<option value="${escape(v)}"${current === v ? " selected" : ""}>${escape((schema.labels && schema.labels[v]) || v)}</option>`,
-        ),
+    const options = (schema.values || [])
+      .map(
+        (v) =>
+          `<option value="${escape(v)}"${String(value) === String(v) ? " selected" : ""}>${escape((schema.labels && schema.labels[v]) || v)}</option>`,
       )
       .join("");
-    return `<select ${attrs}>${options}</select>`;
+    widget = `<select ${attrs}><option value=""${value === undefined || value === null || value === "" ? " selected" : ""}>Default</option>${options}</select>`;
+  } else if (schema.type === "boolean") {
+    const checked = value === true || value === "on" || value === "true";
+    widget = `<label class="toggle"><input type="checkbox" ${attrs}${checked ? " checked" : ""} /><span></span></label>`;
+  } else if (schema.type === "number") {
+    const shown = value === undefined || value === null || value === "" ? "" : value;
+    widget =
+      `<span class="slider"><input type="range" ${attrs} min="${schema.min}" max="${schema.max}" step="${schema.step}" value="${shown === "" ? schema.min : escape(shown)}"${shown === "" ? ' data-unset="1"' : ""} />` +
+      `<output>${shown === "" ? "default" : escape(shown)}</output>` +
+      `<button class="clear" data-clear="${escape(name)}" data-role="${escape(roleKey)}" title="Use the provider default">×</button></span>`;
+  } else if (schema.type === "integer") {
+    const shown = value === undefined || value === null ? "" : value;
+    widget = `<input type="number" ${attrs} min="${schema.min}" max="${schema.max}" step="${schema.step || 1}" placeholder="default" value="${escape(shown)}" />`;
+  } else if (schema.type === "array") {
+    const shown = Array.isArray(value) ? value.join(", ") : value || "";
+    widget = `<input type="text" ${attrs} placeholder="comma,separated" value="${escape(shown)}" />`;
+  } else {
+    widget = `<input type="text" ${attrs} placeholder="default" value="${escape(value ?? "")}" />`;
   }
-  if (schema.type === "boolean") {
-    return `<input type="checkbox" ${attrs} data-kind="boolean"${current === "true" ? " checked" : ""} />`;
+  return `<label title="${title}">${label}${mark}</label>${widget}`;
+}
+
+function renderRoleSchema(role, sel) {
+  const schema = sel.schema || {};
+  const parameters = schema.parameters || {};
+  const values = sel.params || {};
+  const simple = [];
+  const advanced = [];
+  for (const [name, definition] of Object.entries(parameters)) {
+    const html = renderControl(role.key, name, definition, values[name]);
+    (definition.tier === "advanced" ? advanced : simple).push(html);
   }
-  if (schema.type === "array") {
-    return `<input type="text" ${attrs} data-kind="array" placeholder="comma, separated" value="${escape(current)}" />`;
-  }
-  const step = schema.step !== undefined ? schema.step : schema.type === "integer" ? 1 : "any";
-  const bounds = `${schema.min !== undefined ? ` min="${schema.min}"` : ""}${schema.max !== undefined ? ` max="${schema.max}"` : ""}`;
-  return `<input type="number" ${attrs} data-kind="${escape(schema.type)}" step="${step}"${bounds} placeholder="default" value="${escape(current)}" />`;
+  const unsupported = (schema.unsupported || []).length
+    ? `<div class="hint dropped">hidden — rejected by this endpoint: ${escape((schema.unsupported || []).join(", "))}</div>`
+    : "";
+  const badge = schema.model
+    ? `<span class="schema-id" title="Parameter surface resolved for this model">${escape(schema.schemaId || "")}</span>`
+    : "";
+  return `
+    <div class="param-grid simple">${simple.join("")}</div>
+    ${advanced.length ? `<details class="adv"><summary>advanced (${advanced.length})</summary><div class="param-grid">${advanced.join("")}</div></details>` : ""}
+    ${unsupported}
+    <div class="row schema-row">
+      ${badge}
+      <button class="probe" data-probe="${escape(role.key)}" title="Send one tiny request and record which parameters this model really accepts">Probe model</button>
+    </div>`;
 }
 
 function renderModelsPanel() {
   if (!state || !state.selection || !state.schema) return;
-  const signature = JSON.stringify([state.selection, state.presets, state.schema, state.profiles, registry]);
+  const signature = JSON.stringify([state.selection, state.presets, state.profiles, registry]);
   if (signature === modelsSignature) return; // don't rebuild while the user interacts
   modelsSignature = signature;
   const roles = state.schema.roles || [];
@@ -222,31 +266,11 @@ function renderModelsPanel() {
   $("model-roles").innerHTML = roles
     .map((role) => {
       const sel = state.selection[role.key] || {};
-      const modelSchema = roleSchema(role.key);
-      const parameters = modelSchema.parameters || {};
-      const names = Object.keys(parameters);
-      const simple = (modelSchema.simple && modelSchema.simple.length ? modelSchema.simple : names).filter((n) =>
-        names.includes(n),
-      );
-      const advanced = (modelSchema.advanced || []).filter((n) => names.includes(n));
-      const grid = (list) =>
-        list
-          .map((name) => {
-            const value = sel.params ? sel.params[name] : undefined;
-            return `<label>${escape(name.replace(/_/g, " "))}</label>${paramControl(role.key, name, parameters[name], value)}`;
-          })
-          .join("");
-      const supported = names.length
-        ? `<span class="hint">this model supports: ${names.map(escape).join(" · ")}</span>`
-        : "";
+      const caps = capabilityChips((sel.schema || {}).capabilities);
       return `<div class="role-row">
-        <div class="role-head"><b>${escape(role.label)}</b><span class="hint">${escape(role.hint || "")}</span></div>
+        <div class="role-head"><b>${escape(role.label)}</b><span class="hint">${escape(role.hint || "")}</span><span class="caps">${caps}</span></div>
         <select class="model-select" data-role="${escape(role.key)}">${modelOptions(role.key, sel, registry)}</select>
-        <div class="param-grid">${grid(simple)}</div>
-        <details class="adv"><summary>advanced parameters</summary><div class="param-grid">${
-          grid(advanced) || '<span class="hint">no advanced parameters for this model</span>'
-        }</div></details>
-        ${supported}
+        ${renderRoleSchema(role, sel)}
       </div>`;
     })
     .join("");
@@ -264,7 +288,13 @@ function renderRegistryStatus() {
   const ok = providers.filter((p) => p && p.ok);
   const models = ok.reduce((sum, p) => sum + (p.models ? p.models.length : 0), 0);
   const failed = providers.length - ok.length;
-  box.textContent = `${models} models · ${ok.length} providers${failed ? ` · ${failed} failed` : ""}`;
+  const age = registry.fetchedAt ? `${Math.max(0, Math.round((Date.now() / 1000 - registry.fetchedAt) / 60))} min ago` : "";
+  box.textContent = `${models} models · ${ok.length} providers${failed ? ` · ${failed} failed` : ""}${age ? ` · ${age}` : ""}`;
+}
+
+async function sendParam(role, name, value) {
+  const reply = await browser.runtime.sendMessage({ cmd: "params", role, params: { [name]: value } });
+  if (reply && reply.error) showError(reply.error);
 }
 
 function wireModelsPanel() {
@@ -281,16 +311,30 @@ function wireModelsPanel() {
     });
   });
   document.querySelectorAll("[data-param]").forEach((input) => {
-    const handler = async () => {
-      const kind = input.dataset.kind || (input.tagName === "SELECT" ? "enum" : "number");
-      let value;
-      if (kind === "boolean") value = input.checked;
-      else value = input.value === "" ? null : input.value;
-      const params = { [input.dataset.param]: value };
-      const reply = await browser.runtime.sendMessage({ cmd: "params", role: input.dataset.role, params });
-      if (reply && reply.error) showError(reply.error);
+    const read = () => {
+      if (input.type === "checkbox") return input.checked;
+      if (input.type === "range") return input.dataset.unset ? null : input.value;
+      return input.value === "" ? null : input.value;
     };
-    input.addEventListener(input.tagName === "SELECT" || input.type === "checkbox" ? "change" : "change", handler);
+    if (input.type === "range") {
+      const output = input.parentElement.querySelector("output");
+      input.addEventListener("input", () => {
+        delete input.dataset.unset;
+        output.textContent = input.value;
+      });
+    }
+    input.addEventListener("change", () => sendParam(input.dataset.role, input.dataset.param, read()));
+  });
+  document.querySelectorAll("[data-clear]").forEach((button) => {
+    button.addEventListener("click", () => sendParam(button.dataset.role, button.dataset.clear, null));
+  });
+  document.querySelectorAll("[data-probe]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      button.textContent = "probing…";
+      const reply = await browser.runtime.sendMessage({ cmd: "probe-model", role: button.dataset.probe });
+      if (reply && reply.error) showError(reply.error);
+    });
   });
   document.querySelectorAll("[data-preset]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -339,6 +383,16 @@ function showError(message) {
   $("error").hidden = false;
 }
 
+function showNotice(message) {
+  const box = $("notice");
+  box.textContent = message;
+  box.hidden = false;
+  clearTimeout(showNotice.timer);
+  showNotice.timer = setTimeout(() => {
+    box.hidden = true;
+  }, 12000);
+}
+
 function renderError(error) {
   if (error) showError(error);
 }
@@ -380,6 +434,17 @@ browser.runtime.onMessage.addListener((message) => {
     modelsSignature = ""; // force a rebuild with the fresh catalogue
     if (message.error) showError(message.error);
     if (state) render();
+  }
+  if (message.type === "notice") showNotice(message.message);
+  if (message.type === "probe") {
+    if (message.loading) {
+      showNotice("Probing the model…");
+    } else {
+      const report = message.report || {};
+      const dropped = (report.unsupported || []).length ? ` · unsupported: ${report.unsupported.join(", ")}` : "";
+      showNotice(`${report.model || "model"} · ${report.schemaId || ""} · accepted: ${(report.verified || []).join(", ") || "none"}${dropped}`);
+      modelsSignature = ""; // the schema changed: rebuild the controls
+    }
   }
   if (message.type === "approval_request") showApproval(message);
   if (message.type === "delta") {
@@ -436,3 +501,99 @@ $("approval-no").addEventListener("click", () => answerApproval(false));
     browser.runtime.sendMessage({ cmd: "models" }).catch(() => {}); // ask for the catalogue
   }
 })();
+
+
+/* ── browser target: live tab vs isolated Neko browser (MVP-5) ───── */
+
+function renderTarget(data) {
+  const mode = data.browserMode || "live";
+  document.querySelectorAll("#target-toggle button").forEach((button) => {
+    button.classList.toggle("on", button.dataset.target === mode);
+  });
+  const sandbox = data.sandbox || {};
+  const session = sandbox.session;
+  const status = $("sandbox-status");
+  const actions = $("sandbox-actions");
+  if (mode !== "sandbox") {
+    status.textContent = "";
+    actions.hidden = true;
+    return;
+  }
+  actions.hidden = false;
+  if (session) {
+    const drivable = session.state === "running";
+    status.textContent = drivable
+      ? `isolated session up (${session.state})`
+      : `session is ${session.state}: the agent cannot drive it (no CDP)`;
+    $("sandbox-url").textContent = session.webUrl || "";
+    $("sandbox-start").hidden = true;
+    $("sandbox-stop").hidden = false;
+    $("sandbox-open").hidden = false;
+  } else {
+    status.textContent = sandbox.available === false ? sandbox.reason || "Docker is not available" : "no session yet";
+    $("sandbox-start").hidden = false;
+    $("sandbox-start").disabled = sandbox.available === false;
+    $("sandbox-stop").hidden = true;
+    $("sandbox-open").hidden = true;
+    $("sandbox-url").textContent = "";
+  }
+}
+
+/* ── permission center: per-tool scopes (MVP-5) ──────────────────── */
+
+function renderPermissions(permissions) {
+  if (!permissions || !permissions.scopes) return;
+  const signature = JSON.stringify(permissions);
+  if (signature === permissionsSignature) return;
+  permissionsSignature = signature;
+  $("permission-rows").innerHTML = permissions.scopes
+    .map((scope) => {
+      const buttons = ["allow", "ask", "deny"]
+        .map(
+          (level) =>
+            `<button data-scope="${escape(scope.key)}" data-level="${level}"` +
+            `${scope.level === level ? ' class="on"' : ""}>${level}</button>`,
+        )
+        .join("");
+      return `<div class="perm-row">
+        <div class="perm-head"><b>${escape(scope.label)}</b><span class="hint">${escape(scope.hint || "")}</span></div>
+        <div class="segmented small">${buttons}</div>
+      </div>`;
+    })
+    .join("");
+  document.querySelectorAll("#permission-rows [data-scope]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const reply = await browser.runtime.sendMessage({
+        cmd: "permissions", scope: button.dataset.scope, level: button.dataset.level,
+      });
+      if (reply && reply.error) showError(reply.error);
+    });
+  });
+}
+
+$("permissions-reset").addEventListener("click", async () => {
+  const reply = await browser.runtime.sendMessage({ cmd: "permissions", reset: true });
+  if (reply && reply.error) showError(reply.error);
+});
+
+document.querySelectorAll("#target-toggle button").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const reply = await browser.runtime.sendMessage({ cmd: "mode", mode: button.dataset.target });
+    if (reply && reply.error) showError(reply.error);
+  });
+});
+
+$("sandbox-start").addEventListener("click", async () => {
+  const reply = await browser.runtime.sendMessage({ cmd: "sandbox", action: "start" });
+  if (reply && reply.error) showError(reply.error);
+});
+
+$("sandbox-stop").addEventListener("click", async () => {
+  const reply = await browser.runtime.sendMessage({ cmd: "sandbox", action: "stop" });
+  if (reply && reply.error) showError(reply.error);
+});
+
+$("sandbox-open").addEventListener("click", async () => {
+  const reply = await browser.runtime.sendMessage({ cmd: "sandbox", action: "open" });
+  if (reply && reply.error) showError(reply.error);
+});

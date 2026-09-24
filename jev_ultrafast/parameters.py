@@ -1,14 +1,18 @@
 """Normalized parameter schema, presets, and persisted model selection.
 
-Models are data, not branches: the sidebar renders its controls from a schema,
-presets map to per-role parameter values, and the user's selection is persisted
-to artifacts/model-config.json and re-applied over .env at startup.
+Models are data, not branches: the sidebar renders its controls from the
+schema this module hands it, and that schema is *per model* — the NVIDIA NIM
+catalogue changes weekly and Kimi, GLM, gpt-oss or an Anthropic endpoint each
+accept a different set of fields (see :mod:`jev_ultrafast.schemas`).
 
-MVP-1 repair: the schema is per model, not global. `schema_for_model` combines
-the provider dialect, the discovered capabilities, family rules (data, not
-`if model == X` branches) and runtime probe results into the exact parameter
-surface one model accepts; `schema_for_role` resolves it for a role's current
-model and the sidebar renders only those controls (spec §4.2, §5).
+- :data:`PARAMETER_SCHEMA` is the full vocabulary (every role, every parameter).
+- :func:`role_schema` narrows it to what the model currently selected for that
+  role accepts, using family rules, catalogue capabilities and runtime evidence.
+- Presets express intent ("Deep") and are projected onto whatever the chosen
+  model actually supports, so switching models never writes an invalid value.
+
+The user's selection is persisted to artifacts/model-config.json and re-applied
+over .env at startup.
 """
 
 import json
@@ -17,100 +21,9 @@ import re
 import time
 from pathlib import Path
 
+from . import schemas
+
 CONFIG_PATH = Path(os.environ.get("JEV_MODEL_CONFIG", "artifacts/model-config.json"))
-
-ROLE_ENV_PREFIX = {"planner": "PLANNER", "policy": "POLICY", "text": "TEXT_MODEL"}
-
-# ── the parameter catalogue (spec §2.3, §5.2) ────────────────────────────────
-# `advanced` parameters stay hidden behind the advanced section by default.
-
-PARAMETER_CATALOG = {
-    "reasoning": {
-        "type": "enum",
-        "values": ["none", "low", "medium", "high"],
-        "labels": {"none": "Off", "low": "Low", "medium": "Medium", "high": "High"},
-        "description": "Thinking budget; low is fastest",
-        "advanced": False,
-    },
-    "temperature": {
-        "type": "number",
-        "min": 0,
-        "max": 2,
-        "step": 0.1,
-        "optional": True,
-        "description": "Creativity; omit for the provider default",
-        "advanced": False,
-    },
-    "stream": {
-        "type": "boolean",
-        "default": True,
-        "description": "Stream the reply as it is generated",
-        "advanced": False,
-    },
-    "max_tokens": {
-        "type": "integer",
-        "min": 1,
-        "max": 131072,
-        "optional": True,
-        "description": "Output budget; empty means the context-aware default",
-        "advanced": True,
-    },
-    "top_p": {
-        "type": "number",
-        "min": 0,
-        "max": 1,
-        "step": 0.05,
-        "optional": True,
-        "description": "Nucleus sampling cutoff",
-        "advanced": True,
-    },
-    "seed": {
-        "type": "integer",
-        "optional": True,
-        "description": "Deterministic sampling seed",
-        "advanced": True,
-    },
-    "stop": {
-        "type": "array",
-        "optional": True,
-        "description": "Stop sequences (comma separated)",
-        "advanced": True,
-    },
-    "frequency_penalty": {
-        "type": "number",
-        "min": -2,
-        "max": 2,
-        "step": 0.1,
-        "optional": True,
-        "description": "Penalise repeated tokens",
-        "advanced": True,
-    },
-    "presence_penalty": {
-        "type": "number",
-        "min": -2,
-        "max": 2,
-        "step": 0.1,
-        "optional": True,
-        "description": "Penalise tokens already present",
-        "advanced": True,
-    },
-}
-
-# Which catalogue parameters each request dialect can carry (spec §5.1).
-DIALECT_PARAMS = {
-    "openai": [
-        "temperature", "top_p", "max_tokens", "stream", "seed", "stop",
-        "frequency_penalty", "presence_penalty",
-    ],
-    "anthropic": ["temperature", "top_p", "max_tokens", "stream", "stop"],
-}
-
-# Family rules are data keyed by model-id substring, never code branches.
-# reasoning_effort values follow each family's published contract (spec §5.1).
-FAMILY_RULES = (
-    ("kimi-k", {"reasoning_values": ["low", "high", "max"]}),
-    ("kimi_k", {"reasoning_values": ["low", "high", "max"]}),
-)
 
 ROLES = [
     {"key": "planner", "label": "Planner", "hint": "Decomposes the mission once"},
@@ -118,13 +31,12 @@ ROLES = [
     {"key": "text", "label": "Text writer", "hint": "Fills text fields"},
 ]
 
-# The global view kept for compatibility: roles plus the full catalogue.
-PARAMETER_SCHEMA = {"roles": ROLES, "parameters": PARAMETER_CATALOG}
-
-ROLE_PARAM_ENV = {
-    (role, name): f"{ROLE_ENV_PREFIX[role]}_{name.upper()}"
-    for role in ROLE_ENV_PREFIX
-    for name in PARAMETER_CATALOG
+# The whole vocabulary. What a given model accepts is a subset, resolved by
+# role_schema(); the sidebar renders that subset, never this one directly.
+PARAMETER_SCHEMA = {
+    "roles": ROLES,
+    "parameters": schemas.BASE_PARAMETERS,
+    "tiers": ["simple", "advanced"],
 }
 
 PRESETS = {
@@ -159,8 +71,8 @@ PRESETS = {
         "description": "Conservative, fast browser interaction",
         "params": {
             "planner": {"reasoning": "low"},
-            "policy": {"reasoning": "low"},
-            "text": {"reasoning": "low"},
+            "policy": {"reasoning": "low", "temperature": 0.1},
+            "text": {"reasoning": "low", "temperature": 0.2},
         },
     },
     "coding": {
@@ -168,223 +80,194 @@ PRESETS = {
         "description": "Precise output for code and files",
         "params": {
             "planner": {"reasoning": "high"},
-            "policy": {"reasoning": "medium", "temperature": 0.2},
+            "policy": {"reasoning": "medium", "temperature": 0.2, "top_p": 0.9},
             "text": {"temperature": 0.2},
+        },
+    },
+    "deterministic": {
+        "label": "Deterministic",
+        "description": "Same seed, no creativity — for reproducible runs",
+        "params": {
+            "planner": {"temperature": 0, "seed": 7},
+            "policy": {"temperature": 0, "seed": 7},
+            "text": {"temperature": 0, "seed": 7},
         },
     },
 }
 
-ROLE_MODEL_ENV = {
-    "planner": ("PLANNER_PROVIDER", "PLANNER_MODEL"),
-    "policy": ("POLICY_PROVIDER", "POLICY_MODEL"),
-    "text": ("TEXT_MODEL_PROVIDER", "TEXT_MODEL"),
+# (role, parameter) → environment variable, for every parameter in the vocabulary.
+ROLE_PARAM_ENV = {
+    (role["key"], name): schemas.env_name(role["key"], name)
+    for role in ROLES
+    for name in schemas.BASE_PARAMETERS
 }
 
-
-# ── per-model schemas (MVP-1) ─────────────────────────────────────────────────
-
-
-def _family_rules(model_id):
-    lowered = (model_id or "").lower()
-    rules = {}
-    for marker, overrides in FAMILY_RULES:
-        if marker in lowered:
-            rules.update(overrides)
-    return rules
+ROLE_MODEL_ENV = {
+    "planner": ("PLANNER_PROVIDER", "PLANNER_MODEL"),
+    "text": ("TEXT_MODEL_PROVIDER", "TEXT_MODEL"),
+    "policy": ("POLICY_PROVIDER", "POLICY_MODEL"),
+}
+ROLE_MODEL_ENV = {role["key"]: ROLE_MODEL_ENV[role["key"]] for role in ROLES}  # keep role order
 
 
-def _reasoning_marker(model_id):
-    from . import discovery
-
-    return discovery._capabilities(model_id or "")["reasoning"]
+def _role_keys():
+    return {role["key"] for role in ROLES}
 
 
-def schema_for_model(provider_name, model_id, capabilities=None, probed=None):
-    """The exact parameter surface one model accepts, as a renderable schema.
+def model_for(role):
+    """(provider, model_id) currently configured for a role, from the environment."""
+    provider_env, model_env = ROLE_MODEL_ENV[role]
+    provider_name = (os.environ.get(provider_env) or "").strip()
+    model_id = (os.environ.get(model_env) or "").strip()
+    if provider_name.startswith(("http://", "https://")):
+        provider_name = "custom"
+    return provider_name.lower(), model_id
 
-    Combines, per spec §4.2: the provider dialect (what its API can carry),
-    the discovered capabilities (reasoning only for reasoning models), family
-    rules (published per-family controls) and runtime probe results (a probe
-    that rejected a parameter removes it; a probe that accepted one adds it).
-    """
+
+def capabilities_for(provider_name, model_id):
+    """Catalogue capabilities for a model, from the cached registry when present."""
+    if not provider_name or not model_id:
+        return {}
+    try:
+        from . import discovery
+
+        registry = discovery._load_registry() or {}
+    except Exception:  # noqa: BLE001 - the registry is a cache, never a dependency
+        return {}
+    report = (registry.get("providers") or {}).get(provider_name) or {}
+    for entry in report.get("models") or []:
+        if entry.get("id") == model_id:
+            return entry.get("capabilities") or {}
+    return {}
+
+
+def role_schema(role):
+    """The parameter surface of the model currently selected for this role."""
+    if role not in _role_keys():
+        raise ValueError(f"Unknown role: {role}")
     from . import providers
 
+    provider_name, model_id = model_for(role)
     dialect = providers.PROVIDERS.get(provider_name, {}).get("dialect", "openai")
-    supported = list(DIALECT_PARAMS.get(dialect, DIALECT_PARAMS["openai"]))
-    if capabilities is None:
-        capabilities = {"reasoning": _reasoning_marker(model_id)}
-    names = [name for name in supported]
-    if capabilities.get("reasoning"):
-        names.insert(0, "reasoning")
-    probed = probed or {}
-    for name, accepted in probed.items():
-        if name not in PARAMETER_CATALOG:
-            continue
-        if accepted and name not in names:
-            names.append(name)
-        if not accepted and name in names:
-            names.remove(name)
-    parameters = {}
-    for name in names:
-        definition = dict(PARAMETER_CATALOG[name])
-        if name == "reasoning":
-            values = _family_rules(model_id).get("reasoning_values") or list(PARAMETER_CATALOG["reasoning"]["values"])
-            definition["values"] = values
-            definition["labels"] = {
-                value: PARAMETER_CATALOG["reasoning"]["labels"].get(value, value) for value in values
-            }
-        parameters[name] = definition
-    return {
-        "provider": provider_name,
-        "model": model_id,
-        "dialect": dialect,
-        "parameters": parameters,
-        "simple": [name for name in parameters if not parameters[name].get("advanced")],
-        "advanced": [name for name in parameters if parameters[name].get("advanced")],
-    }
-
-
-def _registry_entry(provider_name, model_id):
-    from . import discovery
-
-    registry = discovery._load_registry()
-    for report in ((registry or {}).get("providers") or {}).values():
-        for entry in (report or {}).get("models") or []:
-            if entry.get("provider") == provider_name and entry.get("id") == model_id:
-                return entry
-    return None
-
-
-def schema_for_role(role):
-    """The schema of the model one role resolves to right now.
-
-    With no model selected the full catalogue is offered: .env-level setup must
-    keep working before any discovery has run.
-    """
-    if role not in ROLE_MODEL_ENV:
-        raise ValueError(f"Unknown role: {role}")
-    provider_env, model_env = ROLE_MODEL_ENV[role]
-    provider_name = os.environ.get(provider_env, "")
-    model_id = os.environ.get(model_env, "")
-    if not provider_name or not model_id:
-        return {
-            "provider": provider_name,
-            "model": model_id,
-            "dialect": "openai",
-            "parameters": {name: dict(definition) for name, definition in PARAMETER_CATALOG.items()},
-            "simple": [name for name, d in PARAMETER_CATALOG.items() if not d.get("advanced")],
-            "advanced": [name for name, d in PARAMETER_CATALOG.items() if d.get("advanced")],
-            "fallback": True,
+    if not model_id:
+        # Nothing selected yet: offer the whole vocabulary so a value can be
+        # configured ahead of the model, and mark the surface as unresolved.
+        schema = schemas.schema_for(provider_name, "", {"reasoning": True}, dialect=dialect)
+        schema["parameters"] = {
+            name: schema["parameters"].get(name, definition)
+            for name, definition in schemas.BASE_PARAMETERS.items()
         }
-    entry = _registry_entry(provider_name, model_id)
-    capabilities = (entry or {}).get("capabilities")
-    probed = (entry or {}).get("probedParams")
-    return schema_for_model(provider_name, model_id, capabilities=capabilities, probed=probed)
+        schema["resolved"] = False
+        return schema
+    schema = schemas.schema_for(
+        provider_name, model_id, capabilities_for(provider_name, model_id), dialect=dialect
+    )
+    schema["resolved"] = True
+    return schema
 
 
-def sidebar_schema():
-    """What the sidebar needs to render model-specific controls (spec §5.3)."""
-    return {
-        "roles": ROLES,
-        "parameters": PARAMETER_CATALOG,
-        "modelSchemas": {role["key"]: schema_for_role(role["key"]) for role in ROLES},
-    }
-
-
-def _coerce(name, value, schema):
-    kind = schema["type"]
-    if kind == "enum":
-        if value not in schema["values"]:
-            raise ValueError(f"{name} must be one of {schema['values']}")
-        return value
-    if kind == "boolean":
-        if isinstance(value, bool):
-            return value
-        text = str(value).strip().lower()
-        if text in {"true", "on", "1", "yes"}:
-            return True
-        if text in {"false", "off", "0", "no"}:
-            return False
-        raise ValueError(f"{name} must be a boolean")
-    if kind == "array":
-        if isinstance(value, str):
-            value = [part.strip() for part in value.split(",") if part.strip()]
-        if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
-            raise ValueError(f"{name} must be a list of strings")
-        return value[:8]
-    if kind == "integer":
-        try:
-            number = int(value)
-        except (TypeError, ValueError):
-            raise ValueError(f"{name} must be an integer") from None
-        if "min" in schema and not schema["min"] <= number:
-            raise ValueError(f"{name} must be at least {schema['min']}")
-        if "max" in schema and not number <= schema["max"]:
-            raise ValueError(f"{name} must be at most {schema['max']}")
-        return number
-    try:  # number
-        number = float(value)
-    except (TypeError, ValueError):
-        raise ValueError(f"{name} must be a number") from None
-    if not schema["min"] <= number <= schema["max"]:
-        raise ValueError(f"{name} must be between {schema['min']} and {schema['max']}")
-    return round(number, 2)
-
-
-def _validate(role, params):
-    if role not in {r["key"] for r in ROLES}:
+def _validate(role, params, schema=None):
+    if role not in _role_keys():
         raise ValueError(f"Unknown role: {role}")
     if not isinstance(params, dict):
         raise ValueError("params must be an object")
-    schema = schema_for_role(role)
-    supported = schema["parameters"]
-    label = schema.get("model") or "the selected model"
+    schema = schema or role_schema(role)
+    supported = schema.get("parameters", {})
     cleaned = {}
     for name, value in params.items():
+        if name not in schemas.BASE_PARAMETERS:
+            raise ValueError(f"Unknown parameter: {name}")
         if name not in supported:
-            if name not in PARAMETER_CATALOG:
-                raise ValueError(f"Unknown parameter: {name}")
-            raise ValueError(f"{name} is not supported by {label}")
-        if value is None:
-            cleaned[name] = None  # explicit clear: fall back to the .env/default value
-            continue
-        cleaned[name] = _coerce(name, value, supported[name])
+            model_id = schema.get("model") or "the selected model"
+            raise ValueError(f"{name} is not supported by {model_id}")
+        cleaned[name] = schemas.coerce(name, value, supported[name])
     return cleaned
 
 
-def _encode(name, value):
-    if isinstance(value, list):
-        return json.dumps(value)
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)
+def supported_subset(role, params):
+    """The part of a parameter set this role's model accepts, silently dropping the rest."""
+    schema = role_schema(role)
+    supported = schema.get("parameters", {})
+    kept = {}
+    for name, value in (params or {}).items():
+        if name not in supported:
+            continue
+        try:
+            kept[name] = schemas.coerce(name, value, supported[name])
+        except ValueError:
+            if name == "reasoning":  # e.g. "medium" on a low/high/max family
+                nearest = schemas._closest(str(value), supported[name]["values"])
+                if nearest:
+                    kept[name] = nearest
+    return kept
 
 
 def apply_params(role, params):
-    """Validate against the role's current model and apply to env + config."""
+    """Validate and apply one role's parameters to the environment + config file."""
     cleaned = _validate(role, params)
     config = load_config()
     stored = config.setdefault("params", {}).setdefault(role, {})
     for name, value in cleaned.items():
-        env_name = ROLE_PARAM_ENV[(role, name)]
+        env_var = ROLE_PARAM_ENV[(role, name)]
         if value is None:
-            os.environ.pop(env_name, None)
+            os.environ.pop(env_var, None)
             stored.pop(name, None)
         else:
-            os.environ[env_name] = _encode(name, value)
+            os.environ[env_var] = schemas.format_env(value)
             stored[name] = value
     save_config(config)
     return cleaned
 
 
 def apply_preset(preset_key):
+    """Apply a preset, projected onto what each role's model actually supports."""
     if preset_key not in PRESETS:
         raise ValueError(f"Unknown preset: {preset_key}")
     applied = {}
     for role, params in PRESETS[preset_key]["params"].items():
-        kept = {name: value for name, value in params.items() if name in schema_for_role(role)["parameters"]}
-        applied[role] = apply_params(role, kept)
+        if role not in _role_keys():
+            continue
+        wanted = supported_subset(role, params)
+        applied[role] = apply_params(role, wanted) if wanted else {}
+    config = load_config()
+    config["preset"] = preset_key
+    save_config(config)
     return applied
+
+
+def prune_params(role):
+    """Drop stored values the role's current model does not accept.
+
+    Called after a model switch: moving from GLM to Kimi must not keep sending
+    top_p, and the sidebar must stop showing a control that no longer exists.
+    """
+    schema = role_schema(role)
+    supported = schema.get("parameters", {})
+    config = load_config()
+    stored = (config.get("params") or {}).get(role) or {}
+    removed = []
+    for name in list(stored):
+        if name in supported:
+            try:
+                stored[name] = schemas.coerce(name, stored[name], supported[name])
+            except ValueError:
+                pass
+            else:
+                os.environ[ROLE_PARAM_ENV[(role, name)]] = schemas.format_env(stored[name])
+                continue
+        removed.append(name)
+        stored.pop(name, None)
+        os.environ.pop(ROLE_PARAM_ENV[(role, name)], None)
+    # a value that never reached the config file can still sit in the environment
+    for name in schemas.BASE_PARAMETERS:
+        if name not in supported and os.environ.get(ROLE_PARAM_ENV[(role, name)]):
+            os.environ.pop(ROLE_PARAM_ENV[(role, name)], None)
+            if name not in removed:
+                removed.append(name)
+    if removed:
+        config.setdefault("params", {})[role] = stored
+        save_config(config)
+    return removed
 
 
 def apply_model(role, provider_name, model_id):
@@ -400,28 +283,7 @@ def apply_model(role, provider_name, model_id):
     config = load_config()
     config.setdefault("models", {})[role] = {"provider": provider_name, "model": model_id.strip()}
     save_config(config)
-
-
-def prune_params(role):
-    """Drop stored parameters the role's new model does not support (MVP-1).
-
-    Switching from a reasoning model to a plain one must not leave a stale
-    reasoning setting that the endpoint would then reject on every request.
-    """
-    supported = schema_for_role(role)["parameters"]
-    config = load_config()
-    stored = (config.get("params") or {}).get(role) or {}
-    removed = {}
-    for name in list(stored):
-        if name not in supported:
-            env_name = ROLE_PARAM_ENV.get((role, name))
-            if env_name:
-                os.environ.pop(env_name, None)
-            removed[name] = stored.pop(name)
-    if removed:
-        config.setdefault("params", {})[role] = stored
-        save_config(config)
-    return removed
+    return prune_params(role)
 
 
 def save_profile(name):
@@ -454,12 +316,9 @@ def apply_profile(name):
             apply_model(role, selection["provider"], selection["model"])
     for role, params in (profile.get("params") or {}).items():
         if role in ROLE_MODEL_ENV and isinstance(params, dict):
-            kept = {key: value for key, value in params.items() if value is not None}
+            kept = supported_subset(role, {k: v for k, v in params.items() if v is not None})
             if kept:
-                try:
-                    apply_params(role, kept)
-                except ValueError:
-                    continue  # a profile may reference params the new model lacks
+                apply_params(role, kept)
     return profile
 
 
@@ -498,16 +357,30 @@ def apply_saved_config():
             model_id = selection.get("model")
             if provider_name and model_id:
                 provider_env, model_env = ROLE_MODEL_ENV[role]
-                os.environ.setdefault(provider_env, provider_name)
                 os.environ[provider_env] = provider_name
                 os.environ[model_env] = model_id
     for role, params in (config.get("params") or {}).items():
         if role in ROLE_MODEL_ENV and isinstance(params, dict):
             for name, value in params.items():
-                env_name = ROLE_PARAM_ENV.get((role, name))
-                if env_name is not None and value is not None:
-                    os.environ[env_name] = _encode(name, value)
+                env_var = ROLE_PARAM_ENV.get((role, name))
+                if env_var and value is not None:
+                    os.environ[env_var] = schemas.format_env(value)
     return config
+
+
+def role_params(role, schema=None):
+    """One role's effective parameter values, read back from the environment."""
+    schema = schema or role_schema(role)
+    supported = schema.get("parameters", {})
+    values = {}
+    for name, definition in supported.items():
+        raw = os.environ.get(ROLE_PARAM_ENV[(role, name)], "")
+        if raw == "":
+            continue
+        value = schemas.parse_env(name, raw, definition)
+        if value is not None:
+            values[name] = value
+    return values
 
 
 def current_selection():
@@ -518,16 +391,12 @@ def current_selection():
     for role, (provider_env, model_env) in ROLE_MODEL_ENV.items():
         provider_name = os.environ.get(provider_env, "")
         model = os.environ.get(model_env, "")
-        params = {}
-        for name in PARAMETER_CATALOG:
-            env_name = ROLE_PARAM_ENV.get((role, name))
-            value = os.environ.get(env_name, "") if env_name else ""
-            if value:
-                params[name] = value
+        schema = role_schema(role)
         selection[role] = {
             "provider": provider_name,
             "model": model,
-            "params": params,
+            "params": role_params(role, schema),
+            "schema": schema,
             "display": _display_name(model),
             "dialect": providers.PROVIDERS.get(provider_name, {}).get("dialect", "openai"),
         }

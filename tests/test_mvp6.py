@@ -260,13 +260,10 @@ def test_profiles_save_apply_delete_round_trip(isolated_config):
     assert saved["params"]["planner"] == {"reasoning": "high"}
     assert parameters.profile_names() == ["Research mode"]
 
-    # change everything, then restore. A local Ollama model exposes no reasoning
-    # control (MVP-1: the schema is per model), so that switch is refused.
+    # change everything, then restore. The local Qwen exposes reasoning through
+    # the chat-template switch, so the value applies (MVP-1: per-model surface).
     parameters.apply_model("planner", "ollama", "qwen3.5:4b")
-    with pytest.raises(ValueError, match="not supported by"):
-        parameters.apply_params("planner", {"reasoning": "low"})
-    parameters.apply_model("planner", "groq", "openai/gpt-oss-20b")
-    parameters.apply_params("planner", {"reasoning": "low"})
+    assert parameters.apply_params("planner", {"reasoning": "low"}) == {"reasoning": "low"}
     parameters.apply_profile("Research mode")
     assert os.environ["PLANNER_PROVIDER"] == "nvidia"
     assert os.environ["PLANNER_MODEL"] == "z-ai/glm-5.3"

@@ -381,7 +381,53 @@ def test_sandbox_state_is_always_reported(bridge, monkeypatch, tmp_path):
 
 def test_models_ui_receives_the_per_role_schema():
     runner = firefox.TaskRunner(MockBridge())
-    schema = runner.current_state()["schema"]
-    assert schema["roles"][0]["key"] == "planner"
-    assert set(schema["modelSchemas"]) == {"planner", "policy", "text"}  # one surface per role's model
-    assert "advanced" in schema["modelSchemas"]["policy"]
+    state = runner.current_state()
+    assert state["schema"]["roles"][0]["key"] == "planner"
+    assert set(state["schema"]["parameters"])  # the whole vocabulary
+    # one resolved surface per role, riding with that role's selection
+    for role in ("planner", "policy", "text"):
+        surface = state["selection"][role]["schema"]
+        assert "parameters" in surface and "schemaId" in surface
+
+
+def test_model_probe_reports_and_reruns_the_schema(monkeypatch):
+    """The sidebar's "Probe model" button: one live check, then a fresh schema."""
+    import os
+
+    from jev_ultrafast import discovery
+
+    os.environ["POLICY_PROVIDER"] = "nvidia"
+    os.environ["POLICY_MODEL"] = "z-ai/glm-5.3"
+    runner = firefox.TaskRunner(MockBridge())
+    monkeypatch.setattr(
+        discovery,
+        "probe_model",
+        lambda provider, model_id: {
+            "provider": provider, "model": model_id, "schemaId": "glm-v1",
+            "verified": ["temperature"], "unsupported": ["seed"], "error": None,
+        },
+    )
+    runner.handle_model_probe({"role": "policy"})
+    for _ in range(50):
+        reports = [m for m in runner.bridge.messages if m.get("type") == "probe" and not m.get("loading")]
+        if reports:
+            break
+        time.sleep(0.02)
+    assert reports and reports[0]["report"]["unsupported"] == ["seed"]
+
+    runner.handle_model_probe({"role": "nobody"})
+    assert any("Unknown role" in m.get("message", "") for m in runner.bridge.messages if m.get("type") == "error")
+
+
+def test_switching_models_clears_parameters_the_new_one_lacks():
+    import os
+
+    os.environ.pop("POLICY_TOP_P", None)
+    runner = firefox.TaskRunner(MockBridge())
+    runner.handle_model_select({"role": "policy", "provider": "nvidia", "model": "z-ai/glm-5.3"})
+    runner.handle_params_set({"role": "policy", "params": {"top_p": 0.8}})
+    assert os.environ["POLICY_TOP_P"] == "0.8"
+    runner.handle_model_select({"role": "policy", "provider": "nvidia", "model": "moonshotai/kimi-k3"})
+    assert "POLICY_TOP_P" not in os.environ
+    notices = [m for m in runner.bridge.messages if m.get("type") == "notice"]
+    assert notices and "top_p" in notices[-1]["message"]

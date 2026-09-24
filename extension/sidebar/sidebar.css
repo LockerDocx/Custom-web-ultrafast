@@ -221,6 +221,40 @@ select:focus, input[type="number"]:focus { outline: 1px solid var(--accent); }
   overflow-y: auto;
 }
 
+/* ── schema-driven parameter controls (MVP-1) ─────────────────────── */
+#notice {
+  background: rgba(88, 166, 255, 0.08);
+  border: 1px solid rgba(88, 166, 255, 0.35);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--text);
+  word-break: break-word;
+}
+.param-grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; }
+.param-grid.simple { margin-top: 2px; }
+.param-grid label { color: var(--muted); font-size: 11px; display: flex; align-items: center; gap: 4px; }
+.param-grid .verified { color: var(--ok); font-style: normal; font-size: 10px; }
+.slider { display: flex; align-items: center; gap: 6px; }
+.slider input[type="range"] { flex: 1; accent-color: var(--accent); }
+.slider output { min-width: 46px; color: var(--muted); font-size: 11px; text-align: right; }
+.slider .clear {
+  border: none; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0 2px;
+}
+.slider .clear:hover { color: var(--text); }
+.toggle input { accent-color: var(--accent); }
+.caps { margin-left: auto; font-size: 11px; }
+.schema-row { justify-content: space-between; }
+.schema-id {
+  font: 10px ui-monospace, Consolas, monospace;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.dropped { color: var(--warn); }
+button.probe { font-size: 11px; padding: 3px 10px; }
+
 /* ── browser target + permission center (MVP-5) ────────────────────── */
 .target {
   background: var(--panel);
@@ -254,8 +288,3 @@ select:focus, input[type="number"]:focus { outline: 1px solid var(--accent); }
 }
 .perm-head { display: flex; gap: 8px; align-items: baseline; }
 .perm-head b { font-size: 12px; }
-input[type="text"].param, input[type="checkbox"].param { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--text); }
-input[type="text"].param { padding: 5px 8px; font: inherit; font-size: 12px; width: 100%; }
-input[type="checkbox"].param { width: 16px; height: 16px; }
-.role-row > .param-grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; }
-.role-row > .param-grid label { color: var(--muted); font-size: 11px; }
