@@ -1,0 +1,58 @@
+name: Real provider test
+
+# Real-provider test of the per-model parameter engine (MVP-1): discovery,
+# per-model surfaces, live probe, role wiring and one real request per role —
+# all against the live Groq and NVIDIA endpoints. Keys come from repository
+# secrets (NVIDIA_API_KEY / GROQ_API_KEY); the run is skipped without them.
+#
+# Run it from the Actions tab (workflow_dispatch) or with a push to either file.
+
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - ".github/workflows/real-provider-test.yml"
+      - "scripts/real_provider_test.py"
+
+permissions:
+  contents: read
+
+jobs:
+  real-provider-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . "httpx[http2]" browser-harness==0.1.13
+      - name: Exercise the parameter engine against the live providers
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          PLANNER_PROVIDER: nvidia
+          PLANNER_MODEL: z-ai/glm-5.3
+          POLICY_PROVIDER: groq
+          POLICY_MODEL: openai/gpt-oss-20b
+          POLICY_REASONING: low
+          TEXT_MODEL_PROVIDER: groq
+          TEXT_MODEL: openai/gpt-oss-20b
+          TEXT_MODEL_REASONING: low
+        run: |
+          if [ -z "$NVIDIA_API_KEY" ] && [ -z "$GROQ_API_KEY" ]; then
+            echo "No provider secrets configured (NVIDIA_API_KEY / GROQ_API_KEY)."
+            echo "Add them under Settings -> Secrets and variables -> Actions to enable this test."
+            exit 0
+          fi
+          set +e
+          python scripts/real_provider_test.py | tee /tmp/real-provider-report.md
+          status=${PIPESTATUS[0]}
+          {
+            echo "## Real provider test"
+            echo
+            cat /tmp/real-provider-report.md
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
