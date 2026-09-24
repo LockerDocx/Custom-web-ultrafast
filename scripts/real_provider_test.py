@@ -19,8 +19,8 @@ retired upstream) are reported as warnings and never break the run. Credentials
 are never printed.
 """
 
+import json
 import os
-import re
 import sys
 import time
 
@@ -30,10 +30,11 @@ from jev_ultrafast import discovery, parameters, providers  # noqa: E402
 from jev_ultrafast.firefox import load_environment  # noqa: E402
 
 CONFIGURED = ("planner", "policy", "text")
-# ids worth showing off: each one exercises a different family rule
-INTERESTING = re.compile(
-    r"(kimi|glm|gpt-oss|deepseek-r1|qwen3|llama-3\.3|nemotron|gpt-5|mistral-large|magistral)", re.I
+# one family per pattern: each exercises a different rule in jev_ultrafast.schemas
+INTERESTING = (
+    "kimi", "glm", "gpt-oss", "deepseek-r1", "nemotron", "qwen3", "mistral-large", "llama-3.3", "gpt-5",
 )
+SAMPLE_LIMIT = 12
 LIMIT_MARKERS = ("HTTP 429", "HTTP 529", "rate limit", "tokens per day", "tokens per minute", "quota")
 
 RESULTS = []
@@ -122,20 +123,25 @@ def main():
     # ── 2. per-model surfaces ───────────────────────────────────────────────
     section("2. Per-model parameter surfaces")
     picks = []
-    for name, models in catalogue.items():
-        for model in models:
-            if INTERESTING.search(model["id"]):
-                picks.append((name, model))
-    picks = picks[:10]
-    print("| Provider | Model | schemaId | reasoning values | parameters |", flush=True)
-    print("| --- | --- | --- | --- | --- |", flush=True)
+    for pattern in INTERESTING:
+        for name, models in sorted(catalogue.items()):
+            match = next((m for m in models if pattern in m["id"].lower()), None)
+            if match and not any(m["id"] == match["id"] for _n, m in picks):
+                picks.append((name, match))
+                break
+    picks = picks[:SAMPLE_LIMIT]
+    print("| Provider | Model | schemaId | reasoning values | body sent for reasoning=high | parameters |", flush=True)
+    print("| --- | --- | --- | --- | --- | --- |", flush=True)
     for name, model in picks:
-        surface = providers.model_schema(name, model["id"], providers.PROVIDERS[name].get("dialect", "openai"))
+        dialect = providers.PROVIDERS[name].get("dialect", "openai")
+        surface = providers.model_schema(name, model["id"], dialect)
         reasoning = surface.get("reasoning") or {}
         values = ", ".join(reasoning.get("values") or []) or "—"
+        body = providers.reasoning_params("high", name, dialect, model["id"])
+        wire = "`" + json.dumps(body, separators=(",", ":")) + "`" if body else "—"
         offered = ", ".join(sorted(surface["parameters"]))
         print(
-            f"| `{name}` | `{model['id']}` | {surface['schemaId']} | {values} | {offered} |",
+            f"| `{name}` | `{model['id']}` | {surface['schemaId']} | {values} | {wire} | {offered} |",
             flush=True,
         )
     if picks:
@@ -232,14 +238,12 @@ def main():
     # what prunes a parameter the new model does not have.
     try:
         configured = parameters.model_for("planner")
-        target = None
-        for name in names:
-            for model in catalogue.get(name, []):
-                if (name, model["id"]) != tuple(configured):
-                    target = (name, model["id"])
-                    break
-            if target:
-                break
+        candidates = [(name, model) for name, models in sorted(catalogue.items()) for model in models]
+        interesting = [pair for pair in candidates if any(p in pair[1]["id"].lower() for p in INTERESTING)]
+        target = next((pair for pair in interesting if (pair[0], pair[1]["id"]) != tuple(configured)), None)
+        if target is None:
+            target = next((pair for pair in candidates if (pair[0], pair[1]["id"]) != tuple(configured)), None)
+        target = (target[0], target[1]["id"]) if target else None
         if target:
             removed = parameters.apply_model("planner", target[0], target[1])
             surface = parameters.current_selection()["planner"]
