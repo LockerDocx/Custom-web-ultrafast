@@ -232,3 +232,6 @@ The 0.4.0 quality instruments run offline first: `python scripts/bench_routing.p
 ---
 
 [Browser Use](https://github.com/browser-use/browser-use) · [Browser Harness](https://github.com/browser-use/browser-harness) · [TypeSafe speculative fan-out](https://docs.typesafe.ai/patterns/fan-out)
+
+
+- [Historia de ramas](docs/historia-ramas.md)
