@@ -236,3 +236,4 @@ The 0.4.0 quality instruments run offline first: `python scripts/bench_routing.p
 
 - [Historia de ramas](docs/historia-ramas.md)
 - [Requisitos](docs/requisitos.md): qué hace falta para que funcione bien (y qué pasa si falta)
+- [Requisitos de hardware](docs/requisitos-hardware.md): cuánto pide de verdad (medido: 38,6 MB el host)
