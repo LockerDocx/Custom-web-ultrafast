@@ -16,10 +16,11 @@ import threading
 import time
 from pathlib import Path
 
+from . import neko, permissions
 from .browser import StalePage, fingerprint
 from .model import policy_description
+from .neko import SandboxBrowser
 from .parameters import (
-    PARAMETER_SCHEMA,
     PRESETS,
     apply_model,
     apply_params,
@@ -30,8 +31,10 @@ from .parameters import (
     delete_profile,
     load_config,
     profile_names,
+    prune_params,
     save_config,
     save_profile,
+    sidebar_schema,
 )
 from .redact import redact
 
@@ -288,6 +291,7 @@ class BridgeServer:
                 return
             self.send({"type": "welcome", "ok": True, "state": self.runner.current_state() if self.runner else None})
             if self.runner:
+                self.runner.greet()  # the welcome is on the wire before anything else is
                 threading.Thread(target=self.runner.run_provider_check, daemon=True).start()
         elif kind == "check":
             if self.runner:
@@ -321,6 +325,24 @@ class BridgeServer:
         elif kind in {"profile.save", "profile.apply", "profile.delete"}:
             if self.runner:
                 self.runner.handle_profile(kind.split(".")[1], message.get("name", ""))
+        elif kind == "mode.set":
+            if self.runner:
+                self.runner.handle_mode(message.get("mode"))
+        elif kind == "permissions.get":
+            if self.runner:
+                self.runner.handle_permissions()
+        elif kind == "permissions.set":
+            if self.runner:
+                self.runner.handle_permissions(scope=message.get("scope"), level=message.get("level"))
+        elif kind == "permissions.reset":
+            if self.runner:
+                self.runner.handle_permissions(reset=True)
+        elif kind in {"sandbox.start", "sandbox.stop", "sandbox.open"}:
+            if self.runner:
+                # bring-up can take ~45 s (docker run + readiness): never block the reader
+                threading.Thread(
+                    target=self.runner.handle_sandbox, args=(kind.split(".", 1)[1],), daemon=True
+                ).start()
         else:
             self.send({"type": "error", "message": f"Unknown message type: {kind}"})
 
@@ -446,6 +468,13 @@ class TaskRunner:
         self.mode = "browser"
         self.orchestrated = None
         self._trace = None  # per-task id tying runs.jsonl, the audit log, and broadcasts
+        self._audited_steps = 0
+        self.mode_pref = (os.environ.get("JEV_BROWSER_MODE") or "live").strip().lower()
+        if self.mode_pref not in {"live", "sandbox"}:
+            self.mode_pref = "live"
+        self.neko = neko.NekoSessionManager(on_event=self._audit_event)
+        self.sandbox_session = None
+        self.docker_available = None  # probed in the background; None means "checking"
         self._typesafe_key = os.environ.get("TYPESAFE_API_KEY")  # kept so the UI can switch back
         self._workspace = Path(workspace) if workspace else Path.cwd() / "workspace"
         self._lock = threading.Lock()  # held by a running task
@@ -458,6 +487,39 @@ class TaskRunner:
 
         laya_local.warm()  # preload the optional open decision engine, if installed
 
+    def greet(self):
+        """A sidebar connected and received its welcome; background probes may start."""
+        self._greeted = True
+        self._ensure_sandbox_probe()
+
+    def _ensure_sandbox_probe(self):
+        if getattr(self, "_probe_started", False):
+            return
+        self._probe_started = True
+        threading.Thread(target=self._probe_sandbox, daemon=True).start()
+
+    def _probe_sandbox(self):
+        """Is Docker present? The answer only affects the isolated-browser toggle."""
+        try:
+            self.docker_available = bool(self.neko.available())
+        except Exception:  # noqa: BLE001 - a broken docker must never block the host
+            self.docker_available = False
+        self.sandbox_session = self.neko.current()
+        if getattr(self, "_greeted", False):
+            self._broadcast()  # never overtake the welcome message
+
+    def sandbox_state(self):
+        self._ensure_sandbox_probe()
+        session = self.sandbox_session or self.neko.current()
+        self.sandbox_session = session
+        if self.docker_available is True:
+            reason = None
+        elif self.docker_available is False:
+            reason = "Docker was not found on this machine; install it to use the isolated browser."
+        else:
+            reason = "Checking whether Docker is available…"
+        return {"available": self.docker_available, "reason": reason, "session": session}
+
     def current_state(self):
         selection = current_selection()
         typesafe = bool(self._typesafe_key or os.environ.get("TYPESAFE_API_KEY"))
@@ -468,11 +530,14 @@ class TaskRunner:
             "error": self.last_error,
             "providers": self.provider_check,
             "selection": selection,
-            "schema": PARAMETER_SCHEMA,
+            "schema": sidebar_schema(),
             "presets": PRESETS,
             "policy_builtin": typesafe,
             "profiles": profile_names(),
             "tokens": self._tokens(),
+            "permissions": permissions.describe(),
+            "browserMode": self.mode_pref,
+            "sandbox": self.sandbox_state(),
         }
         if self.mode == "orchestrated":
             # The orchestrated view; the live browser sub-view rides under "browser".
@@ -535,6 +600,11 @@ class TaskRunner:
         from .orchestrator import route_task
 
         self.mode = route_task(goal)
+        self._audit_event(
+            "mission", json.dumps({"goal": goal[:200], "target": self.mode_pref}),
+            ok=True,
+            preview=f"{self.mode} mission on the {"isolated" if self.mode_pref == "sandbox" else "live"} browser",
+        )
         if self.mode == "orchestrated":
             self.orchestrated = {"status": "running", "log": [], "final": None, "skills": []}
             threading.Thread(target=self._run_orchestrated, args=(goal, url, tab_id), daemon=True).start()
@@ -545,16 +615,132 @@ class TaskRunner:
     def stop_task(self):
         self.stopped = True
 
+    # ── execution target: the live tab, or the isolated Neko browser (MVP-5) ──
+
+    def _browser(self, url, tab_id=None):
+        if self.mode_pref != "sandbox":
+            return FirefoxBrowser(url, tab_id=tab_id, bridge=self.bridge)
+        session = self.sandbox_session or self.neko.current()
+        if session is None or session.get("state") != "running":
+            session = self.neko.start()  # raises NekoUnavailable with the actionable reason
+            self.sandbox_session = session
+        else:
+            self.sandbox_session = session
+        return SandboxBrowser(url, cdp_url=session["cdpUrl"])
+
+    # ── sidebar permission center + sandbox handlers (MVP-5) ──────────────────
+
+    def handle_mode(self, mode):
+        mode = (mode or "").strip().lower()
+        if mode not in {"live", "sandbox"}:
+            self.bridge.send({"type": "error", "message": f"Unknown browser mode: {mode}"})
+            return
+        self.mode_pref = mode
+        self._audit_event("browser_target", json.dumps({"mode": mode}), ok=True, preview=f"target → {mode}")
+        self._broadcast()
+
+    def handle_permissions(self, scope=None, level=None, reset=False):
+        try:
+            if reset:
+                permissions.reset()
+            elif scope:
+                permissions.set_level(scope, level)
+            # permissions.set_level audits through the center only inside a task;
+            # here the sidebar is the actor, so record it explicitly.
+            if scope or reset:
+                self._audit_event(
+                    "permissions", json.dumps({"scope": scope, "level": level, "reset": bool(reset)}),
+                    ok=True, preview="permission change from the sidebar",
+                )
+        except ValueError as error:
+            self.bridge.send({"type": "error", "message": redact(f"Permission error: {error}")})
+            return
+        self._broadcast()
+
+    def _sandbox_gate(self):
+        """The browser scope governs starting an isolated session (spec §10/§11)."""
+        current = permissions.level("browser")
+        if current == "deny":
+            raise neko.NekoUnavailable(
+                "The browser scope is set to deny, so no browser session can start. "
+                "Change it in the permission center."
+            )
+        if current == "ask" and not ApprovalGate(self.bridge).request("Open the isolated Neko browser?"):
+            raise neko.NekoUnavailable("The isolated browser was not approved in the sidebar.")
+
+    def handle_sandbox(self, action):
+        try:
+            if action == "start":
+                self._sandbox_gate()
+                session = self.neko.start()
+                self.sandbox_session = session
+                if session.get("state") != "running":
+                    self.bridge.broadcast({
+                        "type": "error",
+                        "message": (
+                            "The isolated browser is running, but its CDP port did not answer, so the agent cannot "
+                            "drive it. Use a Neko image that exposes remote debugging (NEKO_BROWSER_ARGS) and check "
+                            "NEKO_CDP_PORT."
+                        ),
+                    })
+            elif action == "stop":
+                session = self.sandbox_session or self.neko.current()
+                if session:
+                    self.neko.stop(session["id"])
+                self.sandbox_session = None
+            elif action == "open":
+                session = self.sandbox_session or self.neko.current()
+                if session:
+                    self.bridge.command("open", url=session["webUrl"])
+        except neko.NekoUnavailable as error:
+            self.bridge.broadcast({"type": "error", "message": redact(str(error))})
+        self._broadcast()
+
+    def _audit_event(self, tool, args=None, **extra):
+        """One audit line from outside the ToolBox (missions, targets, permissions, sandbox)."""
+        try:
+            from .tools import AUDIT_LOG
+
+            AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
+            entry = {
+                "ts": time.time(),
+                "trace": self._trace,
+                "tool": tool,
+                "args": redact(str(args or ""))[:400],
+                **extra,
+            }
+            with AUDIT_LOG.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except OSError:
+            pass  # the audit log must never break a run
+
+    def _audit_steps(self, snapshot):
+        """Every executed browser action is audited; typed text is redacted (spec §11)."""
+        history = (snapshot or {}).get("history") or []
+        if len(history) <= self._audited_steps:
+            return
+        for item in history[self._audited_steps:]:
+            self._audit_event(
+                "browser_action",
+                json.dumps({"action": item.get("action"), "text": item.get("text")}),
+                ok=True,
+                duration_ms=item.get("latency_ms"),
+                preview=redact(str(item.get("action") or ""))[:120],
+            )
+        self._audited_steps = len(history)
+
     # ── browser mode (the original fast path) ─────────────────────────────────
 
     def _run(self, goal, url, tab_id):
         from .agent import Agent  # imported here to keep the module import-light
 
         try:
-            browser = FirefoxBrowser(url, tab_id=tab_id, bridge=self.bridge)
+            browser = self._browser(url, tab_id)
             self.agent = Agent(url, goal, screenshots=True, browser=browser)
+            self._audited_steps = 0
             self._broadcast()
             for _state in self.agent.run():
+                self._audit_steps(_state if isinstance(_state, dict) else self.agent.snapshot())
                 self._broadcast()
                 if self.stopped:
                     break
@@ -602,10 +788,12 @@ class TaskRunner:
             """Delegates a browser step to the fast JEV Agent on the live tab."""
             target = browser_url or url or "about:blank"
             try:
-                browser = FirefoxBrowser(target, tab_id=tab_id, bridge=self.bridge)
+                browser = self._browser(target, tab_id)
                 self.agent = Agent(target, str(browser_goal), screenshots=True, browser=browser)
+                self._audited_steps = 0
                 self._broadcast()
                 for _state in self.agent.run():
+                    self._audit_steps(_state if isinstance(_state, dict) else self.agent.snapshot())
                     self._broadcast()
                     if self.stopped:
                         break
@@ -628,8 +816,13 @@ class TaskRunner:
         try:
             gate = ApprovalGate(self.bridge)
             self.approvals = gate
+            center = permissions.PermissionCenter(
+                gate.request,
+                on_decision=lambda tool, args=None, **extra: self._audit_event(tool, args, **extra),
+            )
             toolbox = ToolBox(
-                self._workspace, request_approval=gate.request, browser_runner=browser_runner, trace_id=self._trace
+                self._workspace, request_approval=gate.request, browser_runner=browser_runner,
+                trace_id=self._trace, permission_center=center,
             )
             selected = select_skills(goal, available_tools=toolbox.registry)
             self.orchestrated["skills"] = [skill["id"] for skill in selected]
@@ -700,6 +893,7 @@ class TaskRunner:
             os.environ.pop("TYPESAFE_API_KEY", None)  # an explicit UI switch overrides the .env default
         try:
             apply_model(role, provider_name, model_id)
+            prune_params(role)  # the new model may not accept the old model's parameters
         except (ValueError, KeyError) as error:
             self.bridge.send({"type": "error", "message": redact(f"Could not switch model: {error}")})
             return

@@ -128,11 +128,11 @@ uv run --env-file .env jev-firefox        # start the local bridge host
 
 The sidebar shows the plan checklist with ✓ progress, live screenshots, every executed action, and a Stop button. Setup and architecture: [firefox-extension.md](docs/firefox-extension.md).
 
-## Beyond the browser: catalogue, tools, and approvals
+## Beyond the browser: catalogue, tools, and permissions
 
-The sidebar has grown three more capabilities:
+The sidebar has grown five more capabilities:
 
-**⚙️ Models & parameters (no `.env` editing).** Open the *Models & parameters* panel: it fetches the live model list from every provider you have a key for (24 h cached registry, `Refresh catalogue` to force it), renders one picker per role — planner, executor, text writer — plus presets (*Fast / Balanced / Deep / Browser / Coding*) and per-role *advanced* controls for reasoning effort and temperature. Selections persist in `artifacts/model-config.json` and override `.env` on the next start (`JEV_MODEL_CONFIG` moves that file). A picker switch re-runs **Test setup** automatically, so a broken model id shows up as 🔴 immediately.
+**⚙️ Models & parameters (no `.env` editing), per model.** Open the *Models & parameters* panel: it fetches the live model list from every provider you have a key for (24 h cached registry, `Refresh catalogue` to force it), renders one picker per role — planner, executor, text writer — and derives the *controls from the selected model itself*: the provider dialect decides which parameters can travel (`seed`/`frequency_penalty` on OpenAI-compatible endpoints, not on Anthropic), discovered capabilities decide whether a reasoning control appears at all, family rules offer the values a model documents (Kimi-K: `low/high/max`), and an opt-in probe (`JEV_PARAM_PROBE=1`) removes parameters an endpoint rejects. Unsupported fields are refused instead of sent, so switching to a leaner model can't leave a stale `reasoning` setting behind. Presets (*Fast / Balanced / Deep / Browser / Coding*) are filtered through the same surface. Selections persist in `artifacts/model-config.json` and override `.env` on the next start (`JEV_MODEL_CONFIG` moves that file). A picker switch re-runs **Test setup** automatically, so a broken model id shows up as 🔴 immediately.
 
 **🛠 Tools & skills.** Missions that need more than the tab don't go through the fast browser loop — they run through an orchestrator (your planner model) with nine tools:
 
@@ -143,11 +143,14 @@ The sidebar has grown three more capabilities:
 | `write_file` / `read_file` / `list_files` | text files inside the sandboxed workspace |
 | `parse_document` | extracts text from PDF / DOCX / XLSX (`pip install -e ".[documents]"` — the starters do it for you) |
 | `run_command` | shell command in the workspace under a permission policy |
-| `browser_task` | hands a browser step back to the fast JEV loop on your live tab |
+| `browser_task` | hands a browser step back to the fast JEV loop on the selected browser target |
+| `clipboard_read` / `clipboard_write` | the system clipboard, gated by the *clipboard* permission scope (default: ask) |
 
 Keyword-matched **skills** (`skills/` directories with a manifest + instructions) add procedural guidance for browser missions, web research, documents, and coding. Try: *"Download the Wikipedia page on Barcelona as a file, then write a summary"* or *"Create a python script that prints hello and run it"*.
 
-**🔐 Command approvals.** The terminal policy is: read-only commands (`ls`, `git status`, …) run; destructive ones (`sudo`, `rm -rf`, `curl | sh`, …) are blocked; everything else — including any redirect or compound command — asks first. The sidebar shows the exact command with **Approve / Deny**; no answer in 2 minutes means denied. Files can never leave the task workspace (`workspace/`), and every tool result is size-capped.
+**🔐 Permission center.** Six scopes — *browser*, *terminal*, *files*, *network*, *clipboard*, *downloads* — each with **allow / ask / deny**, set from the sidebar and persisted in `artifacts/permissions.json`. Levels only narrow: `deny` disables a tool outright, `ask` routes every use (even a harmless `ls`) through an **Approve / Deny** prompt, and two invariants hold at every level — destructive commands (`sudo`, `rm -rf`, `curl | sh`, …) stay blocked and secret reads stay refused. Changing a level is audited like any other action, and every decision lands in `artifacts/audit.jsonl` next to the tool call it gated. No answer in 2 minutes means denied. Files can never leave the task workspace (`workspace/`), and every tool result is size-capped.
+
+**🧪 Isolated browser (Neko, sandbox mode).** The *Browser target* switch at the top of the sidebar chooses between *My current tab* and *Isolated browser*. The isolated target is a self-hosted [Neko](https://github.com/m1k1o/neko) container (Docker + WebRTC): the agent drives the browser inside it over CDP while you watch the same session in a tab (`Watch it`). The session manager publishes the stream URL, waits for the CDP port before declaring the session drivable (a container without remote debugging is reported as *manual* — watchable, not agent-drivable — instead of failing mid-mission), records sessions in `artifacts/neko-sessions.json`, survives host restarts, and tears the container down with `Stop session`. Ports and image: `NEKO_IMAGE`, `NEKO_WEB_PORT`, `NEKO_CDP_PORT`, `NEKO_PASSWORD`, `NEKO_BROWSER_ARGS`.
 
 ## Use the library
 

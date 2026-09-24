@@ -266,3 +266,30 @@ def test_browser_task_delegates_to_the_runner(box):
 def test_browser_task_without_a_runner_is_a_clean_error(box):
     with pytest.raises(ToolError, match="not available"):
         box.call("browser_task", {"goal": "open example.com"})
+
+
+# ── host allowlist (spec §11) ───────────────────────────────────────────────
+
+
+def test_allowed_hosts_is_opt_in(monkeypatch):
+    monkeypatch.delenv("JEV_ALLOWED_HOSTS", raising=False)
+    assert tools.host_allowed("https://anything.example/x")
+
+
+def test_allowed_hosts_matches_subdomains_only(monkeypatch):
+    monkeypatch.setenv("JEV_ALLOWED_HOSTS", "example.com, docs.python.org")
+    assert tools.host_allowed("https://example.com/a")
+    assert tools.host_allowed("https://www.example.com/a")  # subdomain of an allowed host
+    assert tools.host_allowed("https://docs.python.org/3/")
+    assert not tools.host_allowed("https://evil-example.com/a")
+    assert not tools.host_allowed("https://example.org/a")
+
+
+def test_read_page_and_download_refuse_unlisted_hosts(tmp_path, monkeypatch):
+    monkeypatch.setenv("JEV_ALLOWED_HOSTS", "docs.python.org")
+    box = ToolBox(tmp_path / "ws")
+    with pytest.raises(ToolError) as raised:
+        box.call("read_page", {"url": "https://example.com/x"})
+    assert "not in JEV_ALLOWED_HOSTS" in str(raised.value)
+    with pytest.raises(ToolError):
+        box.call("download_file", {"url": "https://example.com/f.pdf", "filename": "f.pdf"})

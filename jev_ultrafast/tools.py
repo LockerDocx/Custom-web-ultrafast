@@ -13,11 +13,14 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
+import sys
 import time
 import urllib.parse
 from pathlib import Path
 
+from . import permissions
 from .redact import redact
 
 MAX_TOOL_OUTPUT = 8000
@@ -68,6 +71,23 @@ def _touches_outside_path(command):
     return False
 
 
+def allowed_hosts():
+    """Section 11: an optional host allowlist, comma separated in JEV_ALLOWED_HOSTS.
+
+    Empty means "no restriction" (the default), because a network scope that
+    silently blocks everything would be indistinguishable from a broken setup.
+    """
+    return [entry.strip().lower() for entry in (os.environ.get("JEV_ALLOWED_HOSTS") or "").split(",") if entry.strip()]
+
+
+def host_allowed(url):
+    hosts = allowed_hosts()
+    if not hosts:
+        return True
+    host = (urllib.parse.urlparse(str(url)).hostname or "").lower()
+    return any(host == entry or host.endswith("." + entry) for entry in hosts)
+
+
 def classify_command(command):
     """'allow' for read-only commands, 'deny' for destructive ones, else 'approve'."""
     stripped = command.strip()
@@ -107,13 +127,18 @@ def _subprocess_limits():
 class ToolBox:
     """One workspace-scoped set of tools for a single orchestrated task."""
 
-    def __init__(self, workspace, request_approval=None, browser_runner=None, audit_path=None, trace_id=None):
+    def __init__(self, workspace, request_approval=None, browser_runner=None, audit_path=None, trace_id=None,
+                 permission_center=None):
         self.workspace = Path(workspace).resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.request_approval = request_approval or (lambda _command: False)
         self.browser_runner = browser_runner
         self.audit_path = Path(audit_path) if audit_path else AUDIT_LOG
         self.trace_id = trace_id
+        self.permission_center = permission_center
+        if permission_center is not None and permission_center.on_decision is None:
+            permission_center.on_decision = self._audit  # refusals land in this box's audit log
+        self._pending_decision = None
         self.registry = {
             "web_search": (self.web_search, "query, max_results=5 → titled URLs and snippets from the web"),
             "read_page": (self.read_page, "url → the page's readable text (truncated)"),
@@ -124,6 +149,12 @@ class ToolBox:
             "parse_document": (self.parse_document, "filename → extracted text from a workspace PDF/DOCX/XLSX"),
             "run_command": (self.run_command, "command → shell command in the workspace (may need approval)"),
             "browser_task": (self.browser_task, "goal, url? → drives the live Firefox tab (browser mission)"),
+            "clipboard_read": (
+                self.clipboard_read, "no args → the system clipboard text (permission: clipboard scope)",
+            ),
+            "clipboard_write": (
+                self.clipboard_write, "text → replaces the clipboard (permission: clipboard scope)",
+            ),
         }
 
     # ── plumbing ──────────────────────────────────────────────────────────────
@@ -131,9 +162,33 @@ class ToolBox:
     def tool_descriptions(self):
         return "\n".join(f"- {name}({signature})" for name, (_fn, signature) in sorted(self.registry.items()))
 
+    def _gate(self, tool, detail=""):
+        """Permission-center check before a gated tool runs (MVP-5).
+
+        The command policy inside run_command is unaffected: scope levels only
+        narrow what the safety policy already allows.
+        """
+        if self.permission_center is None:
+            return None
+        decision = self.permission_center.check(tool, detail)
+        self._pending_decision = decision
+        if not decision["allowed"]:
+            raise ToolError(decision["reason"])
+        return decision
+
+    def _decision_fields(self):
+        if not self._pending_decision:
+            return {}
+        return {
+            key: self._pending_decision[key]
+            for key in ("scope", "level", "decision")
+            if self._pending_decision.get(key)
+        }
+
     def call(self, name, args):
         started = time.perf_counter()
         ok, error, result = False, None, None
+        self._pending_decision = None
         try:
             if name not in self.registry:
                 raise ToolError(f"Unknown tool '{name}'. Available: {', '.join(sorted(self.registry))}.")
@@ -149,7 +204,7 @@ class ToolBox:
         finally:
             if name != "run_command":  # run_command writes its own richer entry
                 self._audit(
-                    name, args, ok=ok, error=error,
+                    name, args, **self._decision_fields(), ok=ok, error=error,
                     duration_ms=round((time.perf_counter() - started) * 1000),
                     preview=redact(str(result))[:120] if result is not None else None,
                 )
@@ -182,6 +237,7 @@ class ToolBox:
         query = str(query).strip()
         if not query:
             raise ToolError("Empty search query.")
+        self._gate("web_search", query)
         max_results = max(1, min(8, int(max_results)))
         from . import model
 
@@ -210,6 +266,10 @@ class ToolBox:
         url = str(url).strip()
         if not url.startswith(("http://", "https://")):
             raise ToolError("read_page needs a full http(s) URL.")
+        if not host_allowed(url):
+            host = urllib.parse.urlparse(url).hostname
+            raise ToolError(f"{host} is not in JEV_ALLOWED_HOSTS, so read_page will not fetch it.")
+        self._gate("read_page", url)
         from . import model
 
         try:
@@ -230,6 +290,10 @@ class ToolBox:
             raise ToolError("download_file needs a full http(s) URL.")
         if not filename or "/" in filename or "\\" in filename or filename.startswith("."):
             raise ToolError("filename must be a plain name like 'report.pdf' (no paths).")
+        if not host_allowed(url):
+            host = urllib.parse.urlparse(url).hostname
+            raise ToolError(f"{host} is not in JEV_ALLOWED_HOSTS, so download_file will not fetch it.")
+        self._gate("download_file", f"{filename} ← {url}")
         from . import model
 
         target = self._resolve(filename)
@@ -273,6 +337,7 @@ class ToolBox:
             raise ToolError(f"{path} is not a text file; use parse_document for documents.") from None
 
     def write_file(self, path, content):
+        self._gate("write_file", str(path))
         target = self._resolve(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(str(content), encoding="utf-8")
@@ -306,6 +371,16 @@ class ToolBox:
         if not command:
             raise ToolError("Empty command.")
         verdict = classify_command(command)
+        if self.permission_center is not None:
+            # The scope narrows the policy; destructive stays deny at every level.
+            verdict = permissions.terminal_verdict(command, classify_command, self.permission_center.level("terminal"))
+        if verdict == "scope-denied":
+            self._audit("run_command", {"command": command}, verdict=verdict, approved=False,
+                        scope="terminal", level="deny", decision="denied",
+                        ok=False, error="the terminal scope is set to deny")
+            raise ToolError(
+                "The terminal scope is set to deny, so no command can run. Change it in the permission center."
+            )
         if verdict == "deny":
             self._audit("run_command", {"command": command}, verdict=verdict, approved=False,
                         ok=False, error="blocked by the safety policy")
@@ -342,7 +417,27 @@ class ToolBox:
     def browser_task(self, goal, url=None):
         if self.browser_runner is None:
             raise ToolError("The browser is not available in this run.")
+        self._gate("browser_task", str(goal)[:120])
         return self.browser_runner(str(goal), url)
+
+    # ── clipboard (permission scope: clipboard) ───────────────────────────────
+
+    def clipboard_read(self):
+        self._gate("clipboard_read", "read the system clipboard")
+        read_argv = _clipboard_argv("read")
+        completed = subprocess.run(read_argv, capture_output=True, text=True, timeout=10)
+        if completed.returncode != 0:
+            raise ToolError(f"Clipboard read failed: {(completed.stderr or '').strip()[:200]}")
+        text = completed.stdout
+        return text[:MAX_TOOL_OUTPUT] if text else "(the clipboard is empty or holds no text)"
+
+    def clipboard_write(self, text):
+        text = str(text)
+        self._gate("clipboard_write", f"write {len(text)} characters to the clipboard")
+        completed = subprocess.run(_clipboard_argv("write"), input=text, capture_output=True, text=True, timeout=10)
+        if completed.returncode != 0:
+            raise ToolError(f"Clipboard write failed: {(completed.stderr or '').strip()[:200]}")
+        return f"Copied {len(text)} characters to the clipboard."
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -351,6 +446,25 @@ class ToolBox:
 def _cap(text):
     text = str(text)
     return text if len(text) <= MAX_TOOL_OUTPUT else text[:MAX_TOOL_OUTPUT] + "\n…(truncated)"
+
+
+def _clipboard_argv(direction):
+    """The platform's clipboard command; clear error when none is installed."""
+    if sys.platform == "darwin":
+        argv = ["pbpaste"] if direction == "read" else ["pbcopy"]
+    elif os.name == "nt":
+        script = "Get-Clipboard" if direction == "read" else "Set-Clipboard"
+        argv = ["powershell", "-NoProfile", "-Command", script]
+    elif os.environ.get("WAYLAND_DISPLAY") and shutil.which("wl-paste" if direction == "read" else "wl-copy"):
+        argv = ["wl-paste", "--no-newline"] if direction == "read" else ["wl-copy"]
+    else:
+        argv = ["xclip", "-selection", "clipboard", "-o" if direction == "read" else "-i"]
+    if shutil.which(argv[0]) is None:
+        raise ToolError(
+            f"The clipboard tool '{argv[0]}' is not installed, so the clipboard cannot be "
+            f"{'read' if direction == 'read' else 'written'} on this system."
+        )
+    return argv
 
 
 def _strip_tags(fragment):

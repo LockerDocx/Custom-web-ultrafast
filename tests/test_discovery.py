@@ -118,3 +118,66 @@ def test_stale_registry_is_ignored(monkeypatch, tmp_path):
     fresh = discovery.discover()
     assert fresh["fetchedAt"] > 0
     assert "nvidia" not in fresh["providers"] or fresh["providers"]["nvidia"]["ok"] is False
+
+
+# ── per-model parameter surfaces in the registry (the MVP-1 repair) ──────────
+
+
+def test_fetch_models_carries_a_parameter_surface(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk-test")
+    monkeypatch.setattr(model, "CLIENT", fake_client({"data": [
+        {"id": "openai/gpt-oss-20b"},
+        {"id": "meta-llama/llama-3.3-70b-versatile"},
+    ]}))
+    models = {entry["id"]: entry for entry in discovery.fetch_models("groq")}
+    assert models["openai/gpt-oss-20b"]["parametersSchema"] == "jev-v1"
+    reasoner = models["openai/gpt-oss-20b"]["parameters"]
+    plain = models["meta-llama/llama-3.3-70b-versatile"]["parameters"]
+    assert "reasoning" in reasoner and "reasoning" not in plain
+    assert {"temperature", "top_p", "max_tokens"} <= set(reasoner)
+
+
+def test_probe_is_opt_in(monkeypatch):
+    assert discovery.probe_enabled() is False
+    monkeypatch.setenv("JEV_PARAM_PROBE", "1")
+    assert discovery.probe_enabled() is True
+
+
+def test_probe_only_reports_rejections_the_endpoint_named(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk-test")
+    calls = []
+
+    def fake_post(url, key, body, headers=None):
+        calls.append(body)
+        raise RuntimeError("HTTP 400: Unsupported parameter: seed")
+
+    monkeypatch.setattr(model, "post_json", fake_post)
+    probed = discovery.probe_parameters("groq", "openai/gpt-oss-20b", {"advanced": ["seed", "top_p"]})
+    assert probed == {"seed": False, "top_p": True}
+    assert len(calls) == 1  # exactly one request; no adaptive retry hides the rejection
+    assert calls[0]["seed"] == 42 and "top_p" in calls[0]
+
+
+def test_probe_ignores_failures_that_are_not_about_parameters(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk-test")
+
+    def fake_post(url, key, body, headers=None):
+        raise RuntimeError("HTTP 401: invalid API key")
+
+    monkeypatch.setattr(model, "post_json", fake_post)
+    assert discovery.probe_parameters("groq", "openai/gpt-oss-20b", {"advanced": ["seed"]}) is None
+
+
+def test_probe_skips_local_runtimes(monkeypatch):
+    monkeypatch.setattr(model, "post_json", lambda *args, **kwargs: pytest.fail("no request expected"))
+    assert discovery.probe_parameters("ollama", "qwen3.5:4b", {"advanced": ["seed"]}) is None
+
+
+def test_discover_records_probe_results_when_enabled(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk-test")
+    monkeypatch.setenv("JEV_PARAM_PROBE", "1")
+    monkeypatch.setattr(model, "CLIENT", fake_client({"data": [{"id": "openai/gpt-oss-20b"}]}))
+    monkeypatch.setattr(discovery, "probe_parameters", lambda provider, model_id, schema: {"seed": False})
+    registry = discovery.discover(refresh=True)
+    entry = registry["providers"]["groq"]["models"][0]
+    assert entry["probedParams"] == {"seed": False}

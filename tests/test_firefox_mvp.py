@@ -57,8 +57,12 @@ def wait_until(condition, timeout=5.0):
 
 @pytest.fixture(autouse=True)
 def isolated_config(tmp_path, monkeypatch):
+    from jev_ultrafast import permissions
+
     monkeypatch.setattr(parameters, "CONFIG_PATH", tmp_path / "model-config.json")
     monkeypatch.setattr(discovery, "REGISTRY_PATH", tmp_path / "model-registry.json")
+    monkeypatch.setattr(permissions, "PERMISSIONS_PATH", tmp_path / "permissions.json")
+    monkeypatch.setattr("jev_ultrafast.neko.SESSIONS_PATH", tmp_path / "neko-sessions.json")
     for name in (
         "PLANNER_PROVIDER", "PLANNER_MODEL", "POLICY_PROVIDER", "POLICY_MODEL",
         "TEXT_MODEL_PROVIDER", "TEXT_MODEL", "TYPESAFE_API_KEY",
@@ -290,3 +294,94 @@ def test_orchestrated_run_over_the_real_bridge(bridge, monkeypatch, tmp_path):
     assert states and states[-1]["mode"] == "orchestrated"
     assert states[-1]["final"] == "listed"
     assert states[-1]["log"][0]["tool"] == "list_files"
+
+
+# ── permission center + sandbox over the bridge (MVP-5) ──────────────────────
+
+
+def read_until(ext, predicate, timeout=5.0):
+    """Read bridge messages until one satisfies the predicate (or time out)."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            message = ext.recv(timeout=max(0.1, deadline - time.monotonic()))
+        except (TimeoutError, OSError):
+            return None
+        if predicate(message):
+            return message
+    return None
+
+
+def test_permissions_set_round_trip(bridge, monkeypatch, tmp_path):
+    from jev_ultrafast import permissions
+
+    monkeypatch.setattr(permissions, "PERMISSIONS_PATH", tmp_path / "permissions.json")
+    bridge.runner = firefox.TaskRunner(bridge)
+    ext = FakeExtension(bridge.port)
+    ext.send({"type": "hello"})
+    ext.recv()  # welcome
+
+    ext.send({"type": "permissions.set", "scope": "downloads", "level": "deny"})
+    state = read_until(
+        ext, lambda m: m.get("type") == "state" and m["state"]["permissions"]["levels"]["downloads"] == "deny"
+    )
+    assert state is not None, "the sidebar never learned about the new level"
+    assert permissions.load()["downloads"] == "deny"
+
+    ext.send({"type": "permissions.set", "scope": "telepathy", "level": "allow"})
+    assert read_until(ext, lambda m: m.get("type") == "error" and "Permission error" in m.get("message", ""))
+
+    ext.send({"type": "permissions.reset"})
+    assert read_until(
+        ext, lambda m: m.get("type") == "state" and m["state"]["permissions"]["levels"]["downloads"] == "allow"
+    )
+
+
+def test_browser_target_switch_round_trip(bridge, monkeypatch, tmp_path):
+    from jev_ultrafast import permissions
+
+    monkeypatch.setattr(permissions, "PERMISSIONS_PATH", tmp_path / "permissions.json")
+    monkeypatch.setattr("jev_ultrafast.neko.SESSIONS_PATH", tmp_path / "neko-sessions.json")
+    bridge.runner = firefox.TaskRunner(bridge)
+    ext = FakeExtension(bridge.port)
+    ext.send({"type": "hello"})
+    ext.recv()
+
+    ext.send({"type": "mode.set", "mode": "sandbox"})
+    assert read_until(ext, lambda m: m.get("type") == "state" and m["state"]["browserMode"] == "sandbox")
+    ext.send({"type": "mode.set", "mode": "telepathy"})
+    assert read_until(ext, lambda m: m.get("type") == "error" and "Unknown browser mode" in m.get("message", ""))
+
+
+def test_sandbox_start_is_gated_by_the_browser_scope(bridge, monkeypatch, tmp_path):
+    from jev_ultrafast import permissions
+
+    monkeypatch.setattr(permissions, "PERMISSIONS_PATH", tmp_path / "permissions.json")
+    permissions.set_level("browser", "deny")
+    bridge.runner = firefox.TaskRunner(bridge)
+    ext = FakeExtension(bridge.port)
+    ext.send({"type": "hello"})
+    ext.recv()
+
+    ext.send({"type": "sandbox.start"})
+    error = read_until(
+        ext, lambda m: m.get("type") == "error" and "browser scope is set to deny" in m.get("message", "")
+    )
+    assert error is not None
+    assert bridge.runner.sandbox_session is None
+
+
+def test_sandbox_state_is_always_reported(bridge, monkeypatch, tmp_path):
+    monkeypatch.setattr("jev_ultrafast.neko.SESSIONS_PATH", tmp_path / "neko-sessions.json")
+    bridge.runner = firefox.TaskRunner(bridge)
+    state = bridge.runner.current_state()
+    assert "sandbox" in state and "available" in state["sandbox"]
+    assert state["browserMode"] == "live"
+
+
+def test_models_ui_receives_the_per_role_schema():
+    runner = firefox.TaskRunner(MockBridge())
+    schema = runner.current_state()["schema"]
+    assert schema["roles"][0]["key"] == "planner"
+    assert set(schema["modelSchemas"]) == {"planner", "policy", "text"}  # one surface per role's model
+    assert "advanced" in schema["modelSchemas"]["policy"]

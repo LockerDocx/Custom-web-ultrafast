@@ -23,6 +23,23 @@
         <span class="hint">Browser missions drive the tab you are on. Missions that need search, files, documents, or the terminal use the tools automatically.</span>
       </section>
 
+      <section class="target" id="target">
+        <div class="target-head">
+          <span class="hint">Browser target</span>
+          <span class="hint" id="sandbox-status"></span>
+        </div>
+        <div class="segmented" id="target-toggle">
+          <button data-target="live" title="Drive the Firefox tab you are looking at">My current tab</button>
+          <button data-target="sandbox" title="Drive an isolated Neko browser in Docker">Isolated browser</button>
+        </div>
+        <div class="row" id="sandbox-actions" hidden>
+          <button id="sandbox-start" class="primary">Start session</button>
+          <button id="sandbox-stop" hidden>Stop session</button>
+          <button id="sandbox-open" hidden>Watch it</button>
+          <span class="hint" id="sandbox-url"></span>
+        </div>
+      </section>
+
       <div id="approval" role="alert" hidden>
         <div class="approval-title">🔐 The agent wants to run a command</div>
         <code id="approval-command"></code>
@@ -35,6 +52,18 @@
 
       <div id="error" role="alert" hidden></div>
       <div id="providers" class="providers" hidden></div>
+
+      <details id="permissions-panel" class="panel">
+        <summary>🔐 Permissions</summary>
+        <div class="hint" id="permissions-hint">
+          Per-tool scopes. Levels only narrow: destructive commands stay blocked and secret reads are never allowed.
+        </div>
+        <div id="permission-rows"></div>
+        <div class="row">
+          <button id="permissions-reset" title="Restore the default levels">Reset to defaults</button>
+          <span class="hint">ask → the sidebar confirms every use of that tool</span>
+        </div>
+      </details>
 
       <details id="models-panel" class="panel">
         <summary>⚙️ Models &amp; parameters</summary>

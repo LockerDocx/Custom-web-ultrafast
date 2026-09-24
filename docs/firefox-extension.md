@@ -52,6 +52,8 @@ The agent attaches to the tab you are on, observes its elements, plans (if `PLAN
 | Orchestrator | `jev_ultrafast/orchestrator.py` + `tools.py` | JSON-protocol tool loop over nine workspace-scoped tools; the planner model drives it. |
 | Skills | `skills/*/skill.json` | Keyword-selected procedural instructions appended to the orchestrator prompt. |
 | Approvals | `firefox.py` `ApprovalGate` | Sensitive `run_command` calls broadcast `approval_request`; no answer in 120 s = denied. |
+| Permission center | `jev_ultrafast/permissions.py` | Six per-tool scopes (browser, terminal, filesystem, network, clipboard, downloads) with allow / ask / deny levels; persisted in `artifacts/permissions.json`. |
+| Isolated browser | `jev_ultrafast/neko.py` | Neko (Docker + WebRTC) session manager plus a stdlib CDP client: `SandboxBrowser` implements the same observe/act/fresh contract as `FirefoxBrowser`, so the same loop works in either target. |
 
 Configuration: `FIREFOX_BRIDGE_PORT` (default 8767), `FIREFOX_BRIDGE_TOKEN` (optional shared secret; the extension sends it during hello). All model roles (`PLANNER_*`, `POLICY_*`, `TEXT_MODEL_*`) follow [providers.md](providers.md) — e.g. planner on NVIDIA NIM and executor on Groq at the same time.
 
@@ -63,14 +65,19 @@ Configuration: `FIREFOX_BRIDGE_PORT` (default 8767), `FIREFOX_BRIDGE_TOKEN` (opt
 - The content script executes **only** the model-chosen operation on an **observed** node id — the same no-selectors, no-code contract as the Chrome path. Freshness guards (document key, form values, target guard) are re-checked before every click/select.
 - Tool files are jailed to the per-task `workspace/` directory (path traversal rejected); downloads cap at 25 MB; every tool result is size-capped.
 - Terminal commands follow a three-way policy: read-only allow-list (`ls`, `git status`, …) runs — and only with arguments inside the workspace (`cat ~/.ssh/id_rsa` asks first) — destructive patterns (`sudo`, `rm -rf`, `curl | sh`, …) are denied, and anything else — including redirects and compound commands — requires an explicit sidebar approval. Unanswered approvals fail closed. On POSIX, approved commands also run under rlimits (CPU seconds, 2 GB address space, 512 MB file writes).
+- Optional host allowlist (`JEV_ALLOWED_HOSTS`): when set, `read_page`/`download_file` only reach the listed hosts and their subdomains (spec §11).
+- **Permission center (MVP-5)**: six scopes, each with allow / ask / deny. Levels only ever narrow — `terminal: deny` blocks even `ls`, `terminal: ask` routes every command (including read-only ones) through the sidebar, and destructive commands stay denied at *every* level. Changing a level is itself audited.
+- **Isolated browser (MVP-5)**: the sidebar's *Browser target* switch runs a mission in a Neko container instead of your live tab. The manager publishes the WebRTC URL so you can watch, and probes the CDP port before declaring the session drivable — a container without remote debugging is reported as `manual` (watchable, not agent-drivable) instead of failing mid-mission. Sessions live in `artifacts/neko-sessions.json` and survive a host restart (`sandbox.stop` tears the container down).
 - Every tool call appends one record to `artifacts/audit.jsonl` (tool, arguments, command verdict, approval, duration, exit code) tagged with the task's trace id — the same id that ties the run record in `runs.jsonl` and every state broadcast.
 - All error surfaces pass a redaction layer that masks API-key-shaped strings before they reach logs, artifacts, or the sidebar.
 
 ## Bridge protocol (extension ⇄ host)
 
-Extension → host: `hello`, `run {goal, url, tabId}`, `stop`, `check`, `models {refresh}`, `models.select {role, provider, model}`, `params.set {preset}` or `params.set {role, params}`, `profile.save|apply|delete {name}`, `approval_response {id, approved}`.
+Extension → host: `hello`, `run {goal, url, tabId}`, `stop`, `check`, `models {refresh}`, `models.select {role, provider, model}`, `params.set {preset}` or `params.set {role, params}`, `profile.save|apply|delete {name}`, `approval_response {id, approved}`, `mode.set {live|sandbox}`, `permissions.get`, `permissions.set {scope, level}`, `permissions.reset`, `sandbox.start|stop|open`.
 
-Host → extension: command/response pairs with ids (`open`, `observe`, `act`, `fresh`); broadcasts `welcome`, `state` (carries `mode`, `selection`, `schema`, `presets`, `profiles`, `tokens`, `providers`, and for orchestrated tasks `log`/`final`/`skills` plus the live browser sub-state under `browser`), `models {registry}`, `approval_request {id, command}`, `delta {text}` (live model output during orchestrated steps, throttled), `error`.
+Host → extension: command/response pairs with ids (`open`, `observe`, `act`, `fresh`); broadcasts `welcome`, `state` (carries `mode`, `browserMode`, `sandbox {available, reason, session}`, `permissions {levels, scopes}`, `selection`, `schema`, `presets`, `profiles`, `tokens`, `providers`, and for orchestrated tasks `log`/`final`/`skills` plus the live browser sub-state under `browser`), `models {registry}`, `approval_request {id, command}`, `delta {text}` (live model output during orchestrated steps, throttled), `error`.
+
+The `schema` payload is per model, not global: `schema.modelSchemas.<role>` holds the parameter surface of the model that role resolves to (dialect + discovered capabilities + family rules + probe results), with `simple` and `advanced` lists so the sidebar renders exactly what the selected model accepts.
 
 ## Known limitations (MVP)
 
@@ -79,3 +86,5 @@ Host → extension: command/response pairs with ids (`open`, `observe`, `act`, `
 - Background tabs can throttle animations (no focus emulation on Firefox yet); keep the tab visible while it works.
 - One task at a time; `Stop` finishes the current action and halts.
 - Temporary add-ons are removed when Firefox restarts — reload once per session (or sign the XPI later for permanent install).
+- The isolated browser needs Docker; stock Neko images do not publish CDP, so the manager passes `NEKO_BROWSER_ARGS` (`--remote-debugging-port`) and probes `NEKO_CDP_PORT`. Point `NEKO_IMAGE` at an image that honours those flags if the default does not.
+- `clipboard_read` / `clipboard_write` exist so the clipboard scope has an enforcement point; they need `xclip`/`wl-copy` (Linux), `pbpaste`/`pbcopy` (macOS) or PowerShell (Windows), and default to the `ask` level.

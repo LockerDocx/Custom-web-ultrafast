@@ -206,6 +206,32 @@ browser.runtime.onMessage.addListener((message) => {
       return Promise.resolve({ error: String(error.message || error) });
     }
   }
+  if (message.cmd === "mode") {
+    try {
+      send({ type: "mode.set", mode: message.mode });
+      return Promise.resolve({ ok: true });
+    } catch (error) {
+      return Promise.resolve({ error: String(error.message || error) });
+    }
+  }
+  if (message.cmd === "permissions") {
+    try {
+      if (message.reset) send({ type: "permissions.reset" });
+      else if (message.scope) send({ type: "permissions.set", scope: message.scope, level: message.level });
+      else send({ type: "permissions.get" });
+      return Promise.resolve({ ok: true });
+    } catch (error) {
+      return Promise.resolve({ error: String(error.message || error) });
+    }
+  }
+  if (message.cmd === "sandbox") {
+    try {
+      send({ type: `sandbox.${message.action}` });
+      return Promise.resolve({ ok: true });
+    } catch (error) {
+      return Promise.resolve({ error: String(error.message || error) });
+    }
+  }
   if (message.cmd === "approval") {
     try {
       send({ type: "approval_response", id: message.id, approved: !!message.approved });

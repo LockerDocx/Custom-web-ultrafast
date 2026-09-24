@@ -10,6 +10,7 @@ let state = null;
 let registry = null; // model catalogue from the host ("models" messages)
 let approvalId = null;
 let modelsSignature = "";
+let permissionsSignature = "";
 
 function setConnection(connected) {
   $("connection").classList.toggle("on", connected);
@@ -165,13 +166,45 @@ function modelOptions(roleKey, selection, registryData) {
   return html + groups.join("");
 }
 
+/* The schema is per model (MVP-1): the host sends one parameter surface per
+   role for the model that role currently resolves to. */
+function roleSchema(roleKey) {
+  const models = (state.schema && state.schema.modelSchemas) || {};
+  if (models[roleKey] && models[roleKey].parameters) return models[roleKey];
+  const parameters = (state.schema && state.schema.parameters) || {};
+  return { parameters, simple: Object.keys(parameters), advanced: [], fallback: true };
+}
+
+function paramControl(roleKey, name, schema, value) {
+  const current = value === undefined || value === null ? "" : String(value);
+  const attrs = `class="param" data-param="${escape(name)}" data-role="${escape(roleKey)}" title="${escape(schema.description || name)}"`;
+  if (schema.type === "enum") {
+    const options = [`<option value=""${current === "" ? " selected" : ""}>Default</option>`]
+      .concat(
+        (schema.values || []).map(
+          (v) => `<option value="${escape(v)}"${current === v ? " selected" : ""}>${escape((schema.labels && schema.labels[v]) || v)}</option>`,
+        ),
+      )
+      .join("");
+    return `<select ${attrs}>${options}</select>`;
+  }
+  if (schema.type === "boolean") {
+    return `<input type="checkbox" ${attrs} data-kind="boolean"${current === "true" ? " checked" : ""} />`;
+  }
+  if (schema.type === "array") {
+    return `<input type="text" ${attrs} data-kind="array" placeholder="comma, separated" value="${escape(current)}" />`;
+  }
+  const step = schema.step !== undefined ? schema.step : schema.type === "integer" ? 1 : "any";
+  const bounds = `${schema.min !== undefined ? ` min="${schema.min}"` : ""}${schema.max !== undefined ? ` max="${schema.max}"` : ""}`;
+  return `<input type="number" ${attrs} data-kind="${escape(schema.type)}" step="${step}"${bounds} placeholder="default" value="${escape(current)}" />`;
+}
+
 function renderModelsPanel() {
   if (!state || !state.selection || !state.schema) return;
   const signature = JSON.stringify([state.selection, state.presets, state.schema, state.profiles, registry]);
   if (signature === modelsSignature) return; // don't rebuild while the user interacts
   modelsSignature = signature;
   const roles = state.schema.roles || [];
-  const params = state.schema.parameters || {};
   const presets = state.presets || {};
   $("presets").innerHTML = Object.entries(presets)
     .map(
@@ -189,26 +222,31 @@ function renderModelsPanel() {
   $("model-roles").innerHTML = roles
     .map((role) => {
       const sel = state.selection[role.key] || {};
-      const controls = Object.entries(params)
-        .map(([name, schema]) => {
-          if (schema.type === "enum") {
-            const options = [`<option value=""${!sel.params || !sel.params[name] ? " selected" : ""}>Default</option>`]
-              .concat(
-                (schema.values || []).map(
-                  (v) =>
-                    `<option value="${escape(v)}"${sel.params && sel.params[name] === v ? " selected" : ""}>${escape((schema.labels && schema.labels[v]) || v)}</option>`,
-                ),
-              )
-              .join("");
-            return `<label>${escape(name)}</label><select data-param="${escape(name)}" data-role="${escape(role.key)}">${options}</select>`;
-          }
-          return `<label>${escape(name)}</label><input type="number" data-param="${escape(name)}" data-role="${escape(role.key)}" min="${schema.min}" max="${schema.max}" step="${schema.step}" placeholder="default" value="${sel.params && sel.params[name] ? escape(sel.params[name]) : ""} />`;
-        })
-        .join("");
+      const modelSchema = roleSchema(role.key);
+      const parameters = modelSchema.parameters || {};
+      const names = Object.keys(parameters);
+      const simple = (modelSchema.simple && modelSchema.simple.length ? modelSchema.simple : names).filter((n) =>
+        names.includes(n),
+      );
+      const advanced = (modelSchema.advanced || []).filter((n) => names.includes(n));
+      const grid = (list) =>
+        list
+          .map((name) => {
+            const value = sel.params ? sel.params[name] : undefined;
+            return `<label>${escape(name.replace(/_/g, " "))}</label>${paramControl(role.key, name, parameters[name], value)}`;
+          })
+          .join("");
+      const supported = names.length
+        ? `<span class="hint">this model supports: ${names.map(escape).join(" · ")}</span>`
+        : "";
       return `<div class="role-row">
         <div class="role-head"><b>${escape(role.label)}</b><span class="hint">${escape(role.hint || "")}</span></div>
         <select class="model-select" data-role="${escape(role.key)}">${modelOptions(role.key, sel, registry)}</select>
-        <details class="adv"><summary>advanced</summary><div class="param-grid">${controls}</div></details>
+        <div class="param-grid">${grid(simple)}</div>
+        <details class="adv"><summary>advanced parameters</summary><div class="param-grid">${
+          grid(advanced) || '<span class="hint">no advanced parameters for this model</span>'
+        }</div></details>
+        ${supported}
       </div>`;
     })
     .join("");
@@ -244,13 +282,15 @@ function wireModelsPanel() {
   });
   document.querySelectorAll("[data-param]").forEach((input) => {
     const handler = async () => {
-      const value = input.value === "" ? null : input.value;
+      const kind = input.dataset.kind || (input.tagName === "SELECT" ? "enum" : "number");
+      let value;
+      if (kind === "boolean") value = input.checked;
+      else value = input.value === "" ? null : input.value;
       const params = { [input.dataset.param]: value };
       const reply = await browser.runtime.sendMessage({ cmd: "params", role: input.dataset.role, params });
       if (reply && reply.error) showError(reply.error);
     };
-    if (input.tagName === "SELECT") input.addEventListener("change", handler);
-    else input.addEventListener("change", handler);
+    input.addEventListener(input.tagName === "SELECT" || input.type === "checkbox" ? "change" : "change", handler);
   });
   document.querySelectorAll("[data-preset]").forEach((button) => {
     button.addEventListener("click", async () => {

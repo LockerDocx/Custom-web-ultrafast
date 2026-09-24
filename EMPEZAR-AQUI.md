@@ -126,7 +126,7 @@ Acabas de ver las dos IAs trabajando: el **planificador** (si pusiste clave NVID
 
 ## 🆕 NUEVO: el agente también busca, crea archivos y usa la terminal
 
-El panel ya no solo mueve la página. Ahora hay 3 funciones nuevas:
+El panel ya no solo mueve la página. Ahora hay 5 funciones nuevas:
 
 ### 1️⃣ Cambiar de modelo SIN tocar el `.env` (panel "⚙️ Models & parameters")
 
@@ -136,7 +136,7 @@ El panel ya no solo mueve la página. Ahora hay 3 funciones nuevas:
 4. Elige otro modelo → verás que el panel parpadea y abajo los chips se ponen 🟢 (o 🔴 si el modelo no vale: prueba otro).
 5. Listo: el cambio **se guarda solo** (en `artifacts/model-config.json`) y se mantiene al reiniciar.
 
-> Los botones *Fast / Balanced / Deep / Browser / Coding* son "ajustes rápidos" para todo el conjunto: Fast = respuestas más veloces, Deep = más pensamiento para misiones difíciles. *advanced* dentro de cada rol deja afinar "reasoning" y "temperature".
+> Los botones *Fast / Balanced / Deep / Browser / Coding* son "ajustes rápidos" para todo el conjunto: Fast = respuestas más veloces, Deep = más pensamiento para misiones difíciles. Dentro de cada rol, **"advanced parameters"** muestra solo los controles que **ese modelo concreto** acepta: si cambias a un modelo sin modo razonamiento, el control desaparece (y si algo no lo admite, el panel te lo dice en vez de enviarlo). También aparece un control de *stream* (respuesta en vivo on/off) y, en modelos que lo permiten, `max_tokens`, `top_p`, `seed`, `stop`…
 
 ### 2️⃣ Misiones con herramientas: búsqueda, archivos, PDF y terminal
 
@@ -156,6 +156,30 @@ Cuando el agente quiera ejecutar un comando de terminal "con efectos" (instalar 
 - **Deny** = no permitir
 
 Si no respondes en 2 minutos, se considera **Deny** (máxima seguridad). Los comandos de solo lectura (`ls`, `git status`…) no preguntan, y los peligrosos (`sudo`, borrar carpetas…) se bloquean solos.
+
+### 4️⃣ 🔐 Centro de permisos: tú decides qué puede tocar el agente
+
+Debajo del candado de aprobaciones ahora hay un panel **"🔐 Permissions"** con 6 interruptores, cada uno con 3 niveles:
+
+| Ámbito | Qué controla |
+|---|---|
+| **Browser** | misiones en tu pestaña y el paso de navegación del orquestador |
+| **Terminal** | comandos de terminal (`allow` = política normal, `ask` = pregunta siempre, `deny` = nada) |
+| **Files** | escribir archivos en la carpeta de trabajo |
+| **Network** | buscar en la web y leer páginas |
+| **Clipboard** | leer/escribir el portapapeles (por defecto: *ask*) |
+| **Downloads** | descargar archivos (por defecto: *allow*, tope 25 MB) |
+
+Reglas que **ningún** nivel puede saltarse: los comandos destructivos (`sudo`, `rm -rf`…) siguen bloqueados y leer secretos sigue estando prohibido, aunque pongas `allow`. Todo cambio de nivel y cada aprobación queda registrado en `artifacts/audit.jsonl`.
+
+### 5️⃣ 🧪 Navegador aislado (modo Neko): que no toque tu sesión
+
+Arriba del panel verás **"Browser target"** con dos botones:
+
+- **My current tab** = lo de siempre: el agente trabaja en tu pestaña actual.
+- **Isolated browser** = el agente trabaja dentro de un navegador **Neko** en Docker (aislado de tus cuentas y cookies). Pulsa **Start session** (necesitas Docker instalado) y luego **Watch it** para ver la sesión en directo por WebRTC mientras el agente trabaja. **Stop session** apaga el contenedor.
+
+> Si el contenedor no expone el puerto de control (CDP), el panel lo dice: *"session is manual"* = puedes verlo, pero el agente no puede pilotarlo. Se ajusta con `NEKO_IMAGE` / `NEKO_BROWSER_ARGS` / `NEKO_CDP_PORT` en el `.env`.
 
 > Todo lo que el agente crea o descarga va a la carpeta `workspace/` dentro del proyecto. No puede salir de ahí ni borrar nada fuera.
 

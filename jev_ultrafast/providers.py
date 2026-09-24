@@ -213,6 +213,40 @@ def _is_loopback_url(base_url):
     return host in {"127.0.0.1", "localhost", "::1"}
 
 
+EXTRA_PARAMS = ("top_p", "max_tokens", "seed", "stop", "frequency_penalty", "presence_penalty", "stream")
+
+
+def _role_extras(role):
+    """Model-specific controls set from the sidebar (MVP-1), parsed from env.
+
+    Only parameters the UI schema offered for this role's model can arrive
+    here; anything malformed is rejected loudly instead of being sent.
+    """
+    from . import parameters
+
+    extras = {}
+    for name in EXTRA_PARAMS:
+        raw = (os.environ.get(parameters.ROLE_PARAM_ENV[(role, name)]) or "").strip()
+        if not raw:
+            continue
+        env_name = parameters.ROLE_PARAM_ENV[(role, name)]
+        try:
+            if name == "stream":
+                value = raw.lower() in {"true", "on", "1", "yes"}
+            elif name == "stop":
+                value = json.loads(raw) if raw.startswith("[") else [raw]
+                if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+                    raise ValueError
+            elif name in {"max_tokens", "seed"}:
+                value = int(raw)
+            else:
+                value = round(float(raw), 2)
+        except ValueError:
+            raise ValueError(f"{env_name} has an invalid value for {name}: {raw!r}") from None
+        extras[name] = value
+    return extras
+
+
 def resolve(role):
     """Build one provider config from the environment for the given role."""
     env = ROLE_ENV[role]
@@ -285,6 +319,7 @@ def resolve(role):
         "temperature": temperature,
         "json_mode": json_mode,
         "headers": (preset or {}).get("headers", {}),
+        "extras": _role_extras(role),
     }
 
 
@@ -303,15 +338,26 @@ def _anthropic_url(base_url):
 
 
 def build_request(provider, system, user, max_tokens, omit=()):
+    extras = provider.get("extras") or {}
+    limit = extras.get("max_tokens", max_tokens)  # a model-specific budget wins
     body = {"model": provider["model"]}
     if "max_tokens" in omit:
-        body["max_completion_tokens"] = max_tokens  # newer OpenAI-compatible endpoints
+        body["max_completion_tokens"] = limit  # newer OpenAI-compatible endpoints
     else:
-        body["max_tokens"] = max_tokens
+        body["max_tokens"] = limit
     if "reasoning" not in omit:
         body.update(reasoning_params(provider["reasoning"], provider["name"], provider["dialect"]))
     if provider.get("temperature") is not None and "temperature" not in omit:
         body["temperature"] = provider["temperature"]
+    if provider["dialect"] == "anthropic":
+        if "top_p" in extras and "top_p" not in omit:
+            body["top_p"] = extras["top_p"]
+        if "stop" in extras and "stop" not in omit:
+            body["stop_sequences"] = extras["stop"]
+    else:
+        for name in ("top_p", "seed", "stop", "frequency_penalty", "presence_penalty"):
+            if name in extras and name not in omit:
+                body[name] = extras[name]
     if provider["dialect"] == "anthropic":
         headers = {"x-api-key": provider["key"], "anthropic-version": "2023-06-01"}
         body["system"] = system
@@ -364,7 +410,12 @@ def chat(provider, system, user, max_tokens=1024, on_delta=None):
     dropped = set()
     while True:
         url, headers, body = build_request(provider, system, user, max_tokens, omit=dropped)
-        if on_delta is not None and "stream" not in dropped:
+        wants_stream = (
+            on_delta is not None
+            and "stream" not in dropped
+            and (provider.get("extras") or {}).get("stream", True) is not False
+        )
+        if wants_stream:
             body = {**body, "stream": True}
             try:
                 text, usage, model_id = model.post_stream(
@@ -412,8 +463,18 @@ def _droppable_param(error, dropped, dialect, allow_stream_drop=False):
         return "temperature"
     if "max_tokens" in lowered and "max_tokens" not in dropped:
         return "max_tokens"
+    for token, canonical in (
+        ("top_p", "top_p"),
+        ("seed", "seed"),
+        ("stop_sequences", "stop"),
+        ("frequency_penalty", "frequency_penalty"),
+        ("presence_penalty", "presence_penalty"),
+        ("stop", "stop"),
+    ):
+        if token in lowered and canonical not in dropped:
+            return canonical
     if "unsupported parameter" in lowered or "unexpected keyword" in lowered:
-        for param in ("response_format", "reasoning", "temperature", "max_tokens"):
+        for param in ("response_format", "reasoning", "temperature", "max_tokens", "top_p", "seed", "stop"):
             if param not in dropped:
                 return param
     return None

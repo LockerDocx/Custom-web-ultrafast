@@ -1,10 +1,15 @@
-"""Contracts for the model/parameter layer (MVP-1)."""
+"""Contracts for the model/parameter layer (MVP-1).
+
+The repair under test here: the schema is per model (dialect + capabilities +
+family rules + probe results), not one global shape for every role.
+"""
 
 import json
+import time
 
 import pytest
 
-from jev_ultrafast import parameters
+from jev_ultrafast import discovery, parameters
 
 ALL_ROLE_ENV = [env for pair in parameters.ROLE_MODEL_ENV.values() for env in pair]
 ALL_PARAM_ENV = list(parameters.ROLE_PARAM_ENV.values())
@@ -68,7 +73,7 @@ def test_apply_params_rejects_out_of_range_and_unknown():
     with pytest.raises(ValueError, match="Unknown role"):
         parameters.apply_params("hacker", {"reasoning": "low"})
     with pytest.raises(ValueError, match="Unknown parameter"):
-        parameters.apply_params("policy", {"top_p": 0.5})
+        parameters.apply_params("policy", {"telepathy": "on"})
 
 
 def test_apply_preset_applies_every_role():
@@ -137,3 +142,169 @@ def test_current_selection_reports_display_and_params():
     assert selection["planner"]["params"] == {"reasoning": "low"}
     assert selection["planner"]["dialect"] == "openai"
     assert os.environ.get("TEXT_MODEL_PROVIDER", "") == selection["text"]["provider"]
+
+# ── per-model parameter surfaces (the MVP-1 repair) ──────────────────────────
+
+
+def test_the_catalogue_carries_the_spec_parameters():
+    assert set(parameters.PARAMETER_CATALOG) == {
+        "reasoning", "temperature", "stream", "max_tokens", "top_p", "seed", "stop",
+        "frequency_penalty", "presence_penalty",
+    }
+    for name, definition in parameters.PARAMETER_CATALOG.items():
+        assert definition["type"] in {"enum", "number", "integer", "boolean", "array", "string"}, name
+        assert "description" in definition
+    assert parameters.PARAMETER_CATALOG["frequency_penalty"]["advanced"] is True
+    assert parameters.PARAMETER_CATALOG["temperature"]["advanced"] is False
+
+
+def test_the_dialect_decides_what_a_model_can_receive():
+    openai_schema = parameters.schema_for_model("groq", "openai/gpt-oss-20b", capabilities={"reasoning": True})
+    assert {"temperature", "top_p", "seed", "frequency_penalty", "stop"} <= set(openai_schema["parameters"])
+    anthropic_schema = parameters.schema_for_model("anthropic", "claude-sonnet-4-5", capabilities={"reasoning": False})
+    assert "seed" not in anthropic_schema["parameters"]
+    assert "frequency_penalty" not in anthropic_schema["parameters"]
+    assert {"temperature", "top_p", "max_tokens"} <= set(anthropic_schema["parameters"])
+
+
+def test_reasoning_controls_only_appear_for_reasoning_models():
+    plain = parameters.schema_for_model("groq", "meta-llama/llama-3.3-70b-versatile")
+    assert "reasoning" not in plain["parameters"]
+    thinker = parameters.schema_for_model("groq", "openai/gpt-oss-120b")
+    assert "reasoning" in thinker["parameters"]
+    assert thinker["simple"][0] == "reasoning"  # and it is a simple-mode control
+
+
+def test_family_rules_offer_the_documented_reasoning_values():
+    schema = parameters.schema_for_model("nvidia", "moonshotai/kimi-k3", capabilities={"reasoning": True})
+    assert schema["parameters"]["reasoning"]["values"] == ["low", "high", "max"]
+    assert schema["parameters"]["reasoning"]["labels"]["max"] == "max"
+    generic = parameters.schema_for_model("nvidia", "z-ai/glm-5.3", capabilities={"reasoning": True})
+    assert generic["parameters"]["reasoning"]["values"] == ["none", "low", "medium", "high"]
+
+
+def test_probe_results_add_and_remove_parameters():
+    schema = parameters.schema_for_model(
+        "groq", "some/model", capabilities={"reasoning": False}, probed={"seed": False, "top_p": True}
+    )
+    assert "seed" not in schema["parameters"]  # the probe saw it rejected
+    assert "top_p" in schema["parameters"]
+
+
+def test_schema_for_role_follows_the_selected_model(monkeypatch):
+    monkeypatch.setattr(discovery, "REGISTRY_PATH", parameters.CONFIG_PATH.parent / "registry.json")
+    registry = {
+        "fetchedAt": time.time(),
+        "providers": {
+            "groq": {
+                "ok": True,
+                "models": [{
+                    "id": "openai/gpt-oss-20b",
+                    "provider": "groq",
+                    "capabilities": {"reasoning": True},
+                    "probedParams": {"seed": False},
+                }],
+            }
+        },
+    }
+    monkeypatch.setattr(discovery, "_load_registry", lambda: registry)
+    parameters.apply_model("policy", "groq", "openai/gpt-oss-20b")
+    schema = parameters.schema_for_role("policy")
+    assert schema["provider"] == "groq" and schema["model"] == "openai/gpt-oss-20b"
+    assert "reasoning" in schema["parameters"] and "seed" not in schema["parameters"]
+
+
+def test_schema_for_role_without_a_model_is_the_full_catalogue(monkeypatch):
+    monkeypatch.setattr(discovery, "_load_registry", lambda: None)
+    schema = parameters.schema_for_role("policy")
+    assert schema["fallback"] is True
+    assert set(schema["parameters"]) == set(parameters.PARAMETER_CATALOG)
+
+
+def test_apply_params_rejects_what_the_model_cannot_accept(monkeypatch):
+    registry = {
+        "fetchedAt": time.time(),
+        "providers": {"groq": {"ok": True, "models": [
+            {"id": "meta-llama/llama-3.3-70b-versatile", "provider": "groq",
+             "capabilities": {"reasoning": False}, "probedParams": {"seed": False}},
+        ]}},
+    }
+    monkeypatch.setattr(discovery, "_load_registry", lambda: registry)
+    parameters.apply_model("policy", "groq", "meta-llama/llama-3.3-70b-versatile")
+    with pytest.raises(ValueError, match="not supported by"):
+        parameters.apply_params("policy", {"reasoning": "high"})
+    with pytest.raises(ValueError, match="not supported by"):
+        parameters.apply_params("policy", {"seed": 7})
+    applied = parameters.apply_params("policy", {"temperature": 0.3, "top_p": 0.9})
+    assert applied == {"temperature": 0.3, "top_p": 0.9}
+
+
+def test_new_parameter_types_round_trip_through_the_environment(monkeypatch):
+    import os
+
+    registry = {
+        "fetchedAt": time.time(),
+        "providers": {"groq": {"ok": True, "models": [
+            {"id": "openai/gpt-oss-20b", "provider": "groq", "capabilities": {"reasoning": True}},
+        ]}},
+    }
+    monkeypatch.setattr(discovery, "_load_registry", lambda: registry)
+    parameters.apply_model("policy", "groq", "openai/gpt-oss-20b")
+    parameters.apply_params("policy", {
+        "stream": False, "max_tokens": 2048, "seed": 11, "stop": ["END", "STOP"], "top_p": 0.8,
+    })
+    assert os.environ["POLICY_STREAM"] == "false"
+    assert os.environ["POLICY_MAX_TOKENS"] == "2048"
+    assert os.environ["POLICY_SEED"] == "11"
+    assert os.environ["POLICY_STOP"] == '["END", "STOP"]'
+    selection = parameters.current_selection()
+    assert selection["policy"]["params"]["stop"] == '["END", "STOP"]'
+    parameters.apply_saved_config()  # a restart must restore the same values
+    assert os.environ["POLICY_TOP_P"] == "0.8"
+
+
+def test_prune_params_drops_what_the_new_model_lacks(monkeypatch):
+    import os
+
+    full = {"fetchedAt": time.time(), "providers": {"groq": {"ok": True, "models": [
+        {"id": "openai/gpt-oss-20b", "provider": "groq", "capabilities": {"reasoning": True}},
+    ]}}}
+    lean = {"fetchedAt": time.time(), "providers": {"groq": {"ok": True, "models": [
+        {"id": "meta-llama/llama-3.3-70b-versatile", "provider": "groq", "capabilities": {"reasoning": False}},
+    ]}}}
+    monkeypatch.setattr(discovery, "_load_registry", lambda: full)
+    parameters.apply_model("policy", "groq", "openai/gpt-oss-20b")
+    parameters.apply_params("policy", {"reasoning": "high", "temperature": 0.2})
+    assert os.environ["POLICY_REASONING"] == "high"
+    monkeypatch.setattr(discovery, "_load_registry", lambda: lean)
+    parameters.apply_model("policy", "groq", "meta-llama/llama-3.3-70b-versatile")
+    removed = parameters.prune_params("policy")
+    assert removed == {"reasoning": "high"}
+    assert "POLICY_REASONING" not in os.environ
+    assert os.environ["POLICY_TEMPERATURE"] == "0.2"  # still valid for the new model
+    assert parameters.load_config()["params"]["policy"] == {"temperature": 0.2}
+
+
+def test_presets_skip_parameters_the_model_lacks(monkeypatch):
+    registry = {
+        "fetchedAt": time.time(),
+        "providers": {"groq": {"ok": True, "models": [
+            {"id": "meta-llama/llama-3.3-70b-versatile", "provider": "groq", "capabilities": {"reasoning": False}},
+        ]}},
+    }
+    monkeypatch.setattr(discovery, "_load_registry", lambda: registry)
+    for role in ("planner", "policy", "text"):
+        parameters.apply_model(role, "groq", "meta-llama/llama-3.3-70b-versatile")
+    applied = parameters.apply_preset("deep")
+    assert applied["planner"] == {}  # no reasoning control on this model: nothing applied, no crash
+    assert applied["policy"] == {}
+
+
+def test_sidebar_schema_offers_a_surface_per_role(monkeypatch):
+    monkeypatch.setattr(discovery, "_load_registry", lambda: None)
+    schema = parameters.sidebar_schema()
+    assert [role["key"] for role in schema["roles"]] == ["planner", "policy", "text"]
+    for role in ("planner", "policy", "text"):
+        assert "parameters" in schema["modelSchemas"][role]
+        assert isinstance(schema["modelSchemas"][role]["simple"], list)
+        assert isinstance(schema["modelSchemas"][role]["advanced"], list)

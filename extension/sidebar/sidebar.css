@@ -220,3 +220,42 @@ select:focus, input[type="number"]:focus { outline: 1px solid var(--accent); }
   max-height: 320px;
   overflow-y: auto;
 }
+
+/* ── browser target + permission center (MVP-5) ────────────────────── */
+.target {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.target-head { display: flex; justify-content: space-between; gap: 8px; }
+.target-head span:first-child { text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+.segmented { display: flex; gap: 0; }
+.segmented button {
+  flex: 1;
+  border-radius: 0;
+  border-left-width: 0;
+  font-size: 12px;
+  padding: 5px 8px;
+}
+.segmented button:first-child { border-radius: 8px 0 0 8px; border-left-width: 1px; }
+.segmented button:last-child { border-radius: 0 8px 8px 0; }
+.segmented button.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.segmented.small button { flex: 0 0 auto; padding: 3px 12px; font-size: 11px; }
+.perm-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px dashed var(--line);
+  padding: 8px 0 2px;
+}
+.perm-head { display: flex; gap: 8px; align-items: baseline; }
+.perm-head b { font-size: 12px; }
+input[type="text"].param, input[type="checkbox"].param { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--text); }
+input[type="text"].param { padding: 5px 8px; font: inherit; font-size: 12px; width: 100%; }
+input[type="checkbox"].param { width: 16px; height: 16px; }
+.role-row > .param-grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; }
+.role-row > .param-grid label { color: var(--muted); font-size: 11px; }
