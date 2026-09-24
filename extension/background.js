@@ -62,7 +62,13 @@ async function handleHostMessage(message) {
     browser.runtime.sendMessage(message).catch(() => {});
     return;
   }
-  if (message.type === "models" || message.type === "approval_request" || message.type === "delta") {
+  if (
+    message.type === "models" ||
+    message.type === "probe" ||
+    message.type === "notice" ||
+    message.type === "approval_request" ||
+    message.type === "delta"
+  ) {
     browser.runtime.sendMessage(message).catch(() => {});
     return;
   }
@@ -174,6 +180,14 @@ browser.runtime.onMessage.addListener((message) => {
   if (message.cmd === "models") {
     try {
       send({ type: "models", refresh: !!message.refresh });
+      return Promise.resolve({ ok: true });
+    } catch (error) {
+      return Promise.resolve({ error: String(error.message || error) });
+    }
+  }
+  if (message.cmd === "probe-model") {
+    try {
+      send({ type: "models.probe", role: message.role });
       return Promise.resolve({ ok: true });
     } catch (error) {
       return Promise.resolve({ error: String(error.message || error) });

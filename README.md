@@ -82,7 +82,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 TEXT_MODEL=claude-sonnet-4-5
 ```
 
-Each preset knows its base URL, dialect, and key variable, so `POLICY_PROVIDER=nvidia` plus `NVIDIA_API_KEY` is enough for NIM (`POLICY_BASE_URL` overrides any default, e.g. a remote OmniRoute gateway). The generic policy sends the same indexed element table and rules in one request and validates the returned operation/target against the observed action space, so a wrong or invented choice never executes. Full configuration, including self-hosted gateways and reasoning controls: [providers.md](docs/providers.md).
+Each preset knows its base URL, dialect, and key variable, so `POLICY_PROVIDER=nvidia` plus `NVIDIA_API_KEY` is enough for NIM (`POLICY_BASE_URL` overrides any default, e.g. a remote OmniRoute gateway). The generic policy sends the same indexed element table and rules in one request and validates the returned operation/target against the observed action space, so a wrong or invented choice never executes. Full configuration, including self-hosted gateways and reasoning controls: [providers.md](docs/providers.md). Which parameters each model actually exposes — Kimi's `low/high/max` effort, GLM's thinking toggle, the ones an endpoint rejects at runtime — is discovered, not hardcoded: [model-parameters.md](docs/model-parameters.md).
 
 An optional **planner** role adds a second, slower model that decomposes the mission into a step checklist once, while the fast policy executes one step per turn — two providers at once:
 

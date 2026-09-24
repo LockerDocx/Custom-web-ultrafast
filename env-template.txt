@@ -31,10 +31,16 @@ TEXT_MODEL_REASONING=low
 # ---- Model panel (sidebar) - no changes needed ----
 # The "Models & parameters" panel in the sidebar saves your picks to
 # artifacts/model-config.json (they win over this file on the next start).
+# It only shows the controls your model really supports (NVIDIA NIM models
+# differ a lot between families) - see docs/model-parameters.md.
 # Optional file locations / fine-tuning:
 # JEV_MODEL_CONFIG=artifacts/model-config.json
 # JEV_MODEL_REGISTRY=artifacts/model-registry.json
-# PLANNER_TEMPERATURE=0.5
+# JEV_MODEL_RUNTIME=artifacts/model-runtime.json
+# POLICY_TEMPERATURE=0.2
+# POLICY_TOP_P=0.9
+# POLICY_MAX_TOKENS=512
+# POLICY_SEED=7
 
 # ---- 100% free / offline option (no API key) ----
 # Any local OpenAI-compatible runtime: ollama, lmstudio, llamacpp, jan.

@@ -29,7 +29,9 @@ from .parameters import (
     current_selection,
     delete_profile,
     load_config,
+    model_for,
     profile_names,
+    prune_params,
     save_config,
     save_profile,
 )
@@ -312,6 +314,9 @@ class BridgeServer:
         elif kind == "models.select":
             if self.runner:
                 self.runner.handle_model_select(message)
+        elif kind == "models.probe":
+            if self.runner:
+                self.runner.handle_model_probe(message)
         elif kind == "params.set":
             if self.runner:
                 self.runner.handle_params_set(message)
@@ -699,12 +704,48 @@ class TaskRunner:
         if role == "policy" and self._typesafe_key:
             os.environ.pop("TYPESAFE_API_KEY", None)  # an explicit UI switch overrides the .env default
         try:
-            apply_model(role, provider_name, model_id)
+            removed = apply_model(role, provider_name, model_id)
         except (ValueError, KeyError) as error:
             self.bridge.send({"type": "error", "message": redact(f"Could not switch model: {error}")})
             return
+        if removed:
+            # e.g. GLM → Kimi: top_p and the penalties do not exist there
+            self.bridge.send({
+                "type": "notice",
+                "message": f"{', '.join(sorted(removed))} cleared — the new model does not expose it.",
+            })
         self._broadcast()
         threading.Thread(target=self.run_provider_check, daemon=True).start()
+
+    def handle_model_probe(self, message):
+        """Run the live compatibility probe for one role's model (spec §4.1, step 5)."""
+        role = str(message.get("role", "")).strip()
+        try:
+            provider_name, model_id = model_for(role)
+        except (KeyError, ValueError):
+            self.bridge.send({"type": "error", "message": f"Unknown role: {role}"})
+            return
+        if not model_id:
+            self.bridge.send({"type": "error", "message": f"No model selected for {role}."})
+            return
+
+        def run_probe():
+            from . import discovery
+
+            try:
+                report = discovery.probe_model(provider_name, model_id)
+            except RuntimeError as error:
+                self.bridge.send({"type": "error", "message": redact(f"Probe failed: {error}")})
+                return
+            self.bridge.send({"type": "probe", "role": role, "report": report})
+            try:
+                prune_params(role)
+            except Exception:  # noqa: BLE001 - pruning is best effort
+                pass
+            self._broadcast()
+
+        self.bridge.send({"type": "probe", "role": role, "loading": True})
+        threading.Thread(target=run_probe, daemon=True).start()
 
     def handle_profile(self, action, name):
         try:

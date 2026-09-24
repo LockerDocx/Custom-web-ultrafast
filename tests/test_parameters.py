@@ -68,7 +68,22 @@ def test_apply_params_rejects_out_of_range_and_unknown():
     with pytest.raises(ValueError, match="Unknown role"):
         parameters.apply_params("hacker", {"reasoning": "low"})
     with pytest.raises(ValueError, match="Unknown parameter"):
-        parameters.apply_params("policy", {"top_p": 0.5})
+        parameters.apply_params("policy", {"vibes": 0.5})
+
+
+def test_parameters_are_validated_against_the_selected_model():
+    """top_p exists for GLM and not for Kimi: the same call must differ."""
+    parameters.apply_model("policy", "nvidia", "z-ai/glm-5.3")
+    assert parameters.apply_params("policy", {"top_p": 0.8}) == {"top_p": 0.8}
+    parameters.apply_model("policy", "nvidia", "moonshotai/kimi-k3")
+    with pytest.raises(ValueError, match="top_p is not supported by moonshotai/kimi-k3"):
+        parameters.apply_params("policy", {"top_p": 0.8})
+    # switching models also prunes the value that no longer applies
+    assert "POLICY_TOP_P" not in __import__("os").environ
+    # and Kimi's own reasoning ladder is low/high/max, not none/low/medium/high
+    assert parameters.role_schema("policy")["parameters"]["reasoning"]["values"] == ["low", "high", "max"]
+    with pytest.raises(ValueError, match="reasoning must be one of"):
+        parameters.apply_params("policy", {"reasoning": "medium"})
 
 
 def test_apply_preset_applies_every_role():

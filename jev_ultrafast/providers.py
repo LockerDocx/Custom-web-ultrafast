@@ -10,6 +10,8 @@ import os
 import re
 import urllib.parse
 
+from . import schemas
+
 PROVIDERS = {
     "openai": {
         "base_url": "https://api.openai.com/v1",
@@ -137,33 +139,17 @@ ALIASES = {
 }
 
 ROLE_ENV = {
-    "planner": {
-        "provider": "PLANNER_PROVIDER",
-        "key": "PLANNER_API_KEY",
-        "base": "PLANNER_BASE_URL",
-        "model": "PLANNER_MODEL",
-        "reasoning": "PLANNER_REASONING",
-        "json_mode": "PLANNER_JSON_MODE",
-        "temperature": "PLANNER_TEMPERATURE",
-    },
-    "policy": {
-        "provider": "POLICY_PROVIDER",
-        "key": "POLICY_API_KEY",
-        "base": "POLICY_BASE_URL",
-        "model": "POLICY_MODEL",
-        "reasoning": "POLICY_REASONING",
-        "json_mode": "POLICY_JSON_MODE",
-        "temperature": "POLICY_TEMPERATURE",
-    },
-    "text": {
-        "provider": "TEXT_MODEL_PROVIDER",
-        "key": "TEXT_MODEL_API_KEY",
-        "base": "TEXT_MODEL_BASE_URL",
-        "model": "TEXT_MODEL",
-        "reasoning": "TEXT_MODEL_REASONING",
-        "json_mode": "TEXT_MODEL_JSON_MODE",
-        "temperature": "TEXT_MODEL_TEMPERATURE",
-    },
+    role: {
+        "provider": f"{prefix}_PROVIDER",
+        "key": f"{prefix}_API_KEY",
+        "base": f"{prefix}_BASE_URL",
+        "model": prefix if role == "text" else f"{prefix}_MODEL",
+        "json_mode": f"{prefix}_JSON_MODE",
+        # one variable per normalized parameter: PLANNER_TEMPERATURE,
+        # POLICY_TOP_P, TEXT_MODEL_MAX_TOKENS, ...
+        **{name: schemas.env_name(role, name) for name in schemas.BASE_PARAMETERS},
+    }
+    for role, prefix in schemas.ROLE_ENV_PREFIX.items()
 }
 
 DEFAULT_TEXT_MODEL = "deepseek-chat"
@@ -184,28 +170,41 @@ def detect_preset(base_url):
     return None
 
 
-def reasoning_params(setting, name, dialect):
-    """Map the reasoning setting to provider-specific body params; omit anything unverified."""
+def model_capabilities(provider_name, model_id):
+    """Catalogue capabilities when the registry has them, inferred from the id otherwise."""
+    if not model_id:
+        return {}
+    try:
+        from . import parameters
+
+        capabilities = parameters.capabilities_for(provider_name, model_id)
+        if capabilities:
+            return capabilities
+        from . import discovery
+
+        return discovery._capabilities(model_id)
+    except Exception:  # noqa: BLE001 - capability hints must never break a request
+        return {}
+
+
+def model_schema(provider_name, model_id, dialect="openai"):
+    """The parameter surface of one model (family rules + capabilities + runtime evidence)."""
+    return schemas.schema_for(
+        provider_name, model_id, model_capabilities(provider_name, model_id), dialect=dialect
+    )
+
+
+def reasoning_params(setting, name, dialect, model=""):
+    """Map the reasoning setting to this model's body params; omit anything unverified.
+
+    The wiring is per family, not per provider: on NVIDIA NIM, Kimi takes
+    reasoning_effort low/high/max, GLM and Nemotron toggle thinking through
+    chat_template_kwargs, and DeepSeek-R1 always reasons. See jev_ultrafast.schemas.
+    """
     if dialect == "anthropic":
         return {}
-    setting = (setting or "none").strip().lower()
-    if setting in {"none", "off", "disabled"}:
-        if name == "deepseek":
-            return {"thinking": {"type": "disabled"}}
-        if name == "openrouter":
-            return {"reasoning": {"enabled": False}}
-        if name == "groq":
-            # gpt-oss style models always reason; low is the fastest budget available.
-            return {"reasoning_effort": "low"}
-        return {}
-    if setting in {"low", "medium", "high", "minimal"}:
-        if name == "openai":
-            return {"reasoning_effort": setting}
-        if name == "openrouter":
-            return {"reasoning": {"effort": setting}}
-        if name == "groq":
-            return {"reasoning_effort": "low" if setting == "minimal" else setting}
-    return {}
+    wire = model_schema(name, model, dialect).get("reasoning")
+    return schemas.reasoning_body(setting, wire, name, dialect)
 
 
 def _is_loopback_url(base_url):
@@ -268,21 +267,32 @@ def resolve(role):
         json_mode = True
     elif flag in {"off", "false", "0", "no"}:
         json_mode = False
-    temperature = None
-    raw_temperature = (os.environ.get(env["temperature"]) or "").strip()
-    if raw_temperature:
-        try:
-            temperature = round(min(2.0, max(0.0, float(raw_temperature))), 2)
-        except ValueError:
-            raise ValueError(f"{env['temperature']} must be a number between 0 and 2.") from None
+    provider_name = name or "custom"
+    schema = model_schema(provider_name, model, dialect)
+    params = {}
+    for parameter, definition in schema["parameters"].items():
+        raw = (os.environ.get(env[parameter]) or "").strip()
+        if not raw:
+            continue
+        value = schemas.parse_env(parameter, raw, definition)
+        if value is None and parameter == "temperature":
+            raise ValueError(f"{env['temperature']} must be a number between 0 and 2.")
+        if value is not None:
+            params[parameter] = value
+    if "reasoning" in schema["parameters"]:
+        # An unset control still means something: families with an explicit
+        # "off" mapping must keep sending it (OpenRouter bills reasoning by default).
+        params.setdefault("reasoning", (os.environ.get(env["reasoning"]) or "none").strip().lower())
     return {
-        "name": name or "custom",
+        "name": provider_name,
         "dialect": dialect,
         "base_url": base,
         "key": key,
         "model": model,
-        "reasoning": (os.environ.get(env["reasoning"]) or "none").strip().lower(),
-        "temperature": temperature,
+        "reasoning": params.get("reasoning", (os.environ.get(env["reasoning"]) or "none").strip().lower()),
+        "temperature": params.get("temperature"),
+        "params": params,
+        "schema": schema,
         "json_mode": json_mode,
         "headers": (preset or {}).get("headers", {}),
     }
@@ -302,16 +312,28 @@ def _anthropic_url(base_url):
     return url + "/v1/messages"
 
 
+MIN_OUTPUT_TOKENS = 64  # a user cap below this would starve the JSON protocol
+
+
 def build_request(provider, system, user, max_tokens, omit=()):
+    """One request body for this exact model: only the parameters it accepts.
+
+    The caller passes the token budget the loop needs; the user's own
+    max_tokens control lowers it (never below MIN_OUTPUT_TOKENS) instead of
+    replacing it, so a small UI value can slow a run but not break it.
+    """
+    schema = provider.get("schema") or model_schema(provider["name"], provider["model"], provider["dialect"])
+    params = dict(provider.get("params") or {})
+    user_cap = params.pop("max_tokens", None)
+    if user_cap is not None:
+        max_tokens = max(MIN_OUTPUT_TOKENS, min(int(user_cap), max_tokens))
     body = {"model": provider["model"]}
     if "max_tokens" in omit:
         body["max_completion_tokens"] = max_tokens  # newer OpenAI-compatible endpoints
     else:
         body["max_tokens"] = max_tokens
-    if "reasoning" not in omit:
-        body.update(reasoning_params(provider["reasoning"], provider["name"], provider["dialect"]))
-    if provider.get("temperature") is not None and "temperature" not in omit:
-        body["temperature"] = provider["temperature"]
+    params.pop("stream", None)  # streaming is decided by the caller, not the body
+    body.update(schemas.to_body(params, schema, omit=omit))
     if provider["dialect"] == "anthropic":
         headers = {"x-api-key": provider["key"], "anthropic-version": "2023-06-01"}
         body["system"] = system
@@ -362,6 +384,7 @@ def chat(provider, system, user, max_tokens=1024, on_delta=None):
     from . import model  # one shared HTTP seam; tests patch model.post_json / model.post_stream
 
     dropped = set()
+    sent = set(provider.get("params") or {})
     while True:
         url, headers, body = build_request(provider, system, user, max_tokens, omit=dropped)
         if on_delta is not None and "stream" not in dropped:
@@ -370,6 +393,7 @@ def chat(provider, system, user, max_tokens=1024, on_delta=None):
                 text, usage, model_id = model.post_stream(
                     url, provider["key"], body, headers=headers, on_delta=on_delta
                 )
+                _remember(provider, sent, dropped)
                 return text, {"model": model_id or provider["model"], "usage": usage, "provider": provider["name"]}
             except RuntimeError as error:
                 drop = _droppable_param(str(error), dropped, provider["dialect"], allow_stream_drop=True)
@@ -388,7 +412,24 @@ def chat(provider, system, user, max_tokens=1024, on_delta=None):
                 raise
             dropped.add(drop)
             continue
+        _remember(provider, sent, dropped)
         return parse_response(provider, result)
+
+
+def _remember(provider, sent, dropped):
+    """Turn a completed request into runtime evidence about this model.
+
+    A parameter the endpoint made us drop disappears from the sidebar; the ones
+    that survived a successful call are marked verified. This is the runtime
+    half of the spec's catalogue-vs-runtime-schema rule.
+    """
+    name, model_id = provider.get("name", ""), provider.get("model", "")
+    for parameter in dropped:
+        if parameter in sent:
+            schemas.record_unsupported(name, model_id, parameter)
+    accepted = [parameter for parameter in sent if parameter not in dropped]
+    if accepted:
+        schemas.record_verified(name, model_id, accepted)
 
 
 def _droppable_param(error, dropped, dialect, allow_stream_drop=False):
@@ -406,14 +447,18 @@ def _droppable_param(error, dropped, dialect, allow_stream_drop=False):
     if ("json_validate_failed" in lowered or "failed to validate json" in lowered) \
             and "response_format" not in dropped:
         return "response_format"
-    if ("reasoning_effort" in lowered or "'reasoning'" in lowered) and "reasoning" not in dropped:
+    if ("reasoning_effort" in lowered or "'reasoning'" in lowered or "chat_template_kwargs" in lowered) \
+            and "reasoning" not in dropped:
         return "reasoning"
-    if "temperature" in lowered and "temperature" not in dropped:
-        return "temperature"
+    # every other normalized parameter, named by the endpoint in its own error
+    for parameter in ("top_p", "frequency_penalty", "presence_penalty", "seed", "stop", "temperature"):
+        if parameter in lowered and parameter not in dropped:
+            return parameter
     if "max_tokens" in lowered and "max_tokens" not in dropped:
         return "max_tokens"
     if "unsupported parameter" in lowered or "unexpected keyword" in lowered:
-        for param in ("response_format", "reasoning", "temperature", "max_tokens"):
+        for param in ("response_format", "reasoning", "top_p", "seed", "stop",
+                      "frequency_penalty", "presence_penalty", "temperature", "max_tokens"):
             if param not in dropped:
                 return param
     return None

@@ -290,3 +290,46 @@ def test_orchestrated_run_over_the_real_bridge(bridge, monkeypatch, tmp_path):
     assert states and states[-1]["mode"] == "orchestrated"
     assert states[-1]["final"] == "listed"
     assert states[-1]["log"][0]["tool"] == "list_files"
+
+
+def test_model_probe_reports_and_reruns_the_schema(monkeypatch):
+    """The sidebar's "Probe model" button: one live check, then a fresh schema."""
+    import os
+
+    from jev_ultrafast import discovery
+
+    os.environ["POLICY_PROVIDER"] = "nvidia"
+    os.environ["POLICY_MODEL"] = "z-ai/glm-5.3"
+    runner = firefox.TaskRunner(MockBridge())
+    monkeypatch.setattr(
+        discovery,
+        "probe_model",
+        lambda provider, model_id: {
+            "provider": provider, "model": model_id, "schemaId": "glm-v1",
+            "verified": ["temperature"], "unsupported": ["seed"], "error": None,
+        },
+    )
+    runner.handle_model_probe({"role": "policy"})
+    for _ in range(50):
+        reports = [m for m in runner.bridge.messages if m.get("type") == "probe" and not m.get("loading")]
+        if reports:
+            break
+        time.sleep(0.02)
+    assert reports and reports[0]["report"]["unsupported"] == ["seed"]
+
+    runner.handle_model_probe({"role": "nobody"})
+    assert any("Unknown role" in m.get("message", "") for m in runner.bridge.messages if m.get("type") == "error")
+
+
+def test_switching_models_clears_parameters_the_new_one_lacks():
+    import os
+
+    os.environ.pop("POLICY_TOP_P", None)
+    runner = firefox.TaskRunner(MockBridge())
+    runner.handle_model_select({"role": "policy", "provider": "nvidia", "model": "z-ai/glm-5.3"})
+    runner.handle_params_set({"role": "policy", "params": {"top_p": 0.8}})
+    assert os.environ["POLICY_TOP_P"] == "0.8"
+    runner.handle_model_select({"role": "policy", "provider": "nvidia", "model": "moonshotai/kimi-k3"})
+    assert "POLICY_TOP_P" not in os.environ
+    notices = [m for m in runner.bridge.messages if m.get("type") == "notice"]
+    assert notices and "top_p" in notices[-1]["message"]
