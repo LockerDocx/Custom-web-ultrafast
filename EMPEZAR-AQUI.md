@@ -246,6 +246,14 @@ Existe un motor de decisión **gratis y de código abierto** (Laya, de Convai �
 ## ❓ Preguntas rápidas
 
 - **¿Cuesta dinero?** No. Groq y NVIDIA tienen capas gratuitas generosas para este uso.
+- **¿Necesito una gráfica o instalar un modelo local?** No. El agente ya viene configurado para
+  pensar en la nube gratis (Groq + NVIDIA): en tu PC solo corren Firefox y un proceso de ~40 MB.
+  Los modelos locales son **opcionales**, para quien quiera cero claves, cero internet o que su
+  misión no salga del ordenador — y en un PC sin gráfica tardan 3-8 s por paso. Detalles:
+  `docs/modelos-locales.md`.
+- **Solo tengo una clave, ¿vale?** Sí: con la de Groq o con la de NVIDIA funciona todo
+  (`docs/providers.md` → «Todo con una sola clave»). Con las dos se reparte: NVIDIA para el
+  planificador y Groq para el ejecutor, que es lo más rápido.
 - **¿Mi clave está segura?** Sí: se guarda solo en TU ordenador (el archivo `.env`) y solo viaja a Groq/NVIDIA cuando el agente piensa. Nunca llega a las webs que visitas ni a la extensión.
 - **¿Puede descontrolarse mi navegador?** No: solo actúa en la pestaña donde lo lanzaste, hay botón Stop, y un máximo de acciones por tarea.
 - **¿Funciona en todas las webs?** En la mayoría. Algunas con protecciones anti-bot muy agresivas pueden resistirse.

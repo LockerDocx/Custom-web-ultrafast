@@ -4,6 +4,24 @@
 > modelos **gratis y auto-alojados** que corran en equipos modestos (**menos de 32 GB de RAM**,
 > con o sin GPU) y, si hay tarjeta gráfica, que **aprovechen la VRAM**.
 
+> **¿Te hace falta todo esto? Casi con seguridad, no.** El agente viene configurado para pensar
+> en la nube gratis (**Groq + NVIDIA NIM**) y funciona completo sin un solo modelo local: en tu
+> PC solo corren tu Firefox y un proceso de ~40 MB. Esta guía es para quien **no quiere depender
+> de claves ni de internet**, quiere que su misión no salga de su ordenador, o se queda sin cuota.
+> **Ningún modelo local es un requisito.**
+
+| Tu situación | Qué te conviene |
+| --- | --- |
+| PC normal, con internet y clave gratis (Groq/NVIDIA) | **Nada de este documento.** La nube gratis ya configurada, y encima es lo más rápido: **~280 ms por paso** medidos |
+| Solo tienes UNA clave (NVIDIA NIM) | Tampoco: `docs/providers.md` → «Todo con una sola clave» |
+| No quieres claves, o no tienes internet | Secciones 4-6: Qwen3.5 4B (~4,5 GB) o Phi-4-mini (~2,5 GB) |
+| Quieres que tu misión no salga de tu PC | Executor y text locales (el planner puede quedarse en la nube: solo ve el objetivo general) |
+| Se te agotan las cuotas gratis | Local como **respaldo**: el panel marca 🟡 «limitado ahora mismo» y cambiar de modelo es un desplegable |
+| Tienes GPU de 6 GB o más | Sí merece la pena: 40+ tok/s |
+
+> ⚖️ Comparación honesta en un PC **sin gráfica**: nube gratis ≈ **280 ms por paso**; un 4B local
+> en CPU ≈ **3-8 segundos por paso**. Gratis e ilimitado, sí, pero 10-25 veces más lento.
+
 ---
 
 ## 1. Resumen ejecutivo — qué usar con este agente
@@ -17,9 +35,10 @@ calidad, y esa es la clave para que quepa en un PC modesto:
 | **Text writer** | Redacta valores de campos | **El mismo modelo que el executor** | Misma necesidad de latencia baja |
 | **Planner** | Parte la misión en pasos (1 llamada por tarea) | **Qwen3.5 9B** (si tienes 16 GB+) — o déjalo en una API gratis (Groq) | Aquí sí importa la calidad; solo se llama una vez |
 
-**Doble configuración estrella para PC patata**: planner en la nube gratis (Groq, no ve tus
-acciones) + executor/text 100% locales (no ven tu misión completa). Coste: 0 €, y solo el
-plan general viaja a internet.
+**Doble configuración estrella para PC patata** *(elígela solo por privacidad o por cero claves,
+no por velocidad)*: planner en la nube gratis (Groq, no ve tus acciones) + executor/text 100 %
+locales (no ven tu misión completa). Coste: 0 €, y solo el plan general viaja a internet —
+a cambio de 3-8 s por paso en CPU en vez de ~280 ms.
 
 **¿Buscabas una alternativa al modelo Jev en sí?** → mira la sección 2: **Laya**, el motor de decisión abierto que compite directamente con Jev (ya integrado en este agente para enrutar misiones y elegir skills).
 

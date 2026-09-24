@@ -99,13 +99,19 @@ que consume ancho de banda de verdad es el vídeo del sandbox Neko.
 
 ## 6. Resumen por perfil
 
+**Regla general: si tienes internet, la vía recomendada es la nube gratis (Groq + NVIDIA NIM)
+y no necesitas ninguno de los extras de esta tabla.** Los modelos locales son para quien quiera
+cero claves, funcionar sin internet o que su misión no salga de su PC (y en un PC sin gráfica
+cuestan 3-8 s por paso, frente a ~280 ms en la nube).
+
 | Perfil | Hardware | Qué obtienes |
 | --- | --- | --- |
-| **Portátil modesto** (4-8 GB RAM, sin GPU) | nada extra | agente completo con Groq/NVIDIA gratis (hardware: solo tu Firefox + 40 MB) |
-| **PC de 8 GB** | + Laya (+1 GB RAM) | decisiones locales, más rápido y sin depender de la nube para enrutar |
-| **PC de 8-16 GB** | + Ollama con Qwen3.5 4B | ejecutor local; puede combinarse con planner en la nube |
-| **Con GPU 6-8 GB** | + modelos 4B-8B en VRAM | todo local y a 40+ tok/s |
-| **16 GB+ / GPU 12 GB** | + Neko + 9B local | modo 100 % offline **y** navegador aislado |
+| **PC normal, con internet** (4-8 GB RAM, sin GPU) ← *el caso típico* | **nada extra** | agente completo con Groq + NVIDIA NIM gratis: solo tu Firefox + ~40 MB de host |
+| **Solo quieres una clave** (NVIDIA NIM para todo) | **nada extra** | lo mismo, con menos latencia que NVIDIA por llamada que Groq |
+| Quieres decisiones internas sin nube (opcional) | + Laya (+1 GB RAM) | enrutado de misiones local; sin clave y en cualquier idioma |
+| Quieres 0 claves / offline (opcional) | + Ollama con Qwen3.5 4B | ejecutor local (3-8 s por paso en CPU); combínalo con planner en la nube |
+| Con GPU 6-8 GB (opcional) | + modelos 4B-8B en VRAM | todo local y a 40+ tok/s |
+| 16 GB+ / GPU 12 GB (opcional) | + Neko + 9B local | modo 100 % offline **y** navegador aislado |
 
 ## 7. Evidencia de que el host es ligero
 

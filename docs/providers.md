@@ -37,6 +37,27 @@ TEXT_MODEL_REASONING=low
 
 Without `PLANNER_*` configuration the agent keeps the original single-goal loop, so nothing changes for existing setups.
 
+### Only one key? Everything on NVIDIA NIM (`nvidia`, alias `nim`)
+
+NIM hosts a model for every role, so one `NVIDIA_API_KEY` is enough. It is the slower of the two
+free tiers per call (measured here: ~1-3 s for a plan, ~0.5-2 s per step, against ~0.3 s for
+`gpt-oss-20b` on Groq), so use it for all three roles only if you prefer a single key:
+
+```bash
+PLANNER_PROVIDER=nvidia
+PLANNER_MODEL=z-ai/glm-5.3
+POLICY_PROVIDER=nvidia
+POLICY_MODEL=openai/gpt-oss-20b
+POLICY_REASONING=low
+TEXT_MODEL_PROVIDER=nvidia
+TEXT_MODEL=openai/gpt-oss-20b
+NVIDIA_API_KEY=nvapi-...
+```
+
+The reverse works too (one Groq key for everything: `POLICY_MODEL=openai/gpt-oss-20b`,
+`PLANNER_MODEL=openai/gpt-oss-120b`), and a **local model is never required** — see the decision
+table at the top of [modelos-locales.md](modelos-locales.md).
+
 ### How planning works
 
 1. The planner is called **once** at task start with the mission and the initial page; it returns `{"steps": [...]}` (1–12 concrete steps).
