@@ -88,7 +88,7 @@ def _sse_chunk(line):
     """Parse one SSE line → (content, usage_update, model_id, reasoning).
 
     Handles the OpenAI shape (choices[].delta.content / delta.reasoning_content,
-    used by Ollama, llama.cpp and LM Studio too) and the Anthropic event shape.
+    used by any OpenAI-compatible server too) and the Anthropic event shape.
     """
     if not line or not line.startswith("data:"):
         return "", {}, None, ""

@@ -65,11 +65,11 @@ def test_models_without_reasoning_get_no_reasoning_control():
     assert "reasoning" not in plain["parameters"]
 
 
-def test_anthropic_and_local_surfaces_are_narrower():
+def test_anthropic_and_gemini_surfaces_are_narrower():
     claude = schemas.schema_for("anthropic", "claude-sonnet-4", {}, dialect="anthropic")
     assert set(claude["parameters"]) == {"temperature", "max_tokens", "stream", "top_p", "stop"}
-    ollama = schemas.schema_for("ollama", "qwen3.5:4b", REASONING_CAPS)
-    assert "frequency_penalty" not in ollama["parameters"] and "seed" in ollama["parameters"]
+    gemini = schemas.schema_for("gemini", "gemini-3-pro", REASONING_CAPS)
+    assert "frequency_penalty" not in gemini["parameters"] and "seed" not in gemini["parameters"]
 
 
 def test_runtime_evidence_removes_and_marks_parameters():

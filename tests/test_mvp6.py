@@ -1,9 +1,8 @@
-"""Contracts for MVP-6: streaming, local runtimes, profiles, and the run log."""
+"""Contracts for MVP-6: streaming, provider presets, profiles, and the run log."""
 
 import json
 import threading
 import time
-from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -69,8 +68,9 @@ def openai_sse(chunks, model="qwen3.5:4b", usage=None):
 def planner_provider(monkeypatch):
     for name in ("PLANNER_PROVIDER", "PLANNER_MODEL", "PLANNER_API_KEY", "PLANNER_BASE_URL"):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("PLANNER_PROVIDER", "ollama")
-    monkeypatch.setenv("PLANNER_MODEL", "qwen3.5:4b")
+    monkeypatch.setenv("PLANNER_PROVIDER", "nvidia")
+    monkeypatch.setenv("PLANNER_MODEL", "z-ai/glm-5.3")
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
     yield
 
 
@@ -169,66 +169,34 @@ def test_chat_streams_and_falls_back_when_stream_is_rejected(monkeypatch, planne
     assert meta2["model"] == "m"
 
 
-# ── local runtime presets (free / self-hosted) ───────────────────────────────
+# ── provider presets ─────────────────────────────────────────────────────────
 
 
-def test_local_presets_resolve_without_any_api_key(monkeypatch):
-    for name in ("POLICY_PROVIDER", "POLICY_MODEL", "POLICY_API_KEY", "POLICY_BASE_URL"):
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("POLICY_PROVIDER", "ollama")
-    monkeypatch.setenv("POLICY_MODEL", "qwen3.5:4b")
-    provider = providers.resolve("policy")
-    assert provider["base_url"] == "http://127.0.0.1:11434/v1"
-    assert provider["dialect"] == "openai"
-    assert provider["key"] == "local"
-    assert provider["json_mode"] is False  # local servers vary; extract_json tolerates prose
+def test_local_llm_runtimes_are_not_supported(monkeypatch):
+    """Decided Sept 2026: local LLM runtimes are gone.
 
-    monkeypatch.setenv("POLICY_PROVIDER", "LM-Studio")
-    provider = providers.resolve("policy")
-    assert provider["name"] == "lmstudio"
-    monkeypatch.setenv("POLICY_PROVIDER", "llama.cpp")
-    assert providers.resolve("policy")["name"] == "llamacpp"
+    The whole point of the agent is driving a live web page, which needs the
+    internet anyway — so running the model on the same machine bought nothing
+    but installs, docs and tests to maintain. Laya (the local decision engine)
+    is the deliberate exception: it is not a replacement model, it is a fast
+    local router.
+    """
+    assert not {"ollama", "lmstudio", "llamacpp", "jan"} & set(providers.PROVIDERS)
+    for name in ("Ollama", "LM-Studio", "llama.cpp", "jan"):
+        monkeypatch.setenv("POLICY_PROVIDER", name)
+        with pytest.raises(ValueError, match="Unknown provider"):
+            providers.resolve("policy")
 
 
-def test_local_base_urls_are_auto_detected(monkeypatch):
+def test_a_self_hosted_gateway_on_loopback_needs_no_key(monkeypatch):
+    """The escape hatch that stays: any OpenAI-compatible endpoint by URL."""
     for name in ("POLICY_PROVIDER", "POLICY_BASE_URL", "POLICY_API_KEY", "POLICY_MODEL"):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("POLICY_PROVIDER", "http://127.0.0.1:1234/v1")
-    monkeypatch.setenv("POLICY_MODEL", "phi-4-mini")
+    monkeypatch.setenv("POLICY_PROVIDER", "http://127.0.0.1:20128/v1")
+    monkeypatch.setenv("POLICY_MODEL", "gpt-oss-20b")
     provider = providers.resolve("policy")
-    assert provider["name"] == "lmstudio"  # detected from the URL, not "custom"
-
-
-def test_discovery_lists_local_models_without_a_key(monkeypatch):
-    monkeypatch.setattr(discovery, "REGISTRY_PATH", Path("/tmp/test-mvp6-registry.json"))
-    response = Mock(status_code=200, is_error=False)
-    response.json.return_value = {"data": [
-        {"id": "qwen3.5:4b"},
-        {"id": "nomic-embed-text"},  # embedding model: filtered out
-    ]}
-    client = Mock()
-    client.get.return_value = response
-    monkeypatch.setattr(model, "CLIENT", client)
-    models = discovery.fetch_models("ollama")  # no OLLAMA key concept at all
-    assert [m["id"] for m in models] == ["qwen3.5:4b"]
-
-
-def test_discover_probes_local_runtimes_and_reports_refused_connections(monkeypatch):
-    monkeypatch.setattr(discovery, "REGISTRY_PATH", Path("/tmp/test-mvp6-registry2.json"))
-    calls = []
-
-    def fake_fetch(name):
-        calls.append(name)
-        if name == "ollama":
-            return [{"id": "qwen3.5:4b", "displayName": "Qwen3.5:4b", "provider": name, "capabilities": {}}]
-        raise RuntimeError("Could not reach lmstudio: connection refused")
-
-    monkeypatch.setattr(discovery, "fetch_models", fake_fetch)
-    registry = discovery.discover(refresh=True)
-    assert registry["providers"]["ollama"]["ok"] is True
-    assert registry["providers"]["lmstudio"]["ok"] is False
-    assert "connection refused" in registry["providers"]["lmstudio"]["error"]
-    assert "nvidia" in calls or "ollama" in calls  # cloud providers skipped only when keyless
+    assert provider["name"] == "custom"
+    assert provider["key"] == "local"
 
 
 # ── named profiles (parameters + TaskRunner handler) ─────────────────────────
@@ -260,9 +228,9 @@ def test_profiles_save_apply_delete_round_trip(isolated_config):
     assert saved["params"]["planner"] == {"reasoning": "high"}
     assert parameters.profile_names() == ["Research mode"]
 
-    # change everything, then restore. The local Qwen exposes reasoning through
-    # the chat-template switch, so the value applies (MVP-1: per-model surface).
-    parameters.apply_model("planner", "ollama", "qwen3.5:4b")
+    # change everything, then restore. GPT-OSS exposes reasoning_effort, so the
+    # value applies (MVP-1: the parameter surface is the model's).
+    parameters.apply_model("planner", "groq", "openai/gpt-oss-20b")
     assert parameters.apply_params("planner", {"reasoning": "low"}) == {"reasoning": "low"}
     parameters.apply_profile("Research mode")
     assert os.environ["PLANNER_PROVIDER"] == "nvidia"
@@ -335,8 +303,9 @@ def test_orchestrated_run_appends_to_runs_log(bridge, monkeypatch, tmp_path, iso
     monkeypatch.setattr(orchestrator, "run_orchestration", fake_orchestration)
     runner = firefox.TaskRunner(bridge, workspace=tmp_path / "ws")
     bridge.runner = runner
-    monkeypatch.setenv("PLANNER_PROVIDER", "ollama")
-    monkeypatch.setenv("PLANNER_MODEL", "qwen3.5:4b")
+    monkeypatch.setenv("PLANNER_PROVIDER", "nvidia")
+    monkeypatch.setenv("PLANNER_MODEL", "z-ai/glm-5.3")
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
     runner.start("research a topic and write a project", "https://example.com", 7)
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline and not (runner.orchestrated or {}).get("status") == "done":
@@ -382,8 +351,9 @@ def test_delta_broadcasts_stream_to_the_extension(bridge, monkeypatch, tmp_path,
     monkeypatch.setattr(orchestrator, "run_orchestration", fake_orchestration)
     runner = firefox.TaskRunner(bridge, workspace=tmp_path / "ws")
     bridge.runner = runner
-    monkeypatch.setenv("PLANNER_PROVIDER", "ollama")
-    monkeypatch.setenv("PLANNER_MODEL", "qwen3.5:4b")
+    monkeypatch.setenv("PLANNER_PROVIDER", "nvidia")
+    monkeypatch.setenv("PLANNER_MODEL", "z-ai/glm-5.3")
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
     runner.start("research something", "https://example.com", 7)
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline and not (runner.orchestrated or {}).get("status") == "done":

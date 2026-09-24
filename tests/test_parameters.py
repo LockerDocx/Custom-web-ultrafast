@@ -105,9 +105,9 @@ def test_apply_model_switches_provider_and_model():
     assert os.environ["TEXT_MODEL"] == "openai/gpt-oss-20b"
     saved = json.loads(parameters.CONFIG_PATH.read_text())
     assert saved["models"]["text"] == {"provider": "groq", "model": "openai/gpt-oss-20b"}
-    # colons are fine: Ollama tags look like qwen3.5:4b
-    parameters.apply_model("text", "ollama", "qwen3.5:4b")
-    assert os.environ["TEXT_MODEL"] == "qwen3.5:4b"
+    # a colon in the model id is fine: some catalogues tag their models
+    parameters.apply_model("text", "groq", "openai/gpt-oss-20b:free")
+    assert os.environ["TEXT_MODEL"] == "openai/gpt-oss-20b:free"
     with pytest.raises(ValueError):
         parameters.apply_model("text", "groq", "  ")
     with pytest.raises(ValueError):

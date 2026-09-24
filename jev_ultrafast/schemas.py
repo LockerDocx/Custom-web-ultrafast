@@ -163,12 +163,6 @@ RULES = [
         "drop": ["frequency_penalty", "presence_penalty", "seed"],
         "schema": "gemini",
     },
-    {
-        "id": "local-runtime",
-        "match": {"provider": ("ollama", "lmstudio", "llamacpp", "jan")},
-        "drop": ["frequency_penalty", "presence_penalty"],
-        "schema": "local",
-    },
     # Reasoning wiring. "effort" sends reasoning_effort, "template" sends
     # chat_template_kwargs={"thinking": bool}, "always" means the model reasons
     # and the control is pointless, None means there is nothing to send.

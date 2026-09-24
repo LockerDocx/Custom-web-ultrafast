@@ -276,7 +276,7 @@ def apply_model(role, provider_name, model_id):
         raise ValueError(f"Unknown role: {role}")
     model_id = model_id.strip()
     if not model_id or any(character.isspace() for character in model_id):
-        raise ValueError("Invalid model id")  # colons are fine: Ollama tags look like qwen3.5:4b
+        raise ValueError("Invalid model id")  # colons are fine: some catalogues tag their models
     provider_env, model_env = ROLE_MODEL_ENV[role]
     os.environ[provider_env] = provider_name
     os.environ[model_env] = model_id.strip()

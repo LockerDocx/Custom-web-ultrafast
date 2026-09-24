@@ -79,17 +79,17 @@ def test_discover_caches_for_24h(monkeypatch):
 
     monkeypatch.setattr(discovery, "fetch_models", fake_fetch)
     registry = discovery.discover()
-    # the two keyed cloud providers plus the four keyless local runtimes
-    assert {"groq", "nvidia", "ollama", "lmstudio", "llamacpp", "jan"} <= set(registry["providers"])
+    # only the providers that have a key in this test
+    assert {"groq", "nvidia"} <= set(registry["providers"])
     assert discovery.REGISTRY_PATH.exists()
-    assert len(calls) == 6
+    assert len(calls) == 2
 
     second = discovery.discover()  # served from the cache, no refetch
     assert second == registry
-    assert len(calls) == 6
+    assert len(calls) == 2
 
     discovery.discover(refresh=True)  # forced refresh
-    assert len(calls) == 12
+    assert len(calls) == 4
 
 
 def test_discover_reports_failures_without_breaking(monkeypatch):

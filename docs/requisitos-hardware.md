@@ -10,7 +10,7 @@ cuatro cosas que sí consumen, y solo una es obligatoria:
 | 2 | **El host de Jev** (Python) | Sí | **38,6 MB de RAM** · ~2 % de un núcleo |
 | 3 | **Laya** (motor de decisión local) | No | ~1 GB RAM + ~1,2 GB disco |
 | 4 | **Sandbox Neko** (navegador aislado en Docker) | No | ~2 GB disco + ~1-2 GB RAM del contenedor |
-| 5 | **Modelos locales** (Ollama/LM Studio…) | No | el rango más amplio: 1,3 → 8 GB de RAM |
+| 5 | ~~Modelos locales~~ | **No existen** | retirados en sept 2026: ver §4 |
 | 6 | **Tarjeta gráfica** | No, nunca | solo acelera modelos locales y Laya |
 
 ## La medición del host, hecha aquí mismo
@@ -40,7 +40,7 @@ reales son los del navegador y, si los usas, los de los componentes opcionales.
 
 ## 2. Laya, el motor de decisión local (opcional)
 
-Números del propio proyecto (`docs/modelos-locales.md`), medidos con pesos reales en la
+Números del propio proyecto (`docs/laya.md`), medidos con pesos reales en la
 CPU de CI (2 núcleos):
 
 | Concepto | Valor |
@@ -67,29 +67,15 @@ Apagarlo: `JEV_LAYA=off` (cae al enrutado por palabras clave, sin coste de hardw
 
 Sin Docker, la app lo dice y sigue funcionando en modo pestaña real.
 
-## 4. Modelos locales (opcional — el rango más amplio)
+## 4. ¿Y modelos locales en mi PC? No: no se soportan
 
-Tabla del proyecto, cuantizada en Q4_K_M. **Regla práctica: tu memoria libre (RAM+VRAM) debe
-superar el tamaño del archivo GGUF.**
+Los runtimes locales (Ollama, LM Studio, llama.cpp, Jan) se retiraron en septiembre de 2026. El
+motivo es de producto: el agente conduce una página web viva, así que **necesita internet de todas
+formas** — un modelo en casa no habilitaba ningún caso de uso real y a cambio añadía instalación,
+GB de disco y 3-8 s por paso (frente a ~280 ms de la nube gratis).
 
-| Modelo | RAM (Q4) | CPU típica |
-| --- | --- | --- |
-| Llama 3.2 1B | ~1,3 GB | 60-90 tok/s |
-| Gemma 4 E2B | ~2 GB | 20-30 tok/s |
-| Phi-4-mini 3.8B | ~2,5 GB | 15-25 tok/s |
-| **Qwen3.5 4B** ⭐ (recomendado) | ~4,5 GB | 12-25 tok/s |
-| Qwen3.5 9B (planner) | ~7-8 GB | 6-12 tok/s (pide 16 GB de equipo) |
-
-| VRAM | Qué corre cómodo |
-| --- | --- |
-| 2-4 GB | 2B / Phi-4-mini / Gemma 4 E2B |
-| 4-6 GB | Qwen3.5 4B entero en GPU (40-80 tok/s) |
-| 6-8 GB | Qwen3.5 4B/9B, Llama 3.1 8B |
-| 12 GB+ | Qwen3.5 9B holgado, 12B-14B |
-
-Con **menos VRAM que el modelo**, el reparto 70/30 GPU/CPU da 10-15 tok/s (frente a 3-6 en
-CPU puro). Y una **configuración 100 % offline** (los tres roles en local) pide **~16 GB de RAM**
-para ir bien.
+Lo único que se ejecuta en tu equipo, y **opcional**, es **Laya** (§2). Cualquier endpoint
+OpenAI-compatible sigue siendo alcanzable por URL, si algún día montas un gateway propio.
 
 ## 5. Red
 
@@ -109,9 +95,7 @@ cuestan 3-8 s por paso, frente a ~280 ms en la nube).
 | **PC normal, con internet** (4-8 GB RAM, sin GPU) ← *el caso típico* | **nada extra** | agente completo con Groq + NVIDIA NIM gratis: solo tu Firefox + ~40 MB de host |
 | **Solo quieres una clave** (NVIDIA NIM para todo) | **nada extra** | lo mismo, con menos latencia que NVIDIA por llamada que Groq |
 | Quieres decisiones internas sin nube (opcional) | + Laya (+1 GB RAM) | enrutado de misiones local; sin clave y en cualquier idioma |
-| Quieres 0 claves / offline (opcional) | + Ollama con Qwen3.5 4B | ejecutor local (3-8 s por paso en CPU); combínalo con planner en la nube |
-| Con GPU 6-8 GB (opcional) | + modelos 4B-8B en VRAM | todo local y a 40+ tok/s |
-| 16 GB+ / GPU 12 GB (opcional) | + Neko + 9B local | modo 100 % offline **y** navegador aislado |
+| Quieres aislar el navegador (opcional) | + Docker y la imagen Neko (§3) | el agente navega en un navegador aparte, sin tus cookies |
 
 ## 7. Evidencia de que el host es ligero
 

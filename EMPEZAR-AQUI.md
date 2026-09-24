@@ -185,26 +185,14 @@ Arriba del panel verás **"Browser target"** con dos botones:
 
 ---
 
-## 🥔 PC modesto o cero claves: modo 100% gratis y offline (opcional)
+## 🥔 ¿Y si mi PC es modesto? No pasa nada: no instalas nada
 
-Si tu PC va justo de RAM o no quieres usar ninguna clave, el agente puede pensar **dentro de tu propio ordenador** con un modelo pequeño y gratis. Guía completa con tablas de modelos según tu RAM/GRÁFICA: **`docs/modelos-locales.md`** (en español). Versión rápida:
+El agente **no necesita gráfica ni modelos en tu ordenador**: pensar ocurre en la nube gratis
+(Groq + NVIDIA), y en tu PC solo corren Firefox y un proceso de ~40 MB. Un PC de 8 GB va sobrado.
 
-1. Entra en **https://ollama.com/download** y descarga Ollama (botón grande de tu sistema).
-2. Instálalo con doble clic (siguiente, siguiente). Verás un icono de llama 🦙 en la barra.
-3. Abre la aplicación **Terminal / Símbolo del sistema** y escribe exactamente:
-   `ollama pull qwen3.5:4b` → Enter → espera la descarga (~2,7 GB; con 8 GB de RAM usa `ollama pull phi4-mini` en su lugar).
-4. Prueba que va: `ollama run qwen3.5:4b "di hola"` → debe contestar → escribe `/bye`.
-5. Abre el `.env` del proyecto (Bloc de notas) y cambia estas líneas para que digan:
-   ```
-   POLICY_PROVIDER=ollama
-   POLICY_MODEL=qwen3.5:4b
-   TEXT_MODEL_PROVIDER=ollama
-   TEXT_MODEL=qwen3.5:4b
-   ```
-   (el planner puedes dejarlo en la nube gratis como estaba — es lo que mejor funciona)
-6. Guarda, arranca el starter y pulsa **Test setup** → 🟢 sin haber pegado ninguna clave.
-
-> Qué esperar: cada paso del navegador tarda **3-8 segundos** en CPU (Groq tardaba menos de 1), pero todo ocurre en tu PC, gratis y sin internet. Si se atasca mucho, usa un modelo mayor o vuelve a Groq.
+> Los modelos locales (Ollama y compañía) se retiraron a propósito en septiembre de 2026: como el
+> agente navega por internet de todas formas, tener el modelo en casa no te salvaba de nada y solo
+> añadía instalaciones y lentitud (3-8 s por paso, frente a ~280 ms en la nube).
 
 ## 🧠 Extra para curiosos: Laya, el «Jev» abierto (opcional)
 
@@ -215,7 +203,7 @@ Existe un motor de decisión **gratis y de código abierto** (Laya, de Convai �
 3. Espera: descarga ~1,3 GB (una sola vez) y verás "Done".
 4. **Reinicia el starter.** A partir de aquí, si escribes la misión en alemán, francés… también se enruta bien.
 
-> Para desactivarlo: añade `JEV_LAYA=off` al `.env`. Análisis completo (números, límites, por qué aún no sustituye al navegador): `docs/modelos-locales.md`, sección 2.
+> Para desactivarlo: añade `JEV_LAYA=off` al `.env`. Análisis completo (números, límites, por qué aún no sustituye al navegador): `docs/laya.md`.
 
 ## 🔧 Problemas comunes
 
@@ -238,9 +226,6 @@ Existe un motor de decisión **gratis y de código abierto** (Laya, de Convai �
 | *"Missing library for .pdf files"* al analizar un PDF | Cierra la ventana negra y vuelve a arrancar con el **starter nuevo** (instala el soporte de PDF/Word/Excel solo). Si persiste: en la carpeta del proyecto ejecuta `pip install -e ".[documents]"` y reinicia |
 | No aparece el aviso 🔐 pero el comando no se ejecuta | Es lo esperado: sin respuesta en 2 minutos se considera "Deny". Vuelve a lanzar la misión y pulsa **Approve** cuando aparezca |
 | La sección **Steps** se queda mucho en "working…" | Las misiones con búsqueda web tardan más (varias llamadas al modelo). El botón **Stop** funciona igual |
-| Uso Ollama y en **Test setup** sale 🔴 "connection refused" | Ollama no está arrancado → ábrelo (icono 🦙) o ejecuta `ollama serve` en la terminal, y pulsa Test setup otra vez |
-| Elegí un modelo local y el agente va **muy lento** | Normal en CPU (3-8 s/paso). Guía de modelos según tu máquina: `docs/modelos-locales.md`. Con GRÁFICA de 6 GB+ prueba `qwen3.5:9b` |
-| El desplegable del panel no muestra los modelos de Ollama | Pulsa **Refresh catalogue** con Ollama encendido; solo lista modelos ya descargados (`ollama pull …`) |
 | Instalé Laya y va igual que antes | Laya no cambia lo que ves: enruta misiones y elige skills por dentro (en cualquier idioma). Comprueba que reiniciaste el starter tras instalarlo; para desactivarlo: `JEV_LAYA=off` |
 
 ## ❓ Preguntas rápidas
@@ -248,9 +233,9 @@ Existe un motor de decisión **gratis y de código abierto** (Laya, de Convai �
 - **¿Cuesta dinero?** No. Groq y NVIDIA tienen capas gratuitas generosas para este uso.
 - **¿Necesito una gráfica o instalar un modelo local?** No. El agente ya viene configurado para
   pensar en la nube gratis (Groq + NVIDIA): en tu PC solo corren Firefox y un proceso de ~40 MB.
-  Los modelos locales son **opcionales**, para quien quiera cero claves, cero internet o que su
-  misión no salga del ordenador — y en un PC sin gráfica tardan 3-8 s por paso. Detalles:
-  `docs/modelos-locales.md`.
+  Los modelos locales se retiraron en septiembre de 2026 (el agente navega por internet igual, así
+  que no servían para funcionar sin conexión). Lo único que corre en tu PC es el enrutador de
+  decisiones opcional: `docs/laya.md`.
 - **Solo tengo una clave, ¿vale?** Sí: con la de Groq o con la de NVIDIA funciona todo
   (`docs/providers.md` → «Todo con una sola clave»). Con las dos se reparte: NVIDIA para el
   planificador y Groq para el ejecutor, que es lo más rápido.

@@ -4,7 +4,7 @@ Laya is the open alternative to TypeSafe's Jev: instead of generating text it
 answers typed questions (choice / score / boolean) in one forward pass, with
 calibrated confidence, fully local — 322M-421M params, ~33 ms on GPU and a few
 tens of ms on CPU. `pip install -e ".[laya]"` adds it; see
-docs/modelos-locales.md for the full evaluation.
+docs/laya.md for the full evaluation.
 
 Used here for two decisions where a generative model is overkill and keywords
 are brittle across languages:

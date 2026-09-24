@@ -56,7 +56,7 @@ NVIDIA_API_KEY=nvapi-...
 
 The reverse works too (one Groq key for everything: `POLICY_MODEL=openai/gpt-oss-20b`,
 `PLANNER_MODEL=openai/gpt-oss-120b`), and a **local model is never required** — see the decision
-table at the top of [modelos-locales.md](modelos-locales.md).
+table at the top of [laya.md](laya.md).
 
 ### How planning works
 
@@ -81,7 +81,7 @@ table at the top of [modelos-locales.md](modelos-locales.md).
 | `mistral` | `https://api.mistral.ai/v1` | `MISTRAL_API_KEY` | |
 | `xai` (alias `grok`) | `https://api.x.ai/v1` | `XAI_API_KEY` | |
 | `gemini` (alias `google`) | `https://generativelanguage.googleapis.com/v1beta/openai` | `GEMINI_API_KEY` | Gemini's OpenAI-compatible endpoint |
-| `custom` | yours, via `POLICY_BASE_URL` | `POLICY_API_KEY` | vLLM, LM Studio, Ollama, LiteLLM, any OpenAI-compatible gateway |
+| `custom` | yours, via `POLICY_BASE_URL` | `POLICY_API_KEY` | vLLM, LiteLLM, any OpenAI-compatible gateway (local LLM runtimes are not supported) |
 | *(a full URL)* | e.g. `POLICY_PROVIDER=https://gw.internal/v1` | `POLICY_API_KEY` | Same as `custom` |
 
 Aliases: `nim`/`nvidia-nim` → `nvidia`, `grok` → `xai`, `google` → `gemini`, `omni` → `omniroute`, `openai-compatible` → `custom`.
@@ -162,18 +162,6 @@ The provider policy preserves the loop's core contract: **one request per decisi
   - Effort levels map to `reasoning_effort` (OpenAI) and `reasoning.effort` (OpenRouter). Unverified combinations are omitted rather than sent.
 - `POLICY_JSON_MODE` / `TEXT_MODEL_JSON_MODE`: `on`/`off` override. JSON mode (OpenAI `response_format`) is enabled only for presets that honor it across their catalog; everywhere else the reply is parsed robustly (fences and prose tolerated). Set it to `off` if your endpoint rejects the parameter.
 
-## Local runtimes (free, offline, no API key)
-
-Four local OpenAI-compatible runtimes are first-class presets, so no base URL and no key are needed:
-
-| `POLICY_PROVIDER=` | Server | Default port |
-|---|---|---|
-| `ollama` | [Ollama](https://ollama.com) | 127.0.0.1:11434 |
-| `lmstudio` | [LM Studio](https://lmstudio.ai) | 127.0.0.1:1234 |
-| `llamacpp` | [llama.cpp](https://github.com/ggml-org/llama.cpp) `llama-server` | 127.0.0.1:8080 |
-| `jan` | [Jan](https://jan.ai) | 127.0.0.1:1337 |
-
-A raw URL is auto-detected too (`POLICY_PROVIDER=http://127.0.0.1:1234/v1` → `lmstudio`). JSON mode is off by default for local runtimes (server support varies; the reply parser already tolerates prose and fences), reasoning params are never sent to them, and the sidebar catalogue lists the models the running server exposes. Model recommendations by hardware tier (sub-32 GB RAM, CPU/iGPU/VRAM): [modelos-locales.md](modelos-locales.md).
 
 ## Laya — the open System-1 decision engine (optional, local)
 
@@ -182,7 +170,7 @@ A raw URL is auto-detected too (`POLICY_PROVIDER=http://127.0.0.1:1234/v1` → `
 - **Mission routing** (browser loop vs tool orchestrator) in any language
 - **Skill picking** (which procedural package guides the mission)
 
-Everything is fail-safe: if the package is missing, the weights cannot load, or the calibrated confidence is below 0.55, the keyword implementation decides exactly as before. It is deliberately **not** used as the browser executor yet — its zero-shot choice accuracy and 512/1024-token context are not ready for picking among dozens of page elements (see docs/modelos-locales.md §2 for the numbers and the fine-tuning path).
+Everything is fail-safe: if the package is missing, the weights cannot load, or the calibrated confidence is below 0.55, the keyword implementation decides exactly as before. It is deliberately **not** used as the browser executor yet — its zero-shot choice accuracy and 512/1024-token context are not ready for picking among dozens of page elements (see [laya.md](laya.md) for the numbers and the fine-tuning path).
 
 | Variable | Effect |
 |---|---|

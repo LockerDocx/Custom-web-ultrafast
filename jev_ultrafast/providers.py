@@ -88,37 +88,6 @@ PROVIDERS = {
         "keys_url": "https://aistudio.google.com/apikey",
     },
     "custom": {"dialect": "openai"},
-    # Local runtimes — OpenAI-compatible servers on 127.0.0.1, no API key
-    # needed. Ideal for free/offline runs of the policy or text roles with
-    # small quantized models (see docs/modelos-locales.md).
-    "ollama": {
-        "base_url": "http://127.0.0.1:11434/v1",
-        "dialect": "openai",
-        "key_env": [],
-        "local": True,
-        "keys_url": "https://ollama.com",
-    },
-    "lmstudio": {
-        "base_url": "http://127.0.0.1:1234/v1",
-        "dialect": "openai",
-        "key_env": [],
-        "local": True,
-        "keys_url": "https://lmstudio.ai",
-    },
-    "llamacpp": {
-        "base_url": "http://127.0.0.1:8080/v1",
-        "dialect": "openai",
-        "key_env": [],
-        "local": True,
-        "keys_url": "https://github.com/ggml-org/llama.cpp",
-    },
-    "jan": {
-        "base_url": "http://127.0.0.1:1337/v1",
-        "dialect": "openai",
-        "key_env": [],
-        "local": True,
-        "keys_url": "https://jan.ai",
-    },
 }
 
 ALIASES = {
@@ -132,10 +101,6 @@ ALIASES = {
     "grok": "xai",
     "google": "gemini",
     "omni": "omniroute",
-    "lm-studio": "lmstudio",
-    "llama.cpp": "llamacpp",
-    "llama-server": "llamacpp",
-    "llamacpp-server": "llamacpp",
 }
 
 ROLE_ENV = {
@@ -222,7 +187,7 @@ def resolve(role):
     if raw.startswith(("http://", "https://")):
         base, name, preset = (base or raw), "custom", PROVIDERS["custom"]
         detected = detect_preset(base)
-        if detected:  # e.g. http://127.0.0.1:1234/v1 → lmstudio (no key needed)
+        if detected:  # a raw base URL that matches a known preset, e.g. a self-hosted gateway
             name, preset = detected
     elif raw:
         name = ALIASES.get(raw.lower(), raw.lower())
@@ -244,10 +209,8 @@ def resolve(role):
             if (os.environ.get(key_name) or "").strip():
                 key = os.environ[key_name].strip()
                 break
-    if not key and preset and preset.get("local"):
-        key = "local"  # localhost servers ignore auth; the header keeps the request path uniform
     if not key and _is_loopback_url(base):
-        key = "local"  # any server on this machine (custom port, llama-server, ...) needs no key
+        key = "local"  # a self-hosted gateway on this machine needs no key; the header keeps the path uniform
     if not key:
         if preset and preset.get("key_env"):
             extra = f" or one of {', '.join(preset['key_env'])}"
