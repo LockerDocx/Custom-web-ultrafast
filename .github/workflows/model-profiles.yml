@@ -1,0 +1,74 @@
+name: Model profiles
+
+# "Use glm-5.3 flash without reasoning" is a speed idea with a quality question attached, and
+# neither half can be answered by reading a model card. Each candidate runs as its own job, in
+# parallel, against the live APIs with the repository's keys, and reports:
+#
+#   speed   — median and worst latency per role, from the prompts the agent really sends
+#   quality — valid plans (planner), routing accuracy on the project's own 241-mission battery
+#             (executor), and the exact field value the goal supplied (text writer)
+#
+# A profile whose model id does not exist is reported as such, from the provider's own catalogue,
+# instead of being scored zero for a reason nobody can see.
+
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - ".github/workflows/model-profiles.yml"
+      - "scripts/bench_profiles.py"
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    name: profile ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        profile:
+          - nvidia-current
+          - nvidia-flash-none
+          - nvidia-flash-low
+          - nvidia-glm-none
+          - nvidia-hybrid
+          - groq-reference
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . "httpx[http2]" browser-harness==0.1.13
+      - name: Measure ${{ matrix.profile }}
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          if [ -z "$NVIDIA_API_KEY" ] && [ -z "$GROQ_API_KEY" ]; then
+            echo "No provider secrets configured; nothing to measure."
+            exit 0
+          fi
+          {
+            echo "## Model profile: ${{ matrix.profile }}"
+            echo
+            python scripts/bench_profiles.py --profile "${{ matrix.profile }}" \
+              --routing-sample 12 --plans 3 --text-cases 4 --json "artifacts/profile-${{ matrix.profile }}.json"
+          } | tee /tmp/report.md
+          {
+            echo "## Model profile: ${{ matrix.profile }}"
+            echo
+            cat /tmp/report.md
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-${{ matrix.profile }}
+          path: artifacts/profile-*.json
+          if-no-files-found: ignore
