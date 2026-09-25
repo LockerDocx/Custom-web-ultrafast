@@ -219,4 +219,7 @@ report.logView = { chatHidden: el("chat").hidden, logHidden: el("log").hidden, h
 await click("tab-chat");
 report.chatView = { chatHidden: el("chat").hidden, logHidden: el("log").hidden };
 
-process.stdout.write(JSON.stringify(report));
+// Non-ASCII (emoji, quotes, accents) is escaped so the output is pure ASCII: CI runs
+// this under a legacy code page where a raw UTF-8 byte breaks the reader.
+const ascii = JSON.stringify(report).replace(/[\u007F-\uFFFF]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
+process.stdout.write(ascii);

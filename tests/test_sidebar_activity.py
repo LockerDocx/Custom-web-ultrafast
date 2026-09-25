@@ -34,12 +34,14 @@ def panel():
     result = subprocess.run(
         [node, str(HARNESS), str(ROOT / "extension" / "sidebar" / "sidebar.js")],
         capture_output=True,
-        text=True,
         timeout=180,
         cwd=ROOT,
     )
-    assert result.returncode == 0, f"the sidebar crashed:\n{result.stderr[-2000:]}"
-    return json.loads(result.stdout)
+    # Decode explicitly: this suite also runs under a legacy code page (CI asserts it),
+    # where the locale encoding is not UTF-8 and would break on an emoji.
+    stderr = result.stderr.decode("utf-8", errors="replace")[-2000:]
+    assert result.returncode == 0, f"the sidebar crashed:\n{stderr}"
+    return json.loads(result.stdout.decode("utf-8", errors="replace"))
 
 
 def text(html):
