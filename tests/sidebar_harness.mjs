@@ -62,11 +62,17 @@ function makeElement(id) {
 }
 
 const messageListeners = [];
+const intervals = []; // the panel's timers, so the harness can fire them on demand
 
 const sandbox = {
   console: { log: () => {}, error: () => {}, warn: () => {} },
   setTimeout,
   clearTimeout,
+  setInterval: (callback) => {
+    intervals.push(callback);
+    return intervals.length;
+  },
+  clearInterval: () => {},
   Date,
   Math,
   JSON,
@@ -206,9 +212,53 @@ report.chatPlan = el("chat").innerHTML;
 report.readyOk = { text: el("ready-text").innerHTML, dot: el("ready-dot").textContent, bad: el("ready").classList.contains("bad") };
 await send({
   type: "state",
-  state: { ...base, providers: { planner: provider("planner", "z-ai/glm-5.3"), policy: provider("policy", "?", false), text: provider("text", "?", false) } },
+  state: { ...base, providers: { planner: provider("planner", "z-ai/glm-5.3"), policy: provider("policy", null, false), text: provider("text", null, false) } },
 });
 report.readyBad = { text: el("ready-text").innerHTML, dot: el("ready-dot").textContent, bad: el("ready").classList.contains("bad") };
+
+// 7b. a role that HAS a model but did not answer must not be reported as "no model":
+// that wording sent users looking for a key they had already pasted.
+await send({
+  type: "state",
+  state: {
+    ...base,
+    providers: {
+      planner: provider("planner", "nvidia:z-ai/glm-5.3"),
+      policy: {
+        role: "policy",
+        model: "nvidia:openai/gpt-oss-20b",
+        ok: false,
+        latency_ms: null,
+        detail: "Model connection failed; no action executed \u2014 no answer within 60 s (each of 3 attempts).",
+      },
+      text: provider("text", "nvidia:openai/gpt-oss-20b"),
+    },
+  },
+});
+report.readyUnreachable = { text: el("ready-text").innerHTML, dot: el("ready-dot").textContent };
+
+// 7c. a self-test in flight: the panel shows the wait (real seconds) instead of the old verdict
+await send({ type: "state", state: { ...base, checking: Date.now() / 1000 - 12 } });
+report.readyChecking = {
+  text: el("ready-text").innerHTML,
+  dot: el("ready-dot").textContent,
+  testing: el("ready").classList.contains("checking"),
+  buttonDisabled: el("ready-test").disabled === true,
+};
+
+// 7d. the elapsed seconds are the clock: a real second later the panel's timer redraws the
+// line with the larger number, and nothing else moves
+await new Promise((resolve) => setTimeout(resolve, 1100));
+for (const callback of intervals) callback();
+report.readyTick = { text: el("ready-text").innerHTML };
+
+// 7e. and it goes back to a verdict (and a usable button) when the check answers
+await send({ type: "state", state: { ...base, checking: null } });
+report.readyAfterCheck = {
+  checking: el("ready").classList.contains("checking"),
+  buttonDisabled: el("ready-test").disabled === true,
+  text: el("ready-text").innerHTML,
+};
 
 // 8. an error is never silent
 await send({ type: "error", message: "Groq rejected the key (401)" });

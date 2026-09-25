@@ -691,26 +691,58 @@ function syncRun(state) {
 function renderReady(state) {
   const box = $("ready");
   const providers = state && state.providers;
-  if (!providers || !Object.keys(providers).length) {
+  const checking = state && state.checking;
+  if ((!providers || !Object.keys(providers).length) && !checking) {
     box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const file = state.setup && state.setup.env_file ? `Keys are read from <code>${escape(state.setup.env_file)}</code>.` : "";
+  if (checking) {
+    // A free endpoint that has to wake up takes tens of seconds per role, and the roles are
+    // asked one after another. Saying "testing" with the real elapsed time is the honest
+    // thing to show; the number comes from the clock, never from a guess.
+    const seconds = Math.max(0, Math.round(Date.now() / 1000 - Number(checking) || 0));
+    box.classList.remove("ok", "bad");
+    box.classList.add("checking");
+    $("ready-dot").textContent = "⏳";
+    $("ready-text").innerHTML =
+      `<b>Testing every model connection…</b> ${seconds} s. ` +
+      "Roles are checked one after another, and a sleeping endpoint can take a minute. " +
+      file;
+    $("ready-test").disabled = true; // a second press would be dropped by the host anyway
     return;
   }
   const rows = ROLE_ORDER.map((role) => providers[role]).filter(Boolean);
   const good = rows.filter((p) => p.ok);
-  const bad = rows.filter((p) => !p.ok);
-  const ready = rows.length > 0 && bad.length === 0;
-  box.hidden = false;
+  const noModel = rows.filter((p) => !p.ok && !p.model);
+  const unreachable = rows.filter((p) => !p.ok && p.model);
+  const ready = rows.length > 0 && noModel.length === 0 && unreachable.length === 0;
+  $("ready-test").disabled = false;
   box.classList.toggle("ok", ready);
   box.classList.toggle("bad", !ready);
+  box.classList.remove("checking");
   $("ready-dot").textContent = ready ? "🟢" : "🔴";
-  $("ready-text").innerHTML = ready
-    ? "<b>Ready to run</b> · " +
+  if (ready) {
+    $("ready-text").innerHTML =
+      "<b>Ready to run</b> · " +
       good
         .map((p) => `${escape(ROLE_NAMES[p.role] || p.role)} <code>${escape(p.model || "?")}</code>`)
-        .join(" · ")
-    : `<b>Not ready: ${bad.map((p) => escape(ROLE_NAMES[p.role] || p.role)).join(", ")} have no model.</b> ` +
-      "One free key covers all three roles — paste it below and press Test setup. " +
-      (state.setup && state.setup.env_file ? `Keys are read from <code>${escape(state.setup.env_file)}</code>.` : "");
+        .join(" · ");
+    return;
+  }
+  const parts = [];
+  if (noModel.length) {
+    const names = noModel.map((p) => escape(ROLE_NAMES[p.role] || p.role)).join(", ");
+    parts.push(`<b>Not ready: ${names} ${noModel.length > 1 ? "have" : "has"} no model.</b> One free key covers all three roles — paste it below and press Test setup.`);
+  }
+  if (unreachable.length) {
+    const names = unreachable.map((p) => escape(ROLE_NAMES[p.role] || p.role)).join(", ");
+    // A role with a model that did not answer is not a missing key: saying "no model" here
+    // sent users looking for a key they had already pasted.
+    parts.push(`<b>${names} did not answer.</b> The model is configured — the endpoint is slow or unreachable. Press Test setup to try again.`);
+  }
+  $("ready-text").innerHTML = parts.join(" ") + " " + file;
 }
 
 function setActivityView(view) {
@@ -736,6 +768,13 @@ $("ready-test").addEventListener("click", () => {
   addEntry("system", "Testing every model connection…");
   browser.runtime.sendMessage({ cmd: "check" }).catch(() => {});
 });
+
+// While a self-test is in flight the elapsed seconds tick, so a minute of waiting on a
+// sleeping endpoint looks like waiting and not like a panel that died. The number is the
+// clock, not an estimate.
+setInterval(() => {
+  if (state && state.checking) renderReady(state);
+}, 1000);
 
 /* ── approvals (MVP-4) ───────────────────────────────────────────── */
 

@@ -281,6 +281,10 @@ def _live_bridge(tmp_path, monkeypatch):
     # the key file no longer follows the cwd: pin it, or this test would write into the
     # checkout's real .env instead of tmp_path
     monkeypatch.setenv("JEV_ENV_FILE", str(tmp_path / ".env"))
+    # A self-test runs on a background thread as soon as the host says hello. Left to reach the
+    # network it outlives its own test and answers for the next one (measured: it did, and the
+    # next test saw a third call it never made). These tests are about the graphical flow.
+    monkeypatch.setattr(providers, "chat", lambda *_args, **_kwargs: ("{}", {"model": "stub"}))
     server = firefox.BridgeServer(port=0)
     server.runner = firefox.TaskRunner(server)
     server.start()
@@ -297,18 +301,29 @@ def test_a_key_pasted_in_the_sidebar_configures_the_host(clean_env, tmp_path, mo
         assert welcome["state"]["setup"]["configured"] is False
 
         ext.send({"type": "setup.key", "variable": "GROQ_API_KEY", "value": "gsk_from_firefox"})
+        # Wait for the two facts this test is about, not for a fixed number of frames: the host
+        # also announces the role it is testing, so the save confirmation can sit behind them.
+        import time
+
         frames = []
-        for _ in range(8):
+        deadline = time.time() + 20
+        while time.time() < deadline:
             try:
                 frames.append(ext.recv(timeout=5))
             except (TimeoutError, socket.timeout):
                 break
-            if any(
+            saved = any(
+                frame.get("type") == "notice" and "GROQ_API_KEY" in frame.get("message", "") for frame in frames
+            )
+            configured = any(
                 frame.get("type") == "state" and frame["state"]["setup"]["configured"] is True for frame in frames
-            ) and any(frame.get("type") == "notice" for frame in frames):
+            )
+            if saved and configured:
                 break
         notices = [frame for frame in frames if frame.get("type") == "notice"]
-        assert notices and "GROQ_API_KEY" in notices[0]["message"], frames
+        # The save confirmation is a notice, but it is not necessarily the first one: the host
+        # announces the role it is testing the moment it starts asking.
+        assert any("GROQ_API_KEY" in notice["message"] for notice in notices), frames
 
         # saved where every other path reads it
         assert (tmp_path / ".env").read_text(encoding="utf-8").strip() == "GROQ_API_KEY=gsk_from_firefox"
@@ -441,9 +456,11 @@ def test_a_verdict_from_before_the_key_is_never_published(clean_env, tmp_path, m
     first_check_running = threading.Event()
     key_was_saved = threading.Event()
 
-    def slow_check():
+    def slow_check(on_event=None):
         call = len(calls) + 1
         calls.append(call)
+        if on_event is not None:  # the host hands the check a progress channel; the test uses it too
+            on_event("start", {"role": "policy", "model": "groq:openai/gpt-oss-20b"})
         if call == 1:
             first_check_running.set()
             key_was_saved.wait(20)  # the key arrives while this check is in flight
@@ -465,8 +482,10 @@ def test_a_verdict_from_before_the_key_is_never_published(clean_env, tmp_path, m
     while time.time() < deadline and runner.provider_check is None:
         time.sleep(0.05)
     assert runner.provider_check is not None, "no verdict was published at all"
-    assert runner.provider_check["policy"]["detail"] == "call 2", "a stale verdict was published"
-    assert len(calls) == 2, "the fresh check did not run"
+    assert len(calls) >= 2, "the fresh check did not run"
+    detail = runner.provider_check["policy"]["detail"]
+    assert detail != "call 1", f"a stale verdict was published: {detail}"
+    assert detail.startswith("call "), detail
     # and the discarded verdict must never have reached the sidebar, not even for a moment
     published = [
         (message.get("state") or {}).get("providers", {}) or {}
@@ -477,3 +496,9 @@ def test_a_verdict_from_before_the_key_is_never_published(clean_env, tmp_path, m
         "the stale verdict was broadcast to the sidebar"
     )
     assert any("Saved GROQ_API_KEY" in m.get("message", "") for m in bridge.sent if m.get("type") == "notice")
+    # the wait is visible, not silent: the check says which role it is asking
+    assert any(
+        "Testing Executor (groq:openai/gpt-oss-20b)" in m.get("message", "")
+        for m in bridge.sent
+        if m.get("type") == "notice"
+    ), [m for m in bridge.sent if m.get("type") == "notice"]

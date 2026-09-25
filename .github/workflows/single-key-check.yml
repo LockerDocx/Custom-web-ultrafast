@@ -1,0 +1,57 @@
+name: Single key check
+
+# The promise on the tin: ONE free key runs the whole agent — all three roles.
+# This runs the same self-test the sidebar runs, twice: once with only the NVIDIA key in
+# the environment and once with only the Groq key, with every model/role override removed so
+# the derivation has to do the work. A role that cannot run is red and fails the job.
+#
+# Added after 2026-09-25: a user with a single NVIDIA NIM key saw two roles red with
+# "Model connection failed" — the endpoint had been left 25 s without answering three times,
+# which is a free tier waking up, not a bad key. The device that proves the single-key setup
+# belongs in CI, where it is checked against the live APIs instead of being asserted.
+
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - ".github/workflows/single-key-check.yml"
+      - "scripts/check_providers.py"
+
+permissions:
+  contents: read
+
+jobs:
+  nvidia-only:
+    name: one NVIDIA NIM key only
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . "httpx[http2]" browser-harness==0.1.13
+      - name: Run the self-test with one key and no overrides
+        env:
+          # deliberately nothing else: no GROQ_API_KEY, no *_PROVIDER, no *_MODEL
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+        run: bash scripts/single_key_check.sh nvidia
+
+  groq-only:
+    name: one Groq key only
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . "httpx[http2]" browser-harness==0.1.13
+      - name: Run the self-test with one key and no overrides
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: bash scripts/single_key_check.sh groq

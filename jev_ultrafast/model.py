@@ -11,21 +11,88 @@ from . import providers
 from .questions import MAX_PLAN_STEPS, NEXT_ACTION, PLANNER_SYSTEM, POLICY_SYSTEM, TARGET, TEXT_VALUE
 from .redact import redact
 
-CLIENT = httpx.Client(http2=True, timeout=25)
+# How long to wait for an answer before the endpoint is called dead, and how many times to
+# ask. 25 s was measured as too short for the free tiers this app is built on: on 2026-09-25
+# NVIDIA NIM left three 25 s attempts hanging for the planner and the executor (76 s each)
+# while the same key answered a 37.8 s call for the text role in the same check — a cold
+# start or a queue, not a bad key. A wrong key is answered with HTTP 401, which is reported
+# as such; a stall is not. JEV_HTTP_TIMEOUT overrides the default.
+DEFAULT_TIMEOUT = 60.0
+ATTEMPTS = 3
+
+
+def timeout_seconds():
+    """Seconds to wait for one answer: JEV_HTTP_TIMEOUT if it holds a positive number."""
+    raw = (os.environ.get("JEV_HTTP_TIMEOUT") or "").strip()
+    if raw:
+        try:
+            seconds = float(raw)
+        except ValueError:
+            seconds = 0.0
+        if seconds > 0:
+            return seconds
+    return DEFAULT_TIMEOUT
+
+
+def build_client():
+    """The one HTTP client: patient on reads, quick on connecting to something unreachable."""
+    return httpx.Client(http2=True, timeout=httpx.Timeout(timeout_seconds(), connect=15.0))
+
+
+class _SharedClient:
+    """The module's HTTP client, built on first use and rebuilt if JEV_HTTP_TIMEOUT changes.
+
+    Built lazily on purpose: the key file is read into the environment at startup, which can
+    happen after this module is imported, and a client frozen at import time would ignore a
+    JEV_HTTP_TIMEOUT that came from .env. Anything that is not one of the three private names
+    is forwarded to the live client (tests replace this object wholesale).
+    """
+
+    def __init__(self):
+        self._client = None
+        self._seconds = None
+
+    def _current(self):
+        seconds = timeout_seconds()
+        if self._client is None or self._seconds != seconds:
+            self._client = build_client()
+            self._seconds = seconds
+        return self._client
+
+    def __getattr__(self, name):
+        return getattr(self._current(), name)
+
+
+CLIENT = _SharedClient()
+
+
+def _no_answer(error, seconds):
+    """The error a user sees when nothing came back: what happened, and that the key is fine."""
+    if isinstance(error, httpx.TimeoutException):
+        detail = (
+            f"no answer within {seconds:g} s (each of {ATTEMPTS} attempts). The endpoint is slow or busy —"
+            " this is not a rejected key: raise JEV_HTTP_TIMEOUT to wait longer."
+        )
+    else:
+        detail = (
+            f"the connection could not be established ({ATTEMPTS} attempts). Check the network, a proxy or a VPN."
+        )
+    return RuntimeError(f"Model connection failed; no action executed — {detail}")
 
 
 def post_json(url, key, body, headers=None):
-    for attempt in range(3):
+    seconds = timeout_seconds()
+    for attempt in range(ATTEMPTS):
         try:
             response = CLIENT.post(url, json=body, headers=headers or {"Authorization": f"Bearer {key}"})
-        except httpx.HTTPError:
-            # A model that is being woken up, or a blip on the wire: the same three
-            # tries the streaming path already gives before giving up. Retrying
-            # cannot duplicate work here — nothing was sent and accepted.
-            if attempt < 2:
+        except httpx.HTTPError as error:
+            # A model that is being woken up, or a blip on the wire: the same tries the
+            # streaming path gives before giving up. Retrying cannot duplicate work here —
+            # nothing was sent and accepted.
+            if attempt < ATTEMPTS - 1:
                 time.sleep(0.5 * 2**attempt)
                 continue
-            raise RuntimeError("Model connection failed; no action executed.") from None
+            raise _no_answer(error, seconds) from None
         if response.status_code in {429, 529, 503} and attempt < 2:
             time.sleep(0.5 * 2**attempt)
             continue
@@ -51,7 +118,8 @@ def post_stream(url, key, body, headers=None, on_delta=None):
     Retries happen only before the first chunk, never mid-stream.
     """
     request_headers = headers or {"Authorization": f"Bearer {key}"}
-    for attempt in range(3):
+    seconds = timeout_seconds()
+    for attempt in range(ATTEMPTS):
         parts = []
         usage = {}
         model_id = None
@@ -80,13 +148,13 @@ def post_stream(url, key, body, headers=None, on_delta=None):
                         if on_delta:
                             on_delta(content)
                 return "".join(parts), usage, model_id
-        except httpx.HTTPError:
+        except httpx.HTTPError as error:
             if served:
                 raise RuntimeError("Model stream failed mid-response; no action executed.") from None
-            if attempt < 2:
+            if attempt < ATTEMPTS - 1:
                 time.sleep(0.5 * 2**attempt)
                 continue
-            raise RuntimeError("Model connection failed; no action executed.") from None
+            raise _no_answer(error, seconds) from None
     raise RuntimeError("Model unavailable")
 
 

@@ -41,13 +41,25 @@ from .parameters import (
 from .redact import redact
 
 
-def check_providers():
+def check_providers(on_event=None):
     """One tiny real request per configured role; per-role status for the sidebar.
 
     This is the setup self-test: it shows exactly which model works and, when
     one fails, the provider's own error (wrong key, wrong model id, ...).
+
+    On a free tier this is not instant: an endpoint that has to wake up can take
+    tens of seconds per role, and the whole check runs them one after another.
+    `on_event(kind, payload)` therefore reports each role as it starts and finishes
+    ("start"/"done") so the sidebar can show the wait instead of a frozen panel.
     """
     from . import providers as provider_layer
+
+    def announce(kind, payload):
+        if on_event is not None:
+            try:
+                on_event(kind, payload)
+            except Exception:  # noqa: BLE001 - progress is a courtesy; it never breaks the check
+                pass
 
     roles = []
     if provider_layer.planner_enabled():
@@ -64,12 +76,13 @@ def check_providers():
             else:
                 provider = provider_layer.resolve(role)
                 entry["model"] = f"{provider['name']}:{provider['model']}"
+                announce("start", {"role": role, "model": entry["model"]})
                 started = time.perf_counter()
                 provider_layer.chat(
                     provider,
                     "You are a connectivity check. Reply with exactly the JSON object {} and nothing else.",
                     "ping",
-                    max_tokens=512,
+                    max_tokens=64,
                 )
                 entry.update(ok=True, latency_ms=round((time.perf_counter() - started) * 1000), detail="connected")
         except ValueError as error:
@@ -90,7 +103,9 @@ def check_providers():
                     " paste it in .env without quotes or extra characters, save, and restart the starter."
                 )
         results[role] = entry
+        announce("done", dict(entry))
     return results
+
 
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 DEFAULT_PORT = 8767
@@ -600,6 +615,7 @@ class TaskRunner:
         self.stopped = False
         self.last_error = None
         self.provider_check = None
+        self.checking = None  # epoch seconds while a self-test is in flight, else None
         self.approvals = None
         self.mode = "browser"
         self.orchestrated = None
@@ -669,6 +685,9 @@ class TaskRunner:
             "policy": policy_description(),
             "error": self.last_error,
             "providers": self.provider_check,
+            # A self-test can take minutes on a free tier: the sidebar shows the wait instead
+            # of a verdict from before it.
+            "checking": self.checking,
             "selection": selection,
             "schema": PARAMETER_SCHEMA,
             "presets": PRESETS,
@@ -740,10 +759,12 @@ class TaskRunner:
         else:
             return  # it is stuck; the next "Test setup" press will report instead
         epoch = self._config_epoch
+        self._checking_started()
         try:
-            report = check_providers()
+            report = check_providers(self._check_progress)
         finally:
             self._check_lock.release()
+            self._checking_finished()
         if epoch == self._config_epoch:
             self.provider_check = report
             self._broadcast()
@@ -759,14 +780,47 @@ class TaskRunner:
         if not self._check_lock.acquire(blocking=False):
             return  # another check is already in flight
         epoch = self._config_epoch
+        self._checking_started()
         try:
-            report = check_providers()
+            report = check_providers(self._check_progress)
         finally:
             self._check_lock.release()
+            self._checking_finished()
         if epoch != self._config_epoch:
             return  # a key was saved while this ran: its verdict is already obsolete
         self.provider_check = report
         self._broadcast()
+
+    def _checking_started(self):
+        """Tell the sidebar a self-test is in flight, so it shows the wait and not the old verdict."""
+        self.checking = time.time()
+        self._broadcast()
+
+    def _checking_finished(self):
+        self.checking = None
+        self._broadcast()
+
+    def _check_progress(self, kind, payload):
+        """One line per step of the self-test: which role is being asked, and what came back.
+
+        A free endpoint that has to wake up takes tens of seconds, and the whole check runs
+        the roles one after another; without this the sidebar only had a frozen panel to
+        offer for minutes. The lines carry the role, the model, and the measured latency —
+        never a key.
+        """
+        from . import providers as provider_layer
+
+        label = provider_layer.ROLE_LABELS.get(payload.get("role"), payload.get("role"))
+        if kind == "start":
+            self.bridge.broadcast({"type": "notice", "message": f"Testing {label} ({payload.get('model')})…"})
+            return
+        if payload.get("ok"):
+            self.bridge.broadcast(
+                {"type": "notice", "message": f"{label} answered in {payload.get('latency_ms')} ms"}
+            )
+            return
+        detail = (payload.get("detail") or "").strip() or "no answer"
+        self.bridge.broadcast({"type": "notice", "message": f"{label} FAILED — {detail}"})
 
     def start(self, goal, url, tab_id):
         goal = (goal or "").strip()

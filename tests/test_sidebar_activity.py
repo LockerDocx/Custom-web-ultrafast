@@ -115,6 +115,50 @@ def test_the_verdict_says_where_the_keys_are_read_from(panel):
     assert "~/.config/jev-ultrafast/.env" in panel["readyBad"]["text"]
 
 
+def test_a_model_that_did_not_answer_is_not_reported_as_a_missing_model(panel):
+    """A role with a model that stayed silent is not a missing key.
+
+    Reported 2026-09-25: the panel showed `Planner · nvidia:z-ai/glm-5.3` in red and then said the
+    Planner and the Executor "have no model" - the model was right there on the line above. That
+    wording sends the user hunting for a key they have already pasted; what happened is that the
+    endpoint did not answer, and that is what the panel has to say.
+    """
+    unreachable = text(panel["readyUnreachable"]["text"])
+    assert "did not answer" in unreachable
+    assert "have no model" not in unreachable, "a configured model must not be called missing"
+    assert "slow or unreachable" in unreachable
+    assert "Test setup to try again" in unreachable, "the fix is a retry, and the panel says so"
+    assert "Executor" in unreachable
+    # and the "no model" wording is still reserved for the case it describes
+    assert "have no model" in text(panel["readyBad"]["text"])
+
+
+def test_a_self_test_shows_the_wait_instead_of_the_old_verdict(panel):
+    """Free endpoints take their time; the panel must say it is working, with real seconds.
+
+    The clock is the only number here: 12 s and then 13 s, both measured.
+    """
+    checking = text(panel["readyChecking"]["text"])
+    assert "Testing every model connection" in checking
+    assert panel["readyChecking"]["dot"] == "\u23f3"
+    assert panel["readyChecking"]["testing"] is True
+    assert panel["readyChecking"]["buttonDisabled"] is True, "a second press is dropped anyway"
+    assert panel["readyTick"]["text"] != panel["readyChecking"]["text"], "the counter must tick"
+    first = int(re.search(r"(\d+) s", checking).group(1))
+    second = int(re.search(r"(\d+) s", text(panel["readyTick"]["text"])).group(1))
+    assert second > first, f"elapsed time went backwards: {first} then {second}"
+    assert text(panel["readyTick"]["text"]).replace(f"{second} s", "N s") == checking.replace(
+        f"{first} s", "N s"
+    ), "only the number may change between ticks"
+
+
+def test_the_panel_returns_to_a_verdict_when_the_check_answers(panel):
+    """After a check the button works again and a verdict is back."""
+    after = panel["readyAfterCheck"]
+    assert after["checking"] is False and after["buttonDisabled"] is False
+    assert "Ready to run" in text(after["text"])
+
+
 def test_clearing_the_view_does_not_stop_the_run(panel):
     """Clear empties the panel; the run continues in the background."""
     assert panel["afterClear"]["hidden"] is True

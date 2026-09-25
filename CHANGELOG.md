@@ -17,8 +17,34 @@ appear. This build drives Firefox with Groq/NVIDIA and has not been measured yet
 
 ## [Unreleased]
 
+### Added
+
+- **A CI job that proves the one-key promise.** `.github/workflows/single-key-check.yml` runs the self-test twice —
+  NVIDIA key only, Groq key only — with every role and model override removed, so the derivation has to configure
+  all three roles on its own; a role that cannot run fails the job, and a role that is merely rate-limited is
+  reported as capacity. `scripts/single_key_check.sh` is the script behind it, runnable locally too.
+
 ### Fixed
 
+- **"Model connection failed" no longer means "your key is wrong", and it stops happening so often.** A user whose
+  single NVIDIA NIM key was working saw the planner and the executor red with that sentence while the text role, on
+  the same key, answered after 37.8 s — three 25 s attempts had gone by without one byte, which is a free endpoint
+  waking up. The wait is now 60 s per attempt (`JEV_HTTP_TIMEOUT` overrides it), the retries stay, and the message
+  says which failure it was: nothing answered in time — *"the endpoint is slow or busy, not a rejected key"* — or
+  the connection could not be established (network, proxy, VPN). A key the provider really rejects is still answered
+  with its own HTTP 401 and named as a key problem.
+- **The panel no longer calls a configured model "missing".** With a model that had not answered, the verdict read
+  *"Not ready: Planner, Executor have no model"* — with `Planner · nvidia:z-ai/glm-5.3` printed right above it. That
+  sentence sends you looking for a key you have already pasted. "No model" is now reserved for a role that has
+  none; a role that has one and stayed silent says *"did not answer — the model is configured, the endpoint is slow
+  or unreachable. Press Test setup to try again."*
+- **A self-test is no longer a frozen panel.** The wait is shown while it happens: the box reads *"Testing every
+  model connection… 12 s"* with the seconds ticking, the button is disabled so a second press is not dropped
+  silently, and every role is announced as it starts and finishes (`Testing Executor (nvidia:openai/gpt-oss-20b)…`,
+  *answered in 1 282 ms*, or *FAILED — no answer within 60 s*). The roles are asked one after another, which is the
+  honest reason a slow free tier takes minutes.
+- **`check_providers` takes an optional `on_event` callback**, so any caller (the host today, a script tomorrow) can
+  report progress; a caller that passes nothing gets exactly the report it always got.
 - **The live-provider check no longer goes red when an endpoint simply stalls.** The run of 25 Sep was red on
   NVIDIA NIM leaving `openai/gpt-oss-20b` unanswered for 76 s, while the same provider answered for
   `z-ai/glm-5.3` in the same run and re-running it unchanged went green. A probe that comes back with no verdict

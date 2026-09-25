@@ -114,6 +114,8 @@ Registering the host with Firefox...
 4. Pulsa **Test setup**: el panel prueba cada modelo y te da el resultado exacto.
    - 🟢 `Executor · groq:openai/gpt-oss-20b 267 ms` = tu clave funciona ✓
    - 🔴 algo rojo = lee el mensaje: dice exactamente qué falla (clave mal pegada, sin saldo, modelo inexistente…)
+   - ⏳ mientras prueba verás `Testing every model connection… N s` **con los segundos corriendo**: es normal. Los roles se prueban uno detrás de otro y un endpoint gratis que estaba dormido puede tardar un minuto. Espera; no hace falta pulsar nada.
+   - Si un rol sale rojo con **“Model connection failed … not a rejected key”**: tu clave está bien, es el proveedor que no contestó a tiempo. Pulsa **Test setup** otra vez, o sube la paciencia en `.env` con `JEV_HTTP_TIMEOUT=120` (segundos) y reinicia el starter. **No generes una clave nueva por esto.**
 5. Escribe una misión de prueba y pulsa **Run**:
    > Busca el artículo de la Wikipedia sobre la Torre Eiffel y ábrelo.
 

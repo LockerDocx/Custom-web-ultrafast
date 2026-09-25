@@ -116,6 +116,8 @@ Any OpenAI-compatible or Anthropic-compatible endpoint can drive any role: Groq,
 
 Configuration, presets and self-hosted gateways: [docs/providers.md](docs/providers.md) · which parameters each model really accepts: [docs/model-parameters.md](docs/model-parameters.md).
 
+**"Model connection failed" is not a key problem.** A free tier queues, cold-starts and now and then leaves a request without an answer for a minute — the agent waits 60 s and asks up to three times before it says so, and a key that was actually rejected is answered with HTTP 401 and named as a key problem. If your endpoint is slower than that, raise the wait (`JEV_HTTP_TIMEOUT=120`) and press **Test setup** again; while a check runs the sidebar shows which role it is asking and how long it has been waiting.
+
 ## Privacy and safety
 
 - **Everything local except the model calls.** The bridge listens on `127.0.0.1` only, checks the `moz-extension://` origin, and the optional web console binds to `127.0.0.1` with a token.
