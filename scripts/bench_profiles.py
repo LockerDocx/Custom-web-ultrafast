@@ -201,7 +201,8 @@ def stats(latencies):
 
 def run_profile(name, profile, args):
     apply_profile(profile)
-    report = {"profile": name, "note": profile["note"], "roles": {}, "wire": {}, "quality": {}}
+    report = {"profile": name, "note": profile["note"], "roles": {}, "wire": {}, "quality": {},
+              "budgets": dict(BUDGETS)}
 
     for role in ("planner", "policy", "text"):
         report["wire"][role] = describe_wire(role)
@@ -322,6 +323,7 @@ def run_profile(name, profile, args):
 def render(report):
     print(f"\n## Profile: `{report['profile']}`\n")
     print(f"*{report['note']}*\n")
+    print(f"- token budget per role: {report.get('budgets')}\n")
     print("| Role | Provider:model | reasoning sent | wire params |")
     print("| --- | --- | --- | --- |")
     for role, wire in report["wire"].items():

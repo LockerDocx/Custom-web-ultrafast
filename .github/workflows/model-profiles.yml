@@ -22,6 +22,14 @@ on:
         description: "Extra tokens for the planner (the app asks for 1024); empty = unchanged"
         required: false
         default: ""
+      plans:
+        description: "Planner missions per profile"
+        required: false
+        default: "3"
+      routing_sample:
+        description: "Routing battery cases per profile"
+        required: false
+        default: "12"
   push:
     paths:
       - ".github/workflows/model-profiles.yml"
@@ -83,7 +91,8 @@ jobs:
             echo "## Model profile: ${{ matrix.profile }}"
             echo
             python scripts/bench_profiles.py --profile "${{ matrix.profile }}" \
-              --routing-sample 12 --plans 3 --text-cases 4 \
+              --routing-sample "${{ github.event.inputs.routing_sample || '12' }}" \
+              --plans "${{ github.event.inputs.plans || '3' }}" --text-cases 4 \
               ${{ github.event.inputs.planner_budget && format('--planner-budget {0}', github.event.inputs.planner_budget) || '' }} \
               --json "artifacts/profile-${{ matrix.profile }}.json"
           } | tee /tmp/report.md
