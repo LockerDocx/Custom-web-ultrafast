@@ -127,6 +127,21 @@ def test_an_unavailable_catalogue_is_not_a_missing_model(env_of, monkeypatch):
     assert unavailable is None and ids == ["z-ai/glm-5.3"]
 
 
+def test_the_bench_asks_with_the_budget_the_app_uses(env_of):
+    """The planner gets 1024 tokens and the other two 2048 - model.py's own numbers.
+
+    With a smaller budget a long plan arrives cut in half, `extract_json` cannot close it, and
+    the report would blame the model for the bench's truncation. It did, once.
+    """
+    from jev_ultrafast import model as model_module
+
+    source = (ROOT / "jev_ultrafast" / "model.py").read_text(encoding="utf-8")
+    assert f'max_tokens={bench.BUDGETS["planner"]}' in source, "the planner budget must match the app"
+    assert source.count(f'max_tokens={bench.BUDGETS["policy"]}') >= 1
+    assert source.count(f'max_tokens={bench.BUDGETS["text"]}') >= 1
+    assert model_module is not None
+
+
 def test_the_quality_checks_are_the_objective_ones(env_of):
     """The three checks a candidate must pass are the three the agent depends on."""
     assert bench.PLANNER_MISSIONS and all(len(mission) > 20 for mission in bench.PLANNER_MISSIONS)

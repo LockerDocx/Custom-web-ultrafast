@@ -99,6 +99,11 @@ PROFILES = {
     },
 }
 
+# The token budgets are the app's own (model.py: planner 1024, policy and text 2048), not
+# something the bench chose: with a smaller budget a long plan comes back cut in half and the
+# report would blame the model for the bench's truncation. Measured, and it happened.
+BUDGETS = {"planner": 1024, "policy": 2048, "text": 2048}
+
 PLANNER_MISSIONS = (
     "Book the cheapest direct flight from Barcelona to Rome next Friday, one adult",
     "Find the schedule of the Sagrada Familia and tell me if it opens on Sunday morning",
@@ -218,7 +223,7 @@ def run_profile(name, profile, args):
     # ── 1. the planner: a valid plan, and how long it took ───────────────────
     plans, planner_latencies, planner_failures = [], [], []
     for mission in PLANNER_MISSIONS[: args.plans]:
-        result = call("planner", PLANNER_SYSTEM, f"MISSION: {mission}", 700)
+        result = call("planner", PLANNER_SYSTEM, f"MISSION: {mission}", BUDGETS["planner"])
         if not result["ok"]:
             planner_failures.append(result["error"])
             continue
@@ -246,7 +251,7 @@ def run_profile(name, profile, args):
     routing_rows, policy_latencies, policy_failures = [], [], []
     dangerous = 0
     for case in cases:
-        result = call("policy", ROUTING_SYSTEM, f"MISSION: {case['mission']}", 200)
+        result = call("policy", ROUTING_SYSTEM, f"MISSION: {case['mission']}", BUDGETS["policy"])
         if not result["ok"]:
             policy_failures.append(result["error"])
             continue
@@ -276,7 +281,7 @@ def run_profile(name, profile, args):
     # ── 3. the text writer: the value the goal supplied, exactly ─────────────
     text_rows, text_latencies, text_failures = [], [], []
     for goal, field, expected in TEXT_CASES[: args.text_cases]:
-        result = call("text", TEXT_VALUE, f"GOAL: {goal}\nFIELD: {field}", 120)
+        result = call("text", TEXT_VALUE, f"GOAL: {goal}\nFIELD: {field}", BUDGETS["text"])
         if not result["ok"]:
             text_failures.append(result["error"])
             continue
