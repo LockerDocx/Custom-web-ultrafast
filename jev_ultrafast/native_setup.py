@@ -14,6 +14,7 @@ The registration is per user and needs no administrator rights:
 import json
 import os
 import sys
+from shutil import which
 from pathlib import Path
 
 HOST_NAME = "jev_ultrafast_host"
@@ -23,11 +24,18 @@ MANIFEST_NAME = f"{HOST_NAME}.json"
 
 
 def executable(root=None):
-    """The venv entry point Firefox should launch (an executable, never a shell)."""
+    """The entry point Firefox should launch (an executable, never a shell).
+
+    The starter builds one inside the checkout; an install without a local venv
+    (`pip install -e .`, a shared environment) has one on PATH instead. Prefer the
+    checkout's own, because that is the one tied to this folder's code and .env.
+    """
     root = Path(root or repo_root())
-    if os.name == "nt":
-        return root / ".venv" / "Scripts" / f"{BUILD_SCRIPT}.exe"
-    return root / ".venv" / "bin" / BUILD_SCRIPT
+    scripts = ("Scripts", ".exe") if os.name == "nt" else ("bin", "")
+    local = root / ".venv" / scripts[0] / f"{BUILD_SCRIPT}{scripts[1]}"
+    if local.exists():
+        return local
+    return Path(which(BUILD_SCRIPT) or local)
 
 
 def manifest_path():

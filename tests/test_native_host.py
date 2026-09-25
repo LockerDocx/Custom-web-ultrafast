@@ -270,11 +270,22 @@ def test_registration_writes_the_exact_manifest_firefox_looks_for(tmp_path, monk
     assert native_setup.status()["registered"] is False
 
 
-def test_registration_points_at_the_real_entry_point(tmp_path, monkeypatch):
+def test_registration_points_at_a_program_that_exists(tmp_path, monkeypatch):
+    """Whatever the install shape (starter venv, pip, uv), the browser must find a real program."""
     monkeypatch.setenv("HOME", str(tmp_path))
     entry = native_setup.register(root=ROOT)
-    assert entry["exists"] is True, "the venv entry point must exist after the starter ran"
-    assert native_setup.executable(ROOT).name.startswith(native_setup.BUILD_SCRIPT)
+    assert entry["exists"] is True, f"{entry['executable']} does not exist"
+    assert Path(str(entry["executable"])).name.startswith(native_setup.BUILD_SCRIPT)
+
+
+def test_the_checkout_venv_wins_over_the_path_when_both_exist(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    checkout = tmp_path / "checkout"
+    scripts, suffix = ("Scripts", ".exe") if os.name == "nt" else ("bin", "")
+    entry = checkout / ".venv" / scripts / f"{native_setup.BUILD_SCRIPT}{suffix}"
+    entry.parent.mkdir(parents=True)
+    entry.write_text("")
+    assert native_setup.executable(checkout) == entry
 
 
 def test_status_is_honest_when_nothing_is_registered(tmp_path, monkeypatch):
