@@ -176,3 +176,26 @@ def test_the_package_metadata_survives_a_real_install():
     unknown = set(urls) - {"Homepage", "Repository", "Issues", "Releases", "Documentation", "Changelog"}
     assert not unknown, f"not a project URL key: {unknown}"
     assert "dependencies" not in urls, "a misplaced key here breaks every install"
+
+def test_the_double_click_starters_are_executable_in_the_repository():
+    """A starter that arrives without its executable bit is not double-clickable.
+
+    CI checks this too, but only after the commit has been pushed and a sandbox
+    that rewrites the working tree with 0644 has already staged it. Checking the
+    index here means the mistake is caught before it leaves the machine — and
+    skipped, not failed, for anyone working from a ZIP without git.
+    """
+    import subprocess
+
+    if not (ROOT / ".git").exists():
+        pytest.skip("not a git checkout")
+    starters = ["start-host.sh", "start-host.command", "install-laya.sh", "install-laya.command"]
+    salida = subprocess.run(["git", "ls-files", "-s", *starters],
+                            cwd=ROOT, capture_output=True, text=True, check=False).stdout
+    if not salida.strip():
+        pytest.skip("git is not available here")
+    perdidos = [linea.split("\t")[1] for linea in salida.strip().splitlines() if not linea.startswith("100755")]
+    assert not perdidos, (
+        f"these starters lost their executable bit: {perdidos}. "
+        f"Fix with: git update-index --chmod=+x {' '.join(perdidos)}"
+    )
