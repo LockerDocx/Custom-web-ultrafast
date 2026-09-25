@@ -1,4 +1,4 @@
-# Setup y uso, sistema por sistema — **AI Agent for Firefox** v0.12.1
+# Setup y uso, sistema por sistema — **AI Agent for Firefox** v0.12.2
 
 Guía definitiva: qué haces **una vez** (setup) y qué haces **cada día** (uso), con los comandos exactos de tu sistema.
 
@@ -46,7 +46,7 @@ Guía definitiva: qué haces **una vez** (setup) y qué haces **cada día** (uso
 
 1. Descarga el proyecto, de una de las dos formas:
    - **Código**: https://github.com/LockerDocx/firefox-ai-agent → botón verde **Code** → **Download ZIP**
-   - **Release** (recomendado): https://github.com/LockerDocx/firefox-ai-agent/releases/latest → `firefox-ai-agent-v0.12.1-source.zip`
+   - **Release** (recomendado): https://github.com/LockerDocx/firefox-ai-agent/releases/latest → `firefox-ai-agent-v0.12.2-source.zip`
 2. **Descomprímelo** en un sitio que no vayas a mover después (Escritorio, Documentos, o `C:\Jev` en Windows).
    - Windows: clic derecho sobre el ZIP → **Extraer todo…**
    - macOS / Linux: doble clic sobre el ZIP
@@ -520,4 +520,4 @@ Ocupa unos **2 GB** en disco y descarga una imagen de ~630 MB la primera vez. El
 
 ---
 
-<sub>AI Agent for Firefox v0.12.1 · Verificado en CI sobre contenedores reales de openSUSE Leap 15.6 y Tumbleweed, en Windows (windows-latest) y en Linux con Python 3.11, 3.12 y 3.13. Informe técnico: `informe-suse-linux-windows.md`.</sub>
+<sub>AI Agent for Firefox v0.12.2 · Verificado en CI sobre contenedores reales de openSUSE Leap 15.6 y Tumbleweed, en Windows (windows-latest) y en Linux con Python 3.11, 3.12 y 3.13. Informe técnico: `informe-suse-linux-windows.md`.</sub>
