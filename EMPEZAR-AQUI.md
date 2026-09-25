@@ -90,7 +90,7 @@ La clave es como una contraseña para que el asistente use una IA. La más fáci
 2. Clic en **"This Firefox"** (o **"Este Firefox"** si lo tienes en español), en el menú de la izquierda
 3. Pulsa el botón **"Load Temporary Add-on…"** (o **"Cargar complemento temporal…"**)
 4. Se abre una ventana para elegir archivo. Dos formas, la que te resulte más cómoda:
-   - **Un solo archivo** ⭐: descarga `jev-agent-firefox-….xpi` de la página **Releases** del proyecto (la misma de donde bajaste el ZIP) y selecciónalo tal cual
+   - **Un solo archivo** ⭐: descarga el `.xpi` (`ai-agent-for-firefox-….xpi`) de la página **Releases** del proyecto (la misma de donde bajaste el ZIP) y selecciónalo tal cual
    - **Desde la carpeta**: entra en **la carpeta del proyecto** (la del PASO 1) → subcarpeta **`extension`** → selecciona **`manifest.json`** → **Abrir**
 5. ✓ Comprobación: en la lista aparece **"AI Agent for Firefox"**
 

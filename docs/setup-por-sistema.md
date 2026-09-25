@@ -94,7 +94,7 @@ Registering the host with Firefox...
 2. En el menú izquierdo, **This Firefox** (en español: **Este Firefox**)
 3. Botón **Load Temporary Add-on…** (**Cargar complemento temporal…**)
 4. Elige **un archivo**, la opción que te sea más cómoda:
-   - ⭐ **El `.xpi`**: descarga `jev-agent-firefox-v0.11.0.xpi` de la página **Releases** y selecciónalo tal cual (un solo archivo, lo más simple)
+   - ⭐ **El `.xpi`**: descarga el `.xpi` (`ai-agent-for-firefox-<versión>.xpi`) de la página **Releases** y selecciónalo tal cual (un solo archivo, lo más simple)
    - **O desde la carpeta**: entra en la carpeta del proyecto → subcarpeta **`extension`** → selecciona **`manifest.json`**
 5. ✓ En la lista debe aparecer **"AI Agent for Firefox"**
 

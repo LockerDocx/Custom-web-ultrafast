@@ -31,7 +31,7 @@ Five steps, about ten minutes, no commands to type.
 | **1 · Download** | **[Download the ZIP](https://github.com/LockerDocx/firefox-ai-agent/archive/refs/heads/main.zip)** (or the `source.zip` from [Releases](https://github.com/LockerDocx/firefox-ai-agent/releases/latest)) and extract it somewhere you will keep it. |
 | **2 · Free key** | Get one at **[console.groq.com/keys](https://console.groq.com/keys)** (2 minutes, free, Google login works). It is the only thing the agent needs. |
 | **3 · One double-click** | Double-click the starter for your system — `start-host.bat` (Windows), `start-host.command` (macOS), `start-host.sh` (Linux). It prepares everything (~1 min) and **registers the agent with Firefox**. From then on this double-click is not needed again. |
-| **4 · Load the add-on** | Firefox → `about:debugging` → *This Firefox* → **Load Temporary Add-on…** → pick **`jev-agent-firefox.xpi`** from [Releases](https://github.com/LockerDocx/firefox-ai-agent/releases/latest) (or `extension/manifest.json`). |
+| **4 · Load the add-on** | Firefox → `about:debugging` → *This Firefox* → **Load Temporary Add-on…** → pick the **`ai-agent-for-firefox-*.xpi`** from [Releases](https://github.com/LockerDocx/firefox-ai-agent/releases/latest) (or `extension/manifest.json`). |
 | **5 · Paste the key** | Open the **agent sidebar** (toolbar button), paste the key into the card, press **Save**. Then press **Test setup**: every model turns green with its latency. |
 
 Write a goal, press **Run**, and watch your Firefox work. Full point-and-click walkthrough: **[docs/getting-started-gui.md](docs/getting-started-gui.md)**.

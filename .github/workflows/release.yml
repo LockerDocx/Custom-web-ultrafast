@@ -38,7 +38,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           python -m build --wheel --outdir dist
-          (cd extension && zip -r -q "../jev-agent-firefox-${GITHUB_REF_NAME}.xpi" .)
+          (cd extension && zip -r -q "../ai-agent-for-firefox-${GITHUB_REF_NAME}.xpi" .)
           git archive --format=zip -o "firefox-ai-agent-${GITHUB_REF_NAME}-source.zip" HEAD
           ls -la dist *.xpi *-source.zip
       - name: Upload to the release
@@ -88,6 +88,6 @@ jobs:
             fail "could not upload ${name}"
           }
           upload "dist/jev_ultrafast-${VERSION}-py3-none-any.whl" || exit 1
-          upload "jev-agent-firefox-${GITHUB_REF_NAME}.xpi" || exit 1
+          upload "ai-agent-for-firefox-${GITHUB_REF_NAME}.xpi" || exit 1
           upload "firefox-ai-agent-${GITHUB_REF_NAME}-source.zip" || exit 1
           echo "ALL ASSETS UPLOADED" | tee -a "$LOG"
