@@ -24,9 +24,14 @@ jobs:
           # install, and both names were checked against the release repositories.
           - image: opensuse/leap:15.6
             packages: python312 python312-pip
+            # The 3.6 that answers to `python3` stays on a real Leap desktop, so
+            # the container keeps it too: the starter must choose 3.12 anyway,
+            # and the tool tests need a `python3` to call.
+            extra: python3
             interpreter: python3.12
           - image: opensuse/tumbleweed:latest
             packages: python313 python313-pip
+            extra: ""
             interpreter: python3.13
     container:
       image: ${{ matrix.image }}
@@ -36,7 +41,7 @@ jobs:
       - name: Install git and Python the way openSUSE does
         run: |
           zypper --non-interactive --gpg-auto-import-keys refresh
-          zypper --non-interactive install git ${{ matrix.packages }}
+          zypper --non-interactive install git ${{ matrix.packages }} ${{ matrix.extra }}
       - name: The starter must pick this release's interpreter
         run: |
           git clone --depth 1 https://github.com/${{ github.repository }}.git /src
