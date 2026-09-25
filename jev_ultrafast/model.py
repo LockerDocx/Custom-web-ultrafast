@@ -533,16 +533,44 @@ def _planner_request(mission, page, *, reason=None, plan=None, plan_index=0, his
     return "\n".join(lines)
 
 
+PLANNER_ATTEMPTS = 2
+
+
+def _ask_for_plan(provider, user):
+    """One planner request, parsed and validated."""
+    content, _meta = providers.chat(provider, PLANNER_SYSTEM, user, max_tokens=1024)
+    return _validate_steps(providers.extract_json(content))
+
+
+def _plan_with_one_retry(provider, user):
+    """Ask for the plan, and ask once more when the reply came back unusable.
+
+    Measured on 2026-09-25 (scripts/bench_profiles.py, 10 missions x 2 token budgets): one planner
+    call in ten came back **empty** from NVIDIA's GLM endpoint - and at exactly the same rate with
+    1024 and with 2048 tokens, so it is not a truncated answer and a bigger budget does not fix it.
+    The planner runs once per mission, so a second try is cheap; losing the plan is not fatal (the
+    agent falls back to the single-goal loop) but the checklist is worth one more question.
+
+    Only an unusable *reply* is retried. A connection failure is already retried three times inside
+    model.post_json and is raised here as it is.
+    """
+    last = None
+    for _attempt in range(PLANNER_ATTEMPTS):
+        try:
+            return _ask_for_plan(provider, user)
+        except ValueError as error:  # empty reply, unparseable JSON, or a rejected step list
+            last = error
+    raise last
+
+
 def plan_steps(mission, page):
     """The planner decomposes the mission into a short ordered checklist of browser steps."""
     provider = providers.resolve("planner")
-    content, _meta = providers.chat(provider, PLANNER_SYSTEM, _planner_request(mission, page), max_tokens=1024)
-    return _validate_steps(providers.extract_json(content))
+    return _plan_with_one_retry(provider, _planner_request(mission, page))
 
 
 def replan_steps(mission, plan, plan_index, reason, page, history):
     """Replacement steps for the remaining plan after a blocked or stalled step."""
     provider = providers.resolve("planner")
     user = _planner_request(mission, page, reason=reason, plan=plan, plan_index=plan_index, history=history)
-    content, _meta = providers.chat(provider, PLANNER_SYSTEM, user, max_tokens=1024)
-    return _validate_steps(providers.extract_json(content))
+    return _plan_with_one_retry(provider, user)

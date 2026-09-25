@@ -19,10 +19,24 @@ appear. This build drives Firefox with Groq/NVIDIA and has not been measured yet
 
 ### Added
 
+- **The planner asks twice when its first reply is unusable.** Measured: one planner call in ten came
+  back **empty** from NVIDIA's GLM endpoint, at the same rate with 1024 and with 2048 tokens (so it is
+  not a truncated answer, and a bigger budget does not fix it). The planner runs once per mission, so a
+  second question is cheap and keeps the checklist; a connection failure is not asked again, because the
+  HTTP layer already spends its three attempts on the wire.
 - **A CI job that proves the one-key promise.** `.github/workflows/single-key-check.yml` runs the self-test twice —
   NVIDIA key only, Groq key only — with every role and model override removed, so the derivation has to configure
   all three roles on its own; a role that cannot run fails the job, and a role that is merely rate-limited is
   reported as capacity. `scripts/single_key_check.sh` is the script behind it, runnable locally too.
+- **A bench that measures candidate model profiles instead of guessing.** `scripts/bench_profiles.py`
+  (`.github/workflows/model-profiles.yml`, one job per candidate) reports median and worst latency per role
+  from the prompts and token budgets the agent itself uses, plus three objective quality checks: a valid plan,
+  the routing decision on the project's own 241-mission battery, and the exact value the goal supplied for a
+  field. It was written to answer one question — *"what if we limit the AI: glm-5.3 flash without reasoning?"* —
+  and the answer stops the guesswork: flash with thinking off was the **slowest** NVIDIA candidate measured
+  (85 s / 43 s / 42 s medians for planner, executor and text against 30 s / 36 s / 9 s for the shipped
+  defaults), because what costs time on that free tier is the queue, not the parameters. `docs/providers.md`
+  carries the table.
 
 ### Fixed
 
