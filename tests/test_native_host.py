@@ -23,6 +23,26 @@ from jev_ultrafast import firefox, native_setup
 ROOT = Path(__file__).parent.parent
 
 
+WINDOWS = os.name == "nt"
+
+
+def isolate_user(monkeypatch, tmp_path):
+    """Point the browser's per-user folders at tmp_path on any platform.
+
+    Windows reads APPDATA/USERPROFILE and the registry; POSIX reads HOME. The
+    registry write is stubbed on Windows so running the suite never touches the
+    machine it runs on, while still asserting what would be written.
+    """
+    written = {}
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
+    if WINDOWS:
+        monkeypatch.setattr(native_setup, "_write_registry", lambda value: written.update(registry=str(value)))
+        monkeypatch.setattr(native_setup, "_delete_registry", lambda: written.update(deleted=True))
+    return written
+
+
 def frame(message):
     payload = json.dumps(message).encode("utf-8")
     return struct.pack("<I", len(payload)) + payload
@@ -255,10 +275,10 @@ def test_the_host_finds_its_own_folder_whatever_the_browser_cwd_is(browser, tmp_
 
 
 def test_registration_writes_the_exact_manifest_firefox_looks_for(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("APPDATA", raising=False)
+    written = isolate_user(monkeypatch, tmp_path)
     entry = native_setup.register(root=ROOT, path=tmp_path / "jev-firefox-native")
-    assert str(entry["manifest"]).endswith(f"native-messaging-hosts/{native_setup.HOST_NAME}.json")
+    assert entry["manifest"].name == f"{native_setup.HOST_NAME}.json"
+    assert entry["manifest"].parent.name in {"native-messaging-hosts", "NativeMessagingHosts"}
     manifest = json.loads(Path(entry["manifest"]).read_text())
     assert manifest["name"] == native_setup.HOST_NAME
     assert manifest["type"] == "stdio"
@@ -266,20 +286,24 @@ def test_registration_writes_the_exact_manifest_firefox_looks_for(tmp_path, monk
     assert Path(manifest["path"]).is_absolute()  # macOS/Linux require absolute
     assert re.fullmatch(r"\w+(\.\w+)*", manifest["name"]), "Firefox rejects other names"
     assert native_setup.status()["registered"] is True
+    if WINDOWS:  # the browser finds it through HKCU, not through a known folder
+        assert written["registry"] == str(entry["manifest"])
     assert native_setup.unregister() is True
+    if WINDOWS:
+        assert written.get("deleted") is True
     assert native_setup.status()["registered"] is False
 
 
 def test_registration_points_at_a_program_that_exists(tmp_path, monkeypatch):
     """Whatever the install shape (starter venv, pip, uv), the browser must find a real program."""
-    monkeypatch.setenv("HOME", str(tmp_path))
+    isolate_user(monkeypatch, tmp_path)
     entry = native_setup.register(root=ROOT)
     assert entry["exists"] is True, f"{entry['executable']} does not exist"
     assert Path(str(entry["executable"])).name.startswith(native_setup.BUILD_SCRIPT)
 
 
 def test_the_checkout_venv_wins_over_the_path_when_both_exist(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
+    isolate_user(monkeypatch, tmp_path)
     checkout = tmp_path / "checkout"
     scripts, suffix = ("Scripts", ".exe") if os.name == "nt" else ("bin", "")
     entry = checkout / ".venv" / scripts / f"{native_setup.BUILD_SCRIPT}{suffix}"
@@ -289,7 +313,7 @@ def test_the_checkout_venv_wins_over_the_path_when_both_exist(tmp_path, monkeypa
 
 
 def test_status_is_honest_when_nothing_is_registered(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
+    isolate_user(monkeypatch, tmp_path)
     state = native_setup.status()
     assert state == {
         "manifest": native_setup.manifest_path(),

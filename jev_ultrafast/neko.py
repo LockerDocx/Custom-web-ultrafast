@@ -285,7 +285,8 @@ class CDPClient:
                 raise ConnectionError("Closed during CDP handshake")
             status += chunk
         if b" 101 " not in status.split(b"\r\n")[0]:
-            raise ConnectionError(f"CDP handshake rejected: {status.split(b'\r\n')[0].decode(errors='replace')}")
+            first_line = status.split(b"\r\n")[0].decode(errors="replace")
+            raise ConnectionError(f"CDP handshake rejected: {first_line}")
         accept = base64.b64encode(hashlib.sha1((key + GUID).encode()).digest()).decode()
         if accept.encode() not in status:
             raise ConnectionError("CDP handshake: bad Sec-WebSocket-Accept")

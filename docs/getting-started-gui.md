@@ -7,7 +7,18 @@ You can use, install, and even re-publish this project **without opening a termi
 ## What you need
 
 - **Firefox** (109 or newer).
-- **Python 3.12+** from [python.org/downloads](https://www.python.org/downloads/) — on Windows, tick *"Add python.exe to PATH"* during install.
+- **Python 3.11+** from [python.org/downloads](https://www.python.org/downloads/) — on Windows, tick *"Add python.exe to PATH"* during install. On Linux the starter tells you the exact command if it is missing:
+
+| System | Install Python 3.11+ |
+| --- | --- |
+| openSUSE / SUSE (Leap, Tumbleweed) | `sudo zypper install python312 python312-pip` |
+| Ubuntu / Debian / Mint | `sudo apt update && sudo apt install python3 python3-pip python3-venv` |
+| Fedora / RHEL / Rocky | `sudo dnf install python3.12 python3-pip` |
+| Arch / Manjaro | `sudo pacman -S python` |
+| macOS | `brew install python@3.12` (or python.org) |
+| Windows | python.org installer, tick *Add python.exe to PATH* |
+
+openSUSE Leap 15.6 already ships Python 3.11, which is enough — that is why the bar is 3.11 and not 3.12. The starter looks for `python3.13`, `python3.12`, `python3.11`, `python3` in that order and uses the newest one it finds.
 - **One free API key** — a Groq key ([console.groq.com](https://console.groq.com)). The planner, executor and text helper are all derived from it. An NVIDIA NIM key ([build.nvidia.com](https://build.nvidia.com)) is optional and upgrades the planner to `z-ai/glm-5.3`.
 
 ## 1. Get the code
@@ -59,9 +70,10 @@ rights, nothing system-wide). From then on:
   re-registers with the new paths).
 
 Firefox deliberately never lets an extension install local software on its own: that one-time
-registration is the browser's security model, and the starter is what does it for you. Some
-packaged builds (Ubuntu's *snap*, Flatpak) refuse to launch native hosts at all; there the starter
-window remains the way to run the agent, and everything else works identically.
+registration is the browser's security model, and the starter is what does it for you. Sandboxed
+builds (Ubuntu's *snap*, Flatpak) route the launch through a system permission: Firefox asks the
+first time, and if it is denied — or the portal is missing — the starter window remains the way to
+run the agent, with everything else identical.
 
 ## 3. Install the extension in Firefox
 
@@ -97,7 +109,7 @@ Four point-and-click options, best first:
 
 | Symptom | Fix |
 | --- | --- |
-| `Python 3.12 or newer is required` | Install Python from python.org and run the starter again. |
+| `Python 3.11 or newer is required` | The message names your system's command (zypper/apt/dnf/pacman) or the python.org download link. |
 | Starter window closes instantly | Open it from a terminal once to read the error, or reinstall Python with *Add to PATH*. |
 | Sidebar dot stays red | Opening the sidebar starts the host by itself; if it does not, that Firefox cannot launch local programs (snap/Flatpak builds) or the project folder moved — double-click the starter once, keep that window open. |
 | `Model provider returned HTTP 401` | The provider rejected the key: paste a fresh one with **🔑 API keys** in the models panel (no restart needed). |

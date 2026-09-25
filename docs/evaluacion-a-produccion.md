@@ -120,7 +120,7 @@ para construirlo encima → roadmap 0.4.0.
 
 La evaluación pide "detectar Python → instalar → configurar → self-test → ready" como ideal:
 **los starters ya hacen exactamente eso** (doble clic en `.bat`/`.command`/`.sh`: comprueban
-Python 3.12+, crean el venv, instalan el paquete + extra de documentos, crean/reparan el
+Python 3.11+, crean el venv, instalan el paquete + extra de documentos, crean/reparan el
 `.env` — incluida la corrección automática de ids de modelo antiguos —, arrancan el host y
 muestran el estado; el sidebar valida con **Test setup**). El manual EMPEZAR-AQUI.md es el
 paso a paso "para tontos" con tabla de troubleshooting.

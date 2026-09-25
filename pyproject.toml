@@ -1,10 +1,10 @@
 [project]
 name = "jev-ultrafast"
-version = "0.10.0"
+version = "0.11.0"
 description = "A browser agent that chooses instead of generating."
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = ["browser-harness==0.1.13", "httpx[http2]>=0.28,<1"]
 
 [project.optional-dependencies]

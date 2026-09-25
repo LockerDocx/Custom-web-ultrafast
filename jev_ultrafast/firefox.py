@@ -776,10 +776,11 @@ class TaskRunner:
         from .orchestrator import route_task
 
         self.mode = route_task(goal)
+        where = "isolated" if self.mode_pref == "sandbox" else "live"
         self._audit_event(
             "mission", json.dumps({"goal": goal[:200], "target": self.mode_pref}),
             ok=True,
-            preview=f"{self.mode} mission on the {"isolated" if self.mode_pref == "sandbox" else "live"} browser",
+            preview=f"{self.mode} mission on the {where} browser",
         )
         if self.mode == "orchestrated":
             self.orchestrated = {"status": "running", "log": [], "final": None, "skills": []}

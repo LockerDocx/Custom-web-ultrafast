@@ -10,7 +10,7 @@ Extraído del propio código (no de suposiciones): `pyproject.toml`, `extension/
 
 | Requisito | Detalle real | Si falta |
 | --- | --- | --- |
-| **Python 3.12+** | `requires-python = ">=3.12"`; los lanzadores lo comprueban antes de nada | `start-host.*` avisa y no arranca |
+| **Python 3.11+** | `requires-python = ">=3.11"`; los lanzadores buscan `python3.13/3.12/3.11/3` y usan el más nuevo | `start-host.*` avisa con el comando de tu distro (zypper/apt/dnf/pacman) y no arranca |
 | **Firefox 109 o superior** | `strict_min_version: "109.0"`, manifiesto v2 con `sidebar_action` | la barra lateral no aparece |
 | **La extensión cargada** | `about:debugging` → *Cargar complemento temporal* → `extension/manifest.json`. Pide `tabs`, `storage` y `<all_urls>` | sin ella el host arranca pero no hay con quién hablar |
 | **Un modelo *policy*** | `POLICY_PROVIDER` + `POLICY_MODEL` + su clave. Es el ejecutor que decide cada paso | imprime `Policy model: no policy model configured` y no hay agente |
@@ -69,7 +69,7 @@ e `install-laya.*`, y el portapapeles y las teclas modificadoras se eligen por p
 ## 6. Comprobación en 30 segundos
 
 ```bash
-python3 -c "import sys; print(sys.version)"     # 3.12 o superior
+python3 -c "import sys; print(sys.version)"     # 3.11 o superior
 .venv/bin/jev-firefox                            # imprime ws://127.0.0.1:8767 y el modelo de policy
 .venv/bin/python scripts/check_providers.py      # tabla por rol: 🟢 ok · ms / 🟡 cuota / 🔴 error
 ```

@@ -13,8 +13,19 @@ Si algo falla, mira la tabla de [problemas comunes](#-problemas-comunes) al fina
 | # | Qué | Cómo comprobarlo |
 |---|-----|------------------|
 | 1 | **Firefox** → [mozilla.org/firefox](https://www.mozilla.org/firefox/) | Si ya lo usas, hecho ✓ |
-| 2 | **Python 3.12 o más nuevo** → [python.org/downloads](https://www.python.org/downloads/) | Abre el instalador; en el primer paso marca la casilla **"Add python.exe to PATH"** (solo Windows) y pulsa Install |
+| 2 | **Python 3.11 o más nuevo** → [python.org/downloads](https://www.python.org/downloads/) | En Windows marca la casilla **"Add python.exe to PATH"** al instalar. **En Linux puede que ya lo tengas**: el arranque te dice el comando exacto si no |
 | 3 | **Una clave API gratuita** | La conseguimos en el PASO 2 de esta guía (2 minutos) |
+
+> 🐧 **¿Linux?** El doble clic te dirá el comando exacto si te falta Python. Para adelantarte:
+>
+> | Sistema | Comando |
+> | --- | --- |
+> | **openSUSE / SUSE (Leap y Tumbleweed)** | `sudo zypper install python312 python312-pip` |
+> | **Ubuntu / Debian / Linux Mint** | `sudo apt update && sudo apt install python3 python3-pip python3-venv` |
+> | **Fedora / RHEL / Rocky** | `sudo dnf install python3.12 python3-pip` |
+> | **Arch / Manjaro / EndeavourOS** | `sudo pacman -S python` |
+>
+> Con openSUSE Leap 15.6 te vale el `python3.11` que ya trae (por eso pedimos 3.11, no 3.12); si prefieres el 3.12, instálalo con `zypper` y el arranque lo usará solo.
 
 ---
 
@@ -58,11 +69,11 @@ La clave es como una contraseña para que el asistente use una IA. La más fáci
      Done: from now on the sidebar starts Jev by itself - you will not need this window again.
    ```
 4. 🎉 **A partir de aquí este doble clic ya no hace falta.** En Firefox, al abrir el panel, el agente arranca **solo** (no verás ninguna ventana). La ventana que se ha abierto ahora queda como **respaldo**: puedes dejarla o cerrarla, tú decides.
-   - Si el panel dijera **🔴 offline**, es que Firefox no dejó arrancarlo solo (pasa con Firefox instalado como *snap* en Ubuntu): deja esa ventana abierta y **todo funciona igual**.
+   - Si el panel dijera **🔴 offline**, es que Firefox no dejó arrancarlo solo: deja esa ventana abierta y **todo funciona igual**. Si tu Firefox es el *snap* de Ubuntu o un *Flatpak*, el navegador lanza los programas locales a través de un permiso del sistema y puede pedírtelo la primera vez; si nunca conecta, usa la ventana.
    - Si mueves la carpeta de sitio, vuelve a hacer doble clic una vez (se registra de nuevo).
 
 **❌ Si algo sale mal aquí:**
-- *Dice "Python 3.12 or newer is required"* → instala Python (ver 📋) y repite el PASO 3
+- *Dice "Python 3.11 or newer is required"* → el mensaje incluye **el comando para tu sistema** (zypper en openSUSE, apt en Debian/Ubuntu, dnf en Fedora, pacman en Arch); instálalo y repite
 - *La ventana se cierra al instante* → instala Python marcando **"Add python.exe to PATH"** y repite
 - *El panel dice "offline"* → deja abierta la ventana del PASO 3 (es el modo respaldo)
 
@@ -88,7 +99,7 @@ La clave es como una contraseña para que el asistente use una IA. La más fáci
    - ¿No lo ves? Pulsa la **pieza de puzzle 🧩** de la barra → Jev Agent. O menú **☰ → Panel lateral → Jev Agent**
 2. Se abre el **panel lateral** del agente. Mira el puntito de arriba a la derecha del panel:
    - 🟢 **Verde "host online"** = todo conectado ✓
-   - 🔴 Rojo "offline" = Firefox no ha podido arrancar el agente → **doble clic en el starter (PASO 3) una vez** y deja esa ventana abierta. (Suele pasar solo si moviste la carpeta o si tu Firefox es el *snap* de Ubuntu, que no deja lanzar programas locales.)
+   - 🔴 Rojo "offline" = Firefox no ha podido arrancar el agente → **doble clic en el starter (PASO 3) una vez** y deja esa ventana abierta. (Suele pasar solo si moviste la carpeta, o en Firefox *snap*/*Flatpak*, donde el sistema pide permiso para lanzar programas locales.)
 3. **Pega aquí la clave** (esto es todo el setup): el panel te pide la clave en una tarjeta con un enlace para conseguirla gratis:
    ```
    🔑 One free key starts the agent
@@ -210,7 +221,7 @@ Existe un motor de decisión **gratis y de código abierto** (Laya, de Convai �
 
 | Veo esto… | Solución |
 |---|---|
-| El puntito del panel está **rojo "offline"** | Firefox no arrancó el agente: haz **doble clic en el starter** (PASO 3) y deja esa ventana abierta → todo sigue funcionando igual. Si acabas de mover la carpeta del proyecto, ese doble clic también la vuelve a registrar |
+| El puntito del panel está **rojo "offline"** | Firefox no arrancó el agente: haz **doble clic en el starter** (PASO 3) y deja esa ventana abierta → todo sigue funcionando igual. Si acabas de mover la carpeta del proyecto, ese doble clic también la vuelve a registrar. En Firefox *snap*/*Flatpak* el sistema puede pedir permiso la primera vez (o denegarlo): con la ventana abierta va igual |
 | **Planner o Text writer en 🔴 con error 404 / "not found"** | El id del modelo estaba mal en versiones anteriores (`zai/glm-5.3` en vez de `z-ai/glm-5.3`). **Los starters nuevos lo corrigen solos** al arrancar (verás "Fixed an outdated model id") — o edita `.env` a mano: cambia `zai/` por `z-ai/` en las líneas PLANNER_MODEL y TEXT_MODEL |
 | **🔴 con error 401/403 "Authorization failed"** | El proveedor **rechazó tu clave** (mal pegada, incompleta o revocada). Genera una nueva (Groq en **console.groq.com/keys**, NVIDIA en **build.nvidia.com** → perfil → *API Keys*) y **pégala en el propio panel**: botón **🔑 API keys** → Save. Se guarda y se aplica al momento, sin reiniciar nada |
 | Un modelo está en **🔴 en el panel** | Pulsa **"Test setup"** y lee el mensaje exacto: `401/403` = clave mal pegada → pégala otra vez con **🔑 API keys**; `404` o `not found` = ese nombre de modelo no existe en el proveedor → elige otro en el desplegable del panel **⚙️ Models & parameters** |
@@ -219,7 +230,7 @@ Existe un motor de decisión **gratis y de código abierto** (Laya, de Convai �
 | Reinicié Firefox y el add-on desapareció | Normal, es "temporal" → repite el PASO 4 |
 | El agente no mueve la página | Debe ser una web normal (no vale `about:...`); si estabas en una pestaña vacía, él abre DuckDuckGo solo. La pestaña debe estar **visible** (no minimizada) |
 | Estaba en la pestaña de inicio y di Run | No pasa nada: abre DuckDuckGo automáticamente y trabaja allí |
-| `Python 3.12 or newer is required` | Instala Python desde python.org y repite el PASO 3 |
+| `Python 3.11 or newer is required` | El mensaje ya te da el comando de tu sistema (zypper/apt/dnf/pacman) o el enlace de python.org |
 | La ventana negra se cierra al instante | En el instalador de Python marca **"Add python.exe a PATH"**, reinstala y repite |
 | Solo tengo clave de NVIDIA, no de Groq | **No hay que hacer nada**: pégala y el agente se configura solo para usarla en los tres papeles (`nvidia:z-ai/glm-5.3` planifica) |
 | Quiero cambiar el modelo | Panel **⚙️ Models & parameters** → desplegable → elegir (se guarda solo). Sin panel: `docs/providers.md` |

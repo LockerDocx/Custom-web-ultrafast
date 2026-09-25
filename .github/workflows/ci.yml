@@ -9,13 +9,83 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  opensuse:
+    name: openSUSE ${{ matrix.image }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: opensuse/leap:15.6     # zypper, python312 from the distro repos
+            python: python3.12
+          - image: opensuse/tumbleweed:latest  # rolling: python313
+            python: python3.13
+    container:
+      image: ${{ matrix.image }}
+    steps:
+      # No actions/checkout here: the container has to gain git and Python first,
+      # which is exactly the path an openSUSE user walks through.
+      - name: Install git and Python the way openSUSE does
+        run: |
+          zypper --non-interactive --gpg-auto-import-keys refresh
+          zypper --non-interactive install git ${{ matrix.python }} python3-pip
+      - name: The starter must accept this system's interpreter
+        run: |
+          git clone --depth 1 https://github.com/${{ github.repository }}.git /src
+          cd /src
+          # JEV_START_DRY_RUN stops the starter right after it picked an interpreter
+          JEV_START_DRY_RUN=1 bash start-host.sh
+      - name: Install and test inside openSUSE
+        run: |
+          cd /src
+          ${{ matrix.python }} -m venv .venv
+          .venv/bin/python -m pip install --quiet --upgrade pip
+          .venv/bin/python -m pip install --quiet -e ".[documents]" pytest ruff
+          .venv/bin/python -m ruff check .
+          .venv/bin/python -m pytest -q
+      - name: The host registers itself for Firefox (no admin rights)
+        run: |
+          cd /src
+          .venv/bin/jev-register-host
+          .venv/bin/jev-register-host --status
+          test -f "$HOME/.mozilla/native-messaging-hosts/jev_ultrafast_host.json"
+          grep -q "allowed_extensions" "$HOME/.mozilla/native-messaging-hosts/jev_ultrafast_host.json"
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[documents]" pytest
+      - name: The Windows-specific paths (native messaging over stdio, registry, key setup)
+        run: pytest tests/test_native_host.py tests/test_setup.py -q
+      - name: The double-click starter must drive the py launcher
+        shell: pwsh
+        run: |
+          $text = Get-Content start-host.bat -Raw
+          if ($text -notmatch 'py -3 -c "import sys') { throw "the starter does not try the py launcher" }
+          if ($text -notmatch '%PY% -m venv') { throw "the venv is not built with the discovered interpreter" }
+          python -c "import jev_ultrafast.firefox, jev_ultrafast.native_setup, jev_ultrafast.providers; print('imports OK')"
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is what openSUSE Leap 15.6 ships as python3; 3.12/3.13 are current
+        # elsewhere. If the package ever drifts to 3.12-only syntax, this catches it.
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
       - uses: actions/setup-node@v4
         with:
           node-version: "20"

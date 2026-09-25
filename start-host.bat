@@ -7,12 +7,23 @@ rem ============================================================
 rem  Double-click starter. Prepares everything and runs the host.
 rem ============================================================
 
-python -c "import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)" >nul 2>nul
-if errorlevel 1 (
+rem Two ways Windows carries Python: the "py" launcher (python.org installer) and
+rem python.exe. The Store's python.exe is a stub that opens the Store, and it fails
+rem this check just like an outdated interpreter would - hence the hint below.
+set "PY="
+py -3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>nul
+if not errorlevel 1 set "PY=py -3"
+if not defined PY (
+  python -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>nul
+  if not errorlevel 1 set "PY=python"
+)
+if not defined PY (
   echo.
-  echo  [!] Python 3.12 or newer is required.
+  echo  [!] Python 3.11 or newer is required, and this PC does not have one.
   echo      Install it from https://www.python.org/downloads/
   echo      IMPORTANT: tick "Add python.exe to PATH" in the installer.
+  echo      If a Microsoft Store window opened instead, that is the Store stub:
+  echo      install the real Python from python.org ^(with that box ticked^).
   echo      Then double-click this file again.
   echo.
   pause
@@ -22,7 +33,7 @@ if errorlevel 1 (
 if not exist ".venv" (
   echo.
   echo  First run: preparing the agent. About one minute, internet needed...
-  python -m venv .venv
+  %PY% -m venv .venv
   ".venv\Scripts\python" -m pip install --quiet --upgrade pip
   ".venv\Scripts\python" -m pip install --quiet -e ".[documents]"
   if errorlevel 1 (
