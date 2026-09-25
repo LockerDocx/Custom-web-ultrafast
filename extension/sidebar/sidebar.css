@@ -332,6 +332,9 @@ button.probe { font-size: 11px; padding: 3px 10px; }
 }
 .ready.ok { border-left-color: var(--ok); }
 .ready.bad { border-left-color: #ff5d5d; }
+/* a self-test in flight: not a verdict, so it gets neither green nor red */
+.ready.checking { border-left-color: var(--accent); }
+.ready.checking #ready-test { opacity: 0.5; }
 .ready-dot { flex: none; }
 #ready-text { flex: 1; min-width: 0; }
 #ready-text code { color: var(--text); }
