@@ -24,10 +24,10 @@ Extraído del propio código (no de suposiciones): `pyproject.toml`, `extension/
 ## 2. Configuración recomendada
 
 - **Nada obligatorio**: con **una sola clave** (la de Groq) el host deriva proveedor y modelo para los tres
-  roles — planner incluido ( `groq:openai/gpt-oss-120b`), executor y text (`openai/gpt-oss-20b`). Con la clave de
-  NVIDIA además, el planner pasa a `nvidia:z-ai/glm-5.3` (la pareja medida como mejor). El host la pide en la
-  primera ejecución y la guarda en `.env` (plantilla: `.env.example`; para escribir a mano, basta
-  `GROQ_API_KEY=...`).
+  roles — planner incluido (`groq:openai/gpt-oss-120b`), executor y text (`openai/gpt-oss-20b`). Con la clave de
+  NVIDIA además, el planner pasa a `nvidia:z-ai/glm-5.3` (la pareja medida como mejor). **Se pega en el sidebar
+  de Firefox** (tarjeta de primer arranque, o botón *🔑 API keys*); el host la guarda en `.env` y la usa al
+  instante, sin reiniciar nada. Plantilla para escribirla a mano: `.env.example` (basta `GROQ_API_KEY=...`).
 - **Overrides opcionales** en `.env`/panel: `POLICY_*`, `PLANNER_*`, `TEXT_MODEL_*` (`PROVIDER`/`MODEL`/`BASE_URL`/`API_KEY`
   por rol). Lo configurado a mano siempre gana a lo derivado. Referencia completa: `docs/providers.md`.
 - **Modelos que mejor rinden** (medidos en la prueba real de hoy): Groq `openai/gpt-oss-20b`

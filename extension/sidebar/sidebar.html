@@ -12,6 +12,13 @@
     </header>
 
     <main>
+      <section id="setup" class="setup" hidden>
+        <div class="setup-title">🔑 One free key starts the agent</div>
+        <div id="setup-rows"></div>
+        <div class="hint" id="setup-status"></div>
+        <div class="hint">Stored locally in <code>.env</code>, on your machine. Never sent anywhere else.</div>
+      </section>
+
       <section class="composer">
         <label for="goal">What do you want to do?</label>
         <textarea id="goal" rows="4" placeholder="Find one-way flights from Zurich to London on September 20, 2026… or: research, download, create files, run commands…"></textarea>
@@ -78,6 +85,7 @@
         </div>
         <div id="model-roles"></div>
         <div class="row">
+          <button id="setup-open" title="Paste or replace an API key">🔑 API keys</button>
           <button id="refresh-models" title="Fetch the live model list from every provider">Refresh catalogue</button>
           <span class="hint" id="registry-status"></span>
         </div>

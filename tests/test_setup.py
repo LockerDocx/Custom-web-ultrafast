@@ -6,11 +6,28 @@ derived — without giving up the measured-best arrangement when both free keys
 are present.
 """
 
+import json
 import os
+import socket
+import threading
 
 import pytest
 
 from jev_ultrafast import firefox, model, parameters, providers
+
+
+class _StubServer:
+    """A bridge that binds nothing: the test only cares about main()'s flow."""
+
+    def __init__(self, port=0, token=None):
+        self.port = port
+        self.runner = None
+
+    def start(self):
+        pass
+
+
+
 
 ALL_KEYS = (
     "GROQ_API_KEY", "NVIDIA_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
@@ -180,3 +197,187 @@ def test_an_already_configured_agent_is_never_asked(clean_env, tmp_path):
 def test_typesafe_key_also_counts_as_configured(clean_env):
     clean_env.setenv("TYPESAFE_API_KEY", "ts_test")
     assert providers.is_configured() is True
+
+
+# ── the Firefox flow: the sidebar is the setup surface ───────────────────────
+
+
+def _live_bridge(tmp_path, monkeypatch):
+    """A real bridge on an ephemeral port, writing .env inside tmp_path."""
+    from tests.test_firefox import FakeExtension  # the extension-side WebSocket client
+
+    monkeypatch.chdir(tmp_path)
+    provider_layer = providers
+    provider_layer.save_key.__globals__["os"].environ.pop("JEV_ENV_FILE", None)
+    server = firefox.BridgeServer(port=0)
+    server.runner = firefox.TaskRunner(server)
+    server.start()
+    return server, FakeExtension(server.port)
+
+
+def test_a_key_pasted_in_the_sidebar_configures_the_host(clean_env, tmp_path, monkeypatch):
+    """The whole graphical setup: hello → paste key → saved, derived, announced."""
+    server, ext = _live_bridge(tmp_path, monkeypatch)
+    try:
+        ext.send({"type": "hello"})
+        welcome = ext.recv()
+        assert welcome["type"] == "welcome" and welcome["ok"] is True
+        assert welcome["state"]["setup"]["configured"] is False
+
+        ext.send({"type": "setup.key", "variable": "GROQ_API_KEY", "value": "gsk_from_firefox"})
+        frames = []
+        for _ in range(8):
+            try:
+                frames.append(ext.recv(timeout=5))
+            except (TimeoutError, socket.timeout):
+                break
+            if any(
+                frame.get("type") == "state" and frame["state"]["setup"]["configured"] is True for frame in frames
+            ) and any(frame.get("type") == "notice" for frame in frames):
+                break
+        notices = [frame for frame in frames if frame.get("type") == "notice"]
+        assert notices and "GROQ_API_KEY" in notices[0]["message"], frames
+
+        # saved where every other path reads it
+        assert (tmp_path / ".env").read_text().strip() == "GROQ_API_KEY=gsk_from_firefox"
+        assert providers.selection_for("planner") == ("groq", "openai/gpt-oss-120b")
+
+        # the sidebar is told the new state, and the key never travels back
+        assert not any("gsk_from_firefox" in json.dumps(frame) for frame in frames)
+        assert any(
+            frame.get("type") == "state" and frame["state"]["setup"]["configured"] is True for frame in frames
+        ), [frame.get("type") for frame in frames]
+    finally:
+        ext.close()
+        server.close()
+
+
+def test_a_bad_paste_answers_with_the_reason_and_touches_nothing(clean_env, tmp_path, monkeypatch):
+    server, ext = _live_bridge(tmp_path, monkeypatch)
+    try:
+        ext.send({"type": "hello"})
+        ext.recv()
+        ext.send({"type": "setup.key", "variable": "GROQ_API_KEY", "value": "not a key with spaces"})
+        while True:
+            message = ext.recv(timeout=5)
+            if message.get("type") == "error":
+                assert "does not look like an API key" in message["message"]
+                break
+        assert not (tmp_path / ".env").exists()
+        assert providers.is_configured() is False
+    finally:
+        ext.close()
+        server.close()
+
+
+def test_the_host_starts_without_a_key_and_points_at_the_sidebar(clean_env, tmp_path, monkeypatch, capsys):
+    """Double-click with no key: no prompt in the terminal, no early exit."""
+    asked = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("builtins.input", lambda *a: asked.append(a) or "")
+    class Stop(threading.Event):
+        def wait(self, *_args, **_kwargs):
+            raise KeyboardInterrupt
+
+    class Threading:
+        """The real module, with only its blocking wait replaced."""
+
+        Event = Stop
+
+        def __getattr__(self, name):
+            return getattr(threading, name)
+
+    monkeypatch.setattr(firefox, "threading", Threading())
+    monkeypatch.setattr(firefox, "BridgeServer", _StubServer)
+    firefox.main()  # returns instead of waiting forever
+
+    printed = capsys.readouterr().out
+    assert "open the Jev sidebar" in printed
+    assert "Policy model" not in printed  # nothing configured yet
+    assert asked == []  # never asked anything on the command line
+
+
+# ── contracts between the extension and the host (no browser needed) ─────────
+
+
+def _read(path):
+    from pathlib import Path
+
+    return Path(path).read_text()
+
+
+def test_every_message_the_extension_sends_is_understood_by_the_host():
+    """The sidebar is the setup surface now: a typo in a message type would be silent."""
+    import re
+
+    sent = set(re.findall(r'send\(\{\s*type:\s*"([^"]+)"', _read("extension/background.js")))
+    routed = set()
+    for chunk in re.findall(r'kind (?:==|in) (\{[^}]*\}|"[^"]+")', _read("jev_ultrafast/firefox.py")):
+        routed.update(re.findall(r'"([^"]+)"', chunk))
+    assert sent, "no message types found - did background.js change shape?"
+    assert sent <= routed, f"the host does not route: {sorted(sent - routed)}"
+
+
+def test_every_command_the_sidebar_uses_is_relayed_by_the_background_script():
+    import re
+
+    used = set(re.findall(r'cmd:\s*"([^"]+)"', _read("extension/sidebar/sidebar.js")))
+    relayed = set(re.findall(r'message\.cmd === "([^"]+)"', _read("extension/background.js")))
+    assert used <= relayed, f"the background script does not relay: {sorted(used - relayed)}"
+
+
+def test_the_setup_form_only_uses_elements_that_exist():
+    import re
+
+    html_ids = set(re.findall(r'id="([^"]+)"', _read("extension/sidebar/sidebar.html")))
+    js_ids = set(re.findall(r'\$\("([^"]+)"\)', _read("extension/sidebar/sidebar.js")))
+    assert js_ids <= html_ids, f"the sidebar asks for elements that do not exist: {sorted(js_ids - html_ids)}"
+
+
+def test_background_and_host_agree_on_where_the_agent_listens():
+    """The extension's default port must be the bridge's default port."""
+    import re
+
+    assert re.search(r'const DEFAULT_PORT = (\d+)', _read("extension/background.js")).group(1) == str(
+        firefox.DEFAULT_PORT
+    )
+
+
+class _RecordingBridge:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, message):
+        self.sent.append(message)
+
+    def broadcast(self, message):
+        self.sent.append(message)
+
+
+def test_a_verdict_from_before_the_key_is_never_published(clean_env, tmp_path, monkeypatch):
+    """The classic race: a check starts with no key, the key arrives, the check answers anyway."""
+    import time
+
+    calls = []
+
+    def slow_check():
+        calls.append(len(calls) + 1)
+        time.sleep(0.4)  # long enough for the key to be saved mid-flight
+        return {"policy": {"role": "policy", "ok": len(calls) > 1, "detail": f"call {len(calls)}"}}
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(firefox, "check_providers", slow_check)
+    bridge = _RecordingBridge()
+    runner = firefox.TaskRunner(bridge)
+
+    threading.Thread(target=runner.run_provider_check, daemon=True).start()
+    time.sleep(0.1)  # the first check is running now
+    runner.handle_setup_key("GROQ_API_KEY", "gsk_arrived_late")
+
+    deadline = time.time() + 10
+    while time.time() < deadline and runner.provider_check is None:
+        time.sleep(0.05)
+    assert runner.provider_check is not None, "no verdict was published at all"
+    assert runner.provider_check["policy"]["detail"] == "call 2", "a stale verdict was published"
+    assert len(calls) == 2, "the fresh check did not run"
+    assert any("Saved GROQ_API_KEY" in m.get("message", "") for m in bridge.sent if m.get("type") == "notice")

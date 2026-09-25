@@ -64,6 +64,7 @@ async function handleHostMessage(message) {
   }
   if (
     message.type === "models" ||
+    message.type === "setup" ||
     message.type === "probe" ||
     message.type === "notice" ||
     message.type === "approval_request" ||
@@ -160,6 +161,14 @@ browser.runtime.onMessage.addListener((message) => {
       send({ type: "run", goal: message.goal, url: tab.url, tabId: tab.id });
       return { ok: true };
     })().catch((error) => ({ error: String(error.message || error) }));
+  }
+  if (message.cmd === "save-key") {
+    try {
+      send({ type: "setup.key", variable: message.variable, value: message.value });
+      return Promise.resolve({ ok: true });
+    } catch (error) {
+      return Promise.resolve({ error: String(error.message || error) });
+    }
   }
   if (message.cmd === "check") {
     try {

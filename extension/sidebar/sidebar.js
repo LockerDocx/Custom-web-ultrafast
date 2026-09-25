@@ -38,6 +38,7 @@ function render() {
   renderTarget(state);
   renderPermissions(state.permissions);
   renderProviders(state.providers);
+  renderSetup(state.setup);
   renderError(state.error);
 }
 
@@ -357,13 +358,96 @@ function wireModelsPanel() {
   });
 }
 
+/* ── first-run setup: one key, pasted here ───────────────────────── */
+
+let setupOpen = false; // the "🔑 API keys" button reopens the card after setup
+
+function renderSetup(setup) {
+  const box = $("setup");
+  if (!setup) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = !(!setup.configured || setupOpen);
+  if (box.hidden) return;
+  $("setup-rows").innerHTML = (setup.free || [])
+    .map((item) => {
+      const saved = setup.keys && setup.keys[item.variable];
+      return (
+        `<div class="setup-row">
+           <div class="setup-label">
+             <b>${escape(item.label)}</b>
+             <a href="#" data-open="${escape(item.keys_url)}">get one ↗</a>
+           </div>
+           <div class="row">
+             <input type="password" data-key="${escape(item.variable)}" autocomplete="off" spellcheck="false"
+                    placeholder="${saved ? "saved ✓ — paste a new one to replace it" : escape(item.variable)}" />
+             <button data-save="${escape(item.variable)}">${saved ? "Replace" : "Save"}</button>
+           </div>
+         </div>`
+      );
+    })
+    .join("");
+  const selection = setup.selection || {};
+  const plan = Object.entries(selection)
+    .filter(([, pair]) => pair && pair[1])
+    .map(([role, pair]) => `${role} ${pair[0]}:${pair[1]}`)
+    .join("   ·   ");
+  $("setup-status").textContent = setup.configured
+    ? `Ready — ${plan}`
+    : "Paste one key and press Save. Nothing else to configure.";
+}
+
+$("setup").addEventListener("click", async (event) => {
+  const link = event.target.closest("[data-open]");
+  if (link) {
+    event.preventDefault();
+    browser.tabs.create({ url: link.dataset.open });
+    return;
+  }
+  const button = event.target.closest("[data-save]");
+  if (!button) return;
+  const input = $(`setup`).querySelector(`input[data-key="${button.dataset.save}"]`);
+  const value = (input.value || "").trim();
+  if (!value) {
+    input.focus();
+    return;
+  }
+  button.disabled = true;
+  $("setup-status").textContent = "Saving…";
+  const reply = await browser.runtime.sendMessage({ cmd: "save-key", variable: button.dataset.save, value });
+  button.disabled = false;
+  if (reply && reply.error) {
+    $("setup-status").textContent = reply.error;
+    return;
+  }
+  input.value = "";
+  $("setup-status").textContent = "Saved. Testing the connection…";
+});
+
+$("setup-open").addEventListener("click", () => {
+  setupOpen = !setupOpen;
+  renderSetup(state.setup || null);
+});
+
 /* ── providers / error ───────────────────────────────────────────── */
+
+let setupAutoOpened = false;
 
 function renderProviders(providers) {
   const box = $("providers");
   if (!providers || !Object.keys(providers).length) {
     box.hidden = true;
     return;
+  }
+  // Every role failing with a credential-shaped error is a wrong or missing key:
+  // bring the key form back instead of leaving the user with three red lines.
+  const list = Object.values(providers);
+  const credential = (text) => /key|401|403|not set/i.test(text || "");
+  if (!setupAutoOpened && list.length && list.every((p) => !p.ok) && list.some((p) => credential(p.detail))) {
+    setupAutoOpened = true;
+    setupOpen = true;
+    renderSetup(state.setup || null);
   }
   box.hidden = false;
   const names = { planner: "Planner", policy: "Executor", text: "Text writer" };
@@ -436,6 +520,10 @@ browser.runtime.onMessage.addListener((message) => {
     if (state) render();
   }
   if (message.type === "notice") showNotice(message.message);
+  if (message.type === "setup") {
+    state.setup = message;
+    renderSetup(message);
+  }
   if (message.type === "probe") {
     if (message.loading) {
       showNotice("Probing the model…");

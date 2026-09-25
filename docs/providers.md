@@ -232,7 +232,7 @@ JSONL, easy to inspect or reset by deleting the file.
 
 Keys live in exactly one place: your local `.env` (the sidebar's model config stores model *names*, never keys). The whole lifecycle:
 
-1. **Configure** — one key is enough. Let the starter ask for it on the first run (it writes `.env` itself, `GROQ_API_KEY=...`, no quotes; the loader strips accidental quotes and BOMs), or paste it on that line by hand.
+1. **Configure** — one key is enough. Paste it in the Firefox sidebar (the first-run card, or *🔑 API keys* in the models panel): the host validates it, exports it and writes `GROQ_API_KEY=...` into `.env` itself. Editing that line by hand works exactly the same; no quotes needed (the loader strips accidental quotes and BOMs).
 2. **Validate** — press **Test setup** in the sidebar (or check the PR comments from the *Provider check* workflow). Each role shows 🟢 with latency, or the provider's exact error (401/403 = bad key, 404 = bad model id).
 3. **Rotate** — generate the fresh key at the provider (links in the table above), replace the line in `.env`, restart the host, press **Test setup** again. Nothing else to clean: no other file ever stored the old key.
 4. **Revoke** — delete the key at the provider's console, then remove (or comment) its line in `.env` and restart.

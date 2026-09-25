@@ -23,23 +23,27 @@ The agent runs on your machine as a small local process ("the host"). Unzip the 
 
 | System | Double-click | What happens |
 | --- | --- | --- |
-| Windows | `start-host.bat` | First run: creates a private Python environment (about a minute, internet needed), then asks for your API key in the window — paste it, press Enter, done. |
+| Windows | `start-host.bat` | First run: creates a private Python environment (about a minute, internet needed), then starts the host. Nothing to type here. |
 | macOS | `start-host.command` | Same. If macOS blocks it: right-click → **Open**. |
 | Linux | `start-host.sh` | Same (run it from your file manager). |
 
-**First run flow:** the starter creates `.env` and asks for one key right there:
+**First run flow:** the starter creates `.env`, installs what it needs and starts the host. That window
+then only reports status — **the setup lives in Firefox**. Keep it open, install the sidebar (step 3)
+and paste your one free key in the panel:
 
 ```
-Jev needs one free API key. It is stored locally in .env and never leaves your machine.
-Groq · fast executor (recommended): https://console.groq.com/keys
-Paste GROQ_API_KEY and press Enter (or just Enter to skip):
+🔑 One free key starts the agent
+Groq · fast executor (recommended)                get one ↗
+[ paste your key… ]                               [ Save ]
 ```
 
-Paste it, press Enter, and the host starts — `.env` now contains `GROQ_API_KEY=gsk_...` and nothing
-else is needed; every provider and model is derived from it. Later launches go straight to the
-host window. (Prefer editing files? Copy `.env.example` to `.env` and fill in the lines you want.)
+Pressing **Save** writes `GROQ_API_KEY` to `.env`, exports it immediately and re-tests every role, so
+the panel goes straight to `Ready — planner … · policy …`. No restart, no file editing; the key is
+never sent anywhere except the provider you chose. Paste a second key later (the **🔑 API keys**
+button in *Models & parameters*) to upgrade the planner to `z-ai/glm-5.3`. (Prefer editing files?
+Copy `.env.example` to `.env` and fill in the lines you want — both paths are equivalent.)
 
-Keep the black host window open while you use the agent. Every option is described in [providers.md](providers.md), and to change what runs, use the **Models & parameters** panel in the sidebar — no `.env` editing required.
+Every option is described in [providers.md](providers.md), and to change what runs, use the **Models & parameters** panel in the sidebar.
 
 ## 3. Install the extension in Firefox
 

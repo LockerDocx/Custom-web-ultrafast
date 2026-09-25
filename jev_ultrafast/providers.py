@@ -193,9 +193,8 @@ DERIVED_MODELS = {
 DERIVATION_ORDER = ("nvidia", "groq", "deepseek")
 
 NO_CONFIG_MESSAGE = (
-    "Nothing configured for the {role} role: set {key} (or {provider} + {base}). "
-    "One free key runs the whole agent: paste GROQ_API_KEY in .env "
-    "(https://console.groq.com/keys)."
+    "Nothing is configured for the {role} role yet. One free key runs the whole agent: paste it in the Jev "
+    "sidebar, or set {key} in .env - GROQ_API_KEY (https://console.groq.com/keys) is free in 2 minutes."
 )
 
 
@@ -268,8 +267,8 @@ No API key found. One free key runs the whole agent:
 
   1. Open https://console.groq.com/keys (log in with Google is fine)
   2. Click "Create API key" and copy it
-  3. Run this starter again and paste it when asked - or put it in .env as
-     GROQ_API_KEY=... and run again.
+  3. Paste it in the Jev sidebar in Firefox (it asks on first open), or here
+     when this starter asks, or in .env as GROQ_API_KEY=... and run again.
 
 Free, no card required. The NVIDIA key (https://build.nvidia.com) is optional
 and only improves the mission plan.
@@ -345,6 +344,46 @@ def _write_env(values, path=None):
     return target
 
 
+SETUP_ROLES = ("planner", "policy", "text")
+KEY_VARIABLE = re.compile(r"[A-Z][A-Z0-9_]*_API_KEY\Z")
+
+
+def save_key(name, value, path=None):
+    """Store one API key entered in the sidebar: validate, use now, persist to .env.
+
+    The same .env every other path uses, so the graphical setup and the
+    terminal one are equivalent. Exported immediately, which is why no restart
+    is needed after pasting. Never logs or returns the value.
+    """
+    name = (name or "").strip().upper()
+    value = (value or "").strip().strip('"').strip("'").strip()
+    if not KEY_VARIABLE.match(name):
+        raise ValueError("That is not an API-key variable name")
+    if not value:
+        raise ValueError("No key pasted")
+    if any(character.isspace() for character in value) or len(value) > 400:
+        raise ValueError("That does not look like an API key (no spaces, no quotes)")
+    os.environ[name] = value
+    _write_env({name: value}, path=path)
+    return name
+
+
+def setup_status():
+    """What the sidebar needs to onboard a new user: which keys exist *by name*.
+
+    Carries booleans and the derived selection, never a key value, so it is safe
+    to broadcast on every state update.
+    """
+    return {
+        "configured": is_configured(),
+        # the sidebar asks "is this variable filled", not "which provider is keyed"
+        "keys": {name: bool((os.environ.get(name) or "").strip()) for name, _label, _url in FREE_KEYS},
+        "typesafe": bool((os.environ.get("TYPESAFE_API_KEY") or "").strip()),
+        "free": [{"variable": name, "label": label, "keys_url": url} for name, label, url in FREE_KEYS],
+        "selection": {role: list(selection_for(role)) for role in SETUP_ROLES},
+    }
+
+
 def resolve(role):
     """Build one provider config from the environment for the given role."""
     env = ROLE_ENV[role]
@@ -356,9 +395,7 @@ def resolve(role):
         raw = derived[0]  # nothing configured for this role: use the free key that is present
     if not raw and not base and not key:
         raise ValueError(
-            NO_CONFIG_MESSAGE.format(
-                role=role, key=env["key"], provider=env["provider"], base=env["base"]
-            )
+            NO_CONFIG_MESSAGE.format(role=role, key=env["key"])
         )
     name, preset = "", None
     if raw.startswith(("http://", "https://")):
@@ -392,8 +429,8 @@ def resolve(role):
         if preset and preset.get("key_env"):
             options = " or ".join([env["key"], *preset["key_env"]])
             raise ValueError(
-                f"No API key for the {role} role: set {options}. No request was sent. "
-                "One free key runs the whole agent (GROQ_API_KEY, https://console.groq.com/keys)."
+                f"No API key for the {role} role: set {options}. No request was sent. One free key runs the "
+                "whole agent - paste it in the Jev sidebar, or GROQ_API_KEY in .env (https://console.groq.com/keys)."
             )
         raise ValueError(
             f"{env['key']} is not set, and {env['provider']} is not a named provider. "

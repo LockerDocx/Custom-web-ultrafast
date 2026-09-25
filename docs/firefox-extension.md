@@ -26,7 +26,7 @@ FIREFOX                          LOCAL HOST (this repo)
    uv run --env-file .env jev-firefox
    ```
 
-   …or double-click `start-host.bat` (Windows) / `start-host.command` (macOS) / `start-host.sh` (Linux). The first run creates the environment and the `.env` for you — the full no-console walkthrough is [getting-started-gui.md](getting-started-gui.md).
+   …or double-click `start-host.bat` (Windows) / `start-host.command` (macOS) / `start-host.sh` (Linux). The first run creates the environment and starts the host; you then paste one free API key into the sidebar, which writes it to `.env` for you — the full no-console walkthrough is [getting-started-gui.md](getting-started-gui.md).
 
    It prints `Jev Ultrafast Firefox bridge: ws://127.0.0.1:8767` and waits.
 

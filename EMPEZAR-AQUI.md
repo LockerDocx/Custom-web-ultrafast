@@ -45,32 +45,24 @@ La clave es como una contraseña para que el asistente use una IA. La más fáci
 
 ---
 
-## 🟦 PASO 3 — Pegar tu clave y encender el agente (2 minutos)
+## 🟦 PASO 3 — Encender el agente (1 minuto)
 
 1. Entra en la carpeta que descomprimiste en el PASO 1
 2. **Doble clic** en el arranque de tu sistema:
    - **Windows** → `start-host.bat`
    - **macOS** → `start-host.command` *(la primera vez: clic derecho → **Abrir** → **Abrir**)*
    - **Linux** → `start-host.sh`
-3. **La primera vez** se prepara todo solo (verás que instala cosas, ~1 minuto). Al terminar **te pide la clave en esa misma ventana**:
+3. **La primera vez** se prepara todo solo (instala lo necesario, ~1 minuto). Al terminar verás una ventana con:
    ```
-   Jev needs one free API key. It is stored locally in .env and never leaves your machine.
-   Groq · fast executor (recommended): https://console.groq.com/keys
-   Paste GROQ_API_KEY and press Enter (or just Enter to skip):
-   ```
-4. **Pega tu clave** (Ctrl+V o clic derecho en la ventana) y pulsa **Enter**. Nada más: **no hay que abrir ni editar ningún archivo**.
-5. *(Opcional)* Te preguntará también por la clave de NVIDIA. Si no la tienes, pulsa **Enter** y listo.
-   ```
-   Saved to .env. Nothing else to configure.
    Jev Ultrafast Firefox bridge: ws://127.0.0.1:8767
-   Policy model: groq:openai/gpt-oss-20b
+   No API key yet — open the Jev sidebar in Firefox and paste one there; it takes 2 minutes.
    ```
-   ✓ **¡El agente está encendido!** ⚠️ **NO CIERRES ESA VENTANA** mientras uses el asistente (puedes minimizarla). Las siguientes veces arrancará directo, sin preguntar nada.
+   ✓ **El agente está encendido.** ⚠️ **NO CIERRES ESA VENTANA** mientras uses el asistente (puedes minimizarla).
+   **No hay que escribir nada aquí**: la clave se pega en Firefox, en el PASO 5.
 
 **❌ Si algo sale mal aquí:**
 - *Dice "Python 3.12 or newer is required"* → instala Python (ver 📋) y repite el PASO 3
 - *La ventana se cierra al instante* → instala Python marcando **"Add python.exe to PATH"** y repite
-- *Pulsaste Enter sin querer (o la clave estaba mal)* → escribe `GROQ_API_KEY=tu_clave` en el archivo `.env` de la carpeta, guarda y vuelve a hacer doble clic
 
 ---
 
@@ -79,32 +71,42 @@ La clave es como una contraseña para que el asistente use una IA. La más fáci
 1. En Firefox, escribe en la **barra de direcciones**: `about:debugging` y pulsa **Enter**
 2. Clic en **"This Firefox"** (o **"Este Firefox"** si lo tienes en español), en el menú de la izquierda
 3. Pulsa el botón **"Load Temporary Add-on…"** (o **"Cargar complemento temporal…"**)
-4. Se abre una ventana para elegir archivo:
-   1. Entra en **la carpeta del proyecto** (la del PASO 1)
-   2. Entra en la carpeta **`extension`**
-   3. Selecciona el archivo **`manifest.json`** → **Abrir**
+4. Se abre una ventana para elegir archivo. Dos formas, la que te resulte más cómoda:
+   - **Un solo archivo** ⭐: descarga `jev-agent-firefox-….xpi` de la página **Releases** del proyecto (la misma de donde bajaste el ZIP) y selecciónalo tal cual
+   - **Desde la carpeta**: entra en **la carpeta del proyecto** (la del PASO 1) → subcarpeta **`extension`** → selecciona **`manifest.json`** → **Abrir**
 5. ✓ Comprobación: en la lista aparece **"Jev Ultrafast · Firefox Agent"**
 
 > ℹ️ **"Temporal" significa que al reiniciar Firefox desaparece.** Es normal (aún no está firmado). Cada vez que reinicies Firefox, repite este PASO 4 (30 segundos). La ventana negra del PASO 3 también debe estar abierta.
 
 ---
 
-## 🟦 PASO 5 — Abrir el panel y ¡probarlo! (1 minuto)
+## 🟦 PASO 5 — Pegar la clave EN FIREFOX y probarlo (2 minutos)
 
 1. Arriba a la derecha en Firefox, pulsa el **icono de Jev** en la barra de herramientas.
    - ¿No lo ves? Pulsa la **pieza de puzzle 🧩** de la barra → Jev Agent. O menú **☰ → Panel lateral → Jev Agent**
 2. Se abre el **panel lateral** del agente. Mira el puntito de arriba a la derecha del panel:
    - 🟢 **Verde "host online"** = todo conectado ✓
-   - 🔴 Rojo "offline" = la ventana negra está cerrada → vuelve al PASO 3
-3. **Revisa la conexión de las IAs**: al abrir el panel, debajo del cuadro de texto verás el estado de cada modelo:
-   - 🟢 `Executor · groq:openai/gpt-oss-20b` = tu clave Groq funciona ✓
-   - 🟢 `Planner · nvidia:z-ai/glm-5.3` y `Text writer` = tu clave NVIDIA funciona ✓
-   - 🔴 **algo rojo** = pulsa el botón **"Test setup"** y lee el mensaje: te dice EXACTAMENTE qué falla (clave mal pegada, modelo que no existe…). Arregla el `.env` (PASO 3) y reinicia el starter.
-4. Escribe una misión de prueba y pulsa **Run**:
+   - 🔴 Rojo "offline" = la ventana del host está cerrada → vuelve al PASO 3
+3. **Pega aquí la clave** (esto es todo el setup): el panel te pide la clave en una tarjeta con un enlace para conseguirla gratis:
+   ```
+   🔑 One free key starts the agent
+   Groq · fast executor (recommended)        get one ↗
+   [ pega aquí la clave........... ]         [ Save ]
+   ```
+   Pega la del PASO 2 y pulsa **Save**. Nada más: **no hay que abrir ni editar ningún archivo**, ni tocar la ventana del host.
+   Debajo verás qué queda configurado —con una clave de Groq, todo funciona, planificador incluido:
+   ```
+   Ready — planner groq:openai/gpt-oss-120b · policy groq:openai/gpt-oss-20b · text groq:openai/gpt-oss-20b
+   ```
+   *(¿Tienes también la clave de NVIDIA del PASO 2? Pégala en su casilla: el planificador pasará a `nvidia:z-ai/glm-5.3`.)*
+4. **Revisa la conexión de las IAs**: el panel prueba cada modelo y te dice el resultado exacto:
+   - 🟢 `Executor · groq:openai/gpt-oss-20b 267 ms` = tu clave funciona ✓
+   - 🔴 **algo rojo** = pulsa **"Test setup"** y lee el mensaje: dice EXACTAMENTE qué falla (clave mal pegada, sin saldo, modelo inexistente…). Si el problema es la clave, la tarjeta del punto 3 se abre sola para que pegues otra.
+5. Escribe una misión de prueba y pulsa **Run**:
    > Busca el artículo de la Wikipedia sobre la Torre Eiffel y ábrelo.
    - ¿Estás en una pestaña vacía o en la página de inicio? **No pasa nada**: el agente abre solo DuckDuckGo y trabaja allí. Si quieres que trabaje en una web concreta, navega a ella antes de pulsar Run.
-5. 🍿 **Mira tu Firefox**: aparece el **PLAN con pasos que se van marcando ✓**, la página se mueve sola, clickea, escribe… y el historial de acciones va apareciendo en el panel
-6. Botón **Stop** para pararlo cuando quieras (termina la acción en curso y se detiene)
+6. 🍿 **Mira tu Firefox**: aparece el **PLAN con pasos que se van marcando ✓**, la página se mueve sola, clickea, escribe… y el historial de acciones va apareciendo en el panel
+7. Botón **Stop** para pararlo cuando quieras (termina la acción en curso y se detiene)
 
 **❌ Si algo falla aquí:** el error queda **escrito en rojo en el panel** (ya no desaparece) y el estado de cada modelo está siempre visible. Con ese mensaje y la tabla de abajo se resuelve casi todo.
 

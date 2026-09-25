@@ -12,7 +12,6 @@ import os
 import secrets
 import socket
 import struct
-import sys
 import threading
 import time
 from pathlib import Path
@@ -295,6 +294,18 @@ class BridgeServer:
             if self.runner:
                 self.runner.greet()  # the welcome is on the wire before anything else is
                 threading.Thread(target=self.runner.run_provider_check, daemon=True).start()
+        elif kind == "setup.key":
+            if self.runner:
+                # the sidebar's first-run form: never blocks the reader thread
+                threading.Thread(
+                    target=self.runner.handle_setup_key,
+                    args=(message.get("variable"), message.get("value")),
+                    daemon=True,
+                ).start()
+        elif kind == "setup.status":
+            from . import providers as provider_layer
+
+            self.send({"type": "setup", **provider_layer.setup_status()})
         elif kind == "check":
             if self.runner:
                 self.send({"type": "checking"})
@@ -484,6 +495,7 @@ class TaskRunner:
         self._workspace = Path(workspace) if workspace else Path.cwd() / "workspace"
         self._lock = threading.Lock()  # held by a running task
         self._check_lock = threading.Lock()  # serializes provider self-tests
+        self._config_epoch = 0  # bumped when a key arrives: invalidates in-flight checks
         try:
             apply_saved_config()
         except Exception:  # noqa: BLE001 - a broken config file must never block startup
@@ -526,6 +538,8 @@ class TaskRunner:
         return {"available": self.docker_available, "reason": reason, "session": session}
 
     def current_state(self):
+        from . import providers as provider_layer
+
         selection = current_selection()
         typesafe = bool(self._typesafe_key or os.environ.get("TYPESAFE_API_KEY"))
         common = {
@@ -543,6 +557,7 @@ class TaskRunner:
             "permissions": permissions.describe(),
             "browserMode": self.mode_pref,
             "sandbox": self.sandbox_state(),
+            "setup": provider_layer.setup_status(),
         }
         if self.mode == "orchestrated":
             # The orchestrated view; the live browser sub-view rides under "browser".
@@ -576,6 +591,39 @@ class TaskRunner:
                     total += value
         return total
 
+    def handle_setup_key(self, variable, value):
+        """A key pasted in the sidebar: save it to .env, then re-test in the background."""
+        from . import providers as provider_layer
+
+        try:
+            name = provider_layer.save_key(variable, value)
+        except ValueError as error:
+            self.bridge.broadcast({"type": "error", "message": str(error)})
+            return
+        # only the variable name travels back - never the key
+        self._config_epoch += 1  # any check already in flight was started without this key
+        self.bridge.broadcast({"type": "notice", "message": f"Saved {name} to .env. Testing it now…"})
+        self._broadcast()  # the checklist ticks before the network round trip
+        threading.Thread(target=self._recheck_after_setup, daemon=True).start()
+
+    def _recheck_after_setup(self):
+        """A key just arrived: publish a report that reflects it, not one that raced it."""
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            if self._check_lock.acquire(blocking=False):
+                break
+            time.sleep(0.2)  # a check started before the key is still running; wait it out
+        else:
+            return  # it is stuck; the next "Test setup" press will report instead
+        epoch = self._config_epoch
+        try:
+            report = check_providers()
+        finally:
+            self._check_lock.release()
+        if epoch == self._config_epoch:
+            self.provider_check = report
+            self._broadcast()
+
     def run_provider_check(self):
         """Self-test in the background; the result is carried in every state broadcast.
 
@@ -586,10 +634,14 @@ class TaskRunner:
             return  # a task is running; providers are clearly working
         if not self._check_lock.acquire(blocking=False):
             return  # another check is already in flight
+        epoch = self._config_epoch
         try:
-            self.provider_check = check_providers()
+            report = check_providers()
         finally:
             self._check_lock.release()
+        if epoch != self._config_epoch:
+            return  # a key was saved while this ran: its verdict is already obsolete
+        self.provider_check = report
         self._broadcast()
 
     def start(self, goal, url, tab_id):
@@ -1014,8 +1066,9 @@ def main():
     load_environment()
     from . import providers as provider_layer
 
-    if not provider_layer.ensure_configured() and sys.stdin.isatty():
-        raise SystemExit(1)  # a human is watching: stop with the instructions on screen
+    # No terminal prompt here on purpose: the setup is done in Firefox. The host
+    # starts regardless, the sidebar carries the key form, and `ensure_configured`
+    # stays for the terminal-first paths (the demo GUI, scripts, CI).
     port = int(os.environ.get("FIREFOX_BRIDGE_PORT", str(DEFAULT_PORT)))
     token = os.environ.get("FIREFOX_BRIDGE_TOKEN") or None
     _SERVER = BridgeServer(port=port, token=token)
@@ -1023,7 +1076,10 @@ def main():
     _SERVER.start()
     print(f"Jev Ultrafast Firefox bridge: ws://127.0.0.1:{_SERVER.port}", flush=True)
     print("Load extension/ in Firefox via about:debugging → This Firefox → Load Temporary Add-on.", flush=True)
-    print(f"Policy model: {policy_description()}", flush=True)
+    if provider_layer.is_configured():
+        print(f"Policy model: {policy_description()}", flush=True)
+    else:
+        print("No API key yet — open the Jev sidebar in Firefox and paste one there; it takes 2 minutes.", flush=True)
     try:
         threading.Event().wait()
     except KeyboardInterrupt:

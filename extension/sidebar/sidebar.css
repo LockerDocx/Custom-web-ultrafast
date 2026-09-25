@@ -19,6 +19,33 @@ body {
   flex-direction: column;
   height: 100vh;
 }
+.setup {
+  margin: 10px 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.setup-title { font-weight: 600; margin-bottom: 8px; }
+.setup-row { margin-bottom: 8px; }
+.setup-row:last-child { margin-bottom: 0; }
+.setup-label { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.setup-label a { color: var(--accent); text-decoration: none; white-space: nowrap; }
+.setup-label a:hover { text-decoration: underline; }
+.setup input[type="password"], .setup input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.setup .saved { color: var(--ok); }
+#setup-status { margin: 6px 0 2px; }
+
 header {
   display: flex;
   align-items: center;
