@@ -55,6 +55,29 @@ TEXT_MODEL_REASONING=low
 
 Without `PLANNER_*` configuration the agent keeps the original single-goal loop, so nothing changes for existing setups.
 
+### Where the latency actually is (measured, not guessed)
+
+Measured on 25 September 2026 with `scripts/bench_profiles.py` against the live endpoints, from the
+prompts and token budgets the agent itself uses, each candidate on its own CI job
+(`.github/workflows/model-profiles.yml`, artifact per profile):
+
+| Candidate (one free key) | Planner | Executor | Text writer | Quality checks |
+| --- | --- | --- | --- | --- |
+| **Groq only** (the fast anchor) | 1.4 s | **0.4 s** | **0.26 s** | plans 3/3 · routing 12/12 · values 4/4 |
+| NVIDIA only, defaults (`glm-5.3` plans, `gpt-oss-20b` executes) | 30 s | 36 s | 9 s | plans 2-3/3 · routing 12/12 · values 4/4 |
+| NVIDIA only, `z-ai/glm-5.3-flash` with thinking off | **85 s** | 43 s | 42 s | plans 2/2 · routing 12/12 · values 4/4 |
+| NVIDIA only, `z-ai/glm-5.3` with thinking off | 37 s | 2-52 s | 1.6-98 s | plans 2/3 · routing 12/12 · values 4/4 |
+
+Read it as medians of a handful of calls, and read the spread: NVIDIA NIM's free tier answered the same
+prompt in 1.6 s once and in 98 s on another run, and once did not answer for 60 s at all (the retry then
+reports it honestly instead of blaming the key). **Smaller model and thinking off did not make NVIDIA
+faster — the queue is the cost, not the parameters.** If you want a snappy agent and you are on one free
+key, the Groq key is the lever; NVIDIA is worth keeping for the planner when you have both.
+
+Reproduce it: `python scripts/bench_profiles.py --list`, then
+`python scripts/bench_profiles.py --profile nvidia-flash-none` with your key in `.env`. `--floor 0.8` makes
+it exit non-zero below that routing accuracy.
+
 ### Pinning everything to one provider (`nvidia`, alias `nim`)
 
 The derivation above already does this for you when only that key is present; to pin it explicitly:

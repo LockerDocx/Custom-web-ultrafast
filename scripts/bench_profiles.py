@@ -108,6 +108,13 @@ PLANNER_MISSIONS = (
     "Book the cheapest direct flight from Barcelona to Rome next Friday, one adult",
     "Find the schedule of the Sagrada Familia and tell me if it opens on Sunday morning",
     "On the page I am looking at, order the results by price from low to high",
+    "Reserve a table for four people on Friday at 21:00 in a restaurant near the Gothic Quarter",
+    "Find a hotel in Lisbon for two nights from 12 October, with breakfast, and open the cheapest",
+    "Compare the price of the iPhone on three shops and tell me which one is cheapest today",
+    "Fill the contact form with my details and attach my CV from the Downloads folder",
+    "Download the invoice for August from my bank account page",
+    "Summarise the ten reviews on this page and tell me what people complain about",
+    "Change the delivery address on the order I am looking at and confirm it",
 )
 
 TEXT_CASES = (
