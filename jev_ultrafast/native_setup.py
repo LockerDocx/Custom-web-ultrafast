@@ -14,8 +14,8 @@ The registration is per user and needs no administrator rights:
 import json
 import os
 import sys
-from shutil import which
 from pathlib import Path
+from shutil import which
 
 HOST_NAME = "jev_ultrafast_host"
 EXTENSION_ID = "jev-ultrafast@custom-web-ultrafast"  # must match extension/manifest.json
