@@ -185,6 +185,7 @@ def main():
     print("| Provider | Model | probed | verified | refused | endpoint error |", flush=True)
     print("| --- | --- | --- | --- | --- | --- |", flush=True)
     for name, model_id in probes[:4]:
+        started = time.monotonic()
         try:
             report = discovery.probe_model(name, model_id)
         except Exception as error:  # noqa: BLE001
@@ -193,6 +194,10 @@ def main():
         error = report.get("error") or "—"
         if error != "—" and any(marker.lower() in error.lower() for marker in LIMIT_MARKERS):
             error = f"cuota agotada: {error[:80]}"
+        elif error != "—":
+            # How long it waited says more than the message does: a 25 s failure is
+            # the request timing out, an instant one is the connection being refused.
+            error = f"{error} — {round((time.monotonic() - started) * 1000)} ms"
         print(
             f"| `{name}` | `{model_id}` | {', '.join(report['probed']) or '—'} | "
             f"{', '.join(report['verified']) or '—'} | {', '.join(report['unsupported']) or '—'} | {error} |",

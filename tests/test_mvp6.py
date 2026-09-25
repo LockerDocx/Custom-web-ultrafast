@@ -3,6 +3,8 @@
 import json
 import threading
 import time
+
+import httpx
 from unittest.mock import Mock
 
 import pytest
@@ -17,6 +19,46 @@ def bridge():
     server.start()
     yield server
     server.close()
+
+
+# ── connection-level failures: the streaming path always retried, the plain one did not ──
+
+
+class FakeFlakyClient:
+    """Fails the first `failures` posts at the transport level, then answers."""
+
+    def __init__(self, failures=0, error=None):
+        self.failures = failures
+        self.error = error or httpx.ConnectTimeout("model is being woken up")
+        self.calls = 0
+
+    def post(self, *args, **kwargs):
+        self.calls += 1
+        if self.calls <= self.failures:
+            raise self.error
+        response = Mock(status_code=200, is_error=False)
+        response.json.return_value = {"choices": [{"message": {"content": "OK"}}]}
+        return response
+
+
+def test_post_json_retries_a_connection_error_before_giving_up(monkeypatch):
+    # A NIM model being woken up, or a blip on the wire, used to kill the run on
+    # the first try while the streaming path survived it.
+    client = FakeFlakyClient(failures=2)
+    monkeypatch.setattr(model, "CLIENT", client)
+    monkeypatch.setattr(model.time, "sleep", lambda *_: None)
+    payload = model.post_json("http://x", "k", {})
+    assert payload["choices"][0]["message"]["content"] == "OK"
+    assert client.calls == 3, "two failures, then the answer"
+
+
+def test_post_json_still_gives_up_with_the_contract_message(monkeypatch):
+    client = FakeFlakyClient(failures=99)
+    monkeypatch.setattr(model, "CLIENT", client)
+    monkeypatch.setattr(model.time, "sleep", lambda *_: None)
+    with pytest.raises(RuntimeError, match="Model connection failed; no action executed."):
+        model.post_json("http://x", "k", {})
+    assert client.calls == 3
 
 
 # ── SSE streaming (providers.chat + model.post_stream) ───────────────────────

@@ -19,6 +19,12 @@ def post_json(url, key, body, headers=None):
         try:
             response = CLIENT.post(url, json=body, headers=headers or {"Authorization": f"Bearer {key}"})
         except httpx.HTTPError:
+            # A model that is being woken up, or a blip on the wire: the same three
+            # tries the streaming path already gives before giving up. Retrying
+            # cannot duplicate work here — nothing was sent and accepted.
+            if attempt < 2:
+                time.sleep(0.5 * 2**attempt)
+                continue
             raise RuntimeError("Model connection failed; no action executed.") from None
         if response.status_code in {429, 529, 503} and attempt < 2:
             time.sleep(0.5 * 2**attempt)
