@@ -78,6 +78,23 @@ def test_a_profile_that_leaves_reasoning_alone_leaves_it_alone(env_of):
     assert "PLANNER_REASONING" not in os.environ and "POLICY_REASONING" not in os.environ
 
 
+def test_every_role_gets_the_model_of_the_profile(env_of):
+    """The bug this pins: guessing the text role's variables measured the default model.
+
+    `TEXT_MODEL_PROVIDER` + `TEXT_MODEL` is the pair; a bench that built `TEXT_MODEL_MODEL`
+    would have reported the candidate's numbers for a model it never asked for.
+    """
+    import os
+
+    for name, profile in bench.PROFILES.items():
+        bench.apply_profile(profile)
+        for role, (_provider, model, reasoning) in profile["roles"].items():
+            assert providers.selection_for(role) == (_provider, model), f"{name}/{role}"
+            assert os.environ[bench.ROLE_MODEL_ENV[role][1]] == model, f"{name}/{role}"
+            if reasoning != "default":
+                assert os.environ[bench.ROLE_PARAM_ENV[(role, "reasoning")]] == reasoning
+
+
 def test_applying_a_profile_is_reversible(env_of):
     bench.apply_profile(bench.PROFILES["nvidia-hybrid"])
     assert providers.selection_for("policy") == ("nvidia", "z-ai/glm-5.3-flash")

@@ -37,8 +37,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from jev_ultrafast import discovery, providers  # noqa: E402
+from jev_ultrafast import discovery, providers, schemas  # noqa: E402
 from jev_ultrafast.firefox import load_environment  # noqa: E402
+from jev_ultrafast.parameters import ROLE_MODEL_ENV, ROLE_PARAM_ENV  # noqa: E402
 from jev_ultrafast.questions import PLANNER_SYSTEM, TEXT_VALUE  # noqa: E402
 from scripts.bench_routing import ROUTING_SYSTEM  # noqa: E402
 from scripts.routing_cases import ROUTING_CASES  # noqa: E402
@@ -114,12 +115,17 @@ TEXT_CASES = (
 
 
 def apply_profile(profile):
-    """Put one candidate's provider/model/reasoning for every role into the environment."""
+    """Put one candidate's provider/model/reasoning for every role into the environment.
+
+    The variable names come from the app itself (parameters.ROLE_MODEL_ENV), not from string
+    building: the text role is TEXT_MODEL_PROVIDER + TEXT_MODEL, and a bench that guessed
+    `TEXT_MODEL_MODEL` would quietly measure the default model instead of the candidate.
+    """
     for role, (provider_name, model, reasoning) in profile["roles"].items():
-        prefix = {"planner": "PLANNER", "policy": "POLICY", "text": "TEXT_MODEL"}[role]
-        os.environ[f"{prefix}_PROVIDER"] = provider_name
-        os.environ[f"{prefix}_MODEL"] = model
-        reasoning_var = f"{prefix}_REASONING"
+        provider_var, model_var = ROLE_MODEL_ENV[role]
+        os.environ[provider_var] = provider_name
+        os.environ[model_var] = model
+        reasoning_var = ROLE_PARAM_ENV[(role, "reasoning")]
         if reasoning == "default":
             os.environ.pop(reasoning_var, None)
         else:
@@ -287,6 +293,14 @@ def run_profile(name, profile, args):
         "latency": stats(text_latencies),
         "rows": text_rows,
     }
+
+    # ── what the endpoints themselves accepted, for the models this profile used ──
+    report["runtime_evidence"] = {}
+    for role, wire in report["wire"].items():
+        if wire.get("error"):
+            continue
+        provider_name, _, model_id = wire["model"].partition(":")
+        report["runtime_evidence"][wire["model"]] = schemas.runtime_evidence(provider_name, model_id)
     return report
 
 
@@ -340,6 +354,10 @@ def render(report):
     for role, block in report["quality"].items():
         for failure in block["failures"][:3]:
             print(f"- {role} failure: {failure}")
+    for model, evidence in report.get("runtime_evidence", {}).items():
+        verified = ", ".join(evidence.get("verified") or []) or "—"
+        refused = ", ".join(evidence.get("unsupported") or []) or "—"
+        print(f"- `{model}` — accepted in a real request: {verified} · refused: {refused}")
     for plan in planner["plans"]:
         mark = "✅" if plan["valid"] else "❌"
         print(f"- {mark} {plan['mission'][:70]}: {json.dumps(plan['steps'], ensure_ascii=False)[:160]}")
