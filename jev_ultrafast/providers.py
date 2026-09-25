@@ -192,9 +192,13 @@ DERIVED_MODELS = {
 }
 DERIVATION_ORDER = ("nvidia", "groq", "deepseek")
 
+# The names the sidebar shows for the same three roles. Kept here (not only in the
+# extension) so a message can never call a role something the panel does not show.
+ROLE_LABELS = {"planner": "Planner", "policy": "Executor", "text": "Text writer"}
+
 NO_CONFIG_MESSAGE = (
-    "Nothing is configured for the {role} role yet. One free key runs the whole agent: paste it in the agent "
-    "sidebar, or set {key} in .env - GROQ_API_KEY (https://console.groq.com/keys) is free in 2 minutes."
+    "{role} has no model yet, so the agent cannot run. One free key covers all three roles: paste it in "
+    "the sidebar (GROQ_API_KEY, free in 2 minutes - https://console.groq.com/keys) or set {key} in .env."
 )
 
 
@@ -398,7 +402,7 @@ def resolve(role):
         raw = derived[0]  # nothing configured for this role: use the free key that is present
     if not raw and not base and not key:
         raise ValueError(
-            NO_CONFIG_MESSAGE.format(role=role, key=env["key"])
+            NO_CONFIG_MESSAGE.format(role=ROLE_LABELS.get(role, role), key=env["key"])
         )
     name, preset = "", None
     if raw.startswith(("http://", "https://")):
@@ -432,8 +436,9 @@ def resolve(role):
         if preset and preset.get("key_env"):
             options = " or ".join([env["key"], *preset["key_env"]])
             raise ValueError(
-                f"No API key for the {role} role: set {options}. No request was sent. One free key runs the "
-                "whole agent - paste it in the agent sidebar, or GROQ_API_KEY in .env (https://console.groq.com/keys)."
+                f"No API key for the {ROLE_LABELS.get(role, role)} role: set {options}. "
+                "No request was sent. One free key runs the whole agent - paste it in the "
+                "agent sidebar, or GROQ_API_KEY in .env (https://console.groq.com/keys)."
             )
         raise ValueError(
             f"{env['key']} is not set, and {env['provider']} is not a named provider. "

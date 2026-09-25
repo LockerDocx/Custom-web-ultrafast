@@ -19,6 +19,12 @@
         <div class="hint">Stored locally in <code>.env</code>, on your machine. Never sent anywhere else.</div>
       </section>
 
+      <section id="ready" class="ready" hidden>
+        <span class="ready-dot" id="ready-dot"></span>
+        <span id="ready-text"></span>
+        <button id="ready-test" title="Send one tiny request to every model and show the exact answer">Test setup</button>
+      </section>
+
       <section class="composer">
         <label for="goal">What do you want to do?</label>
         <textarea id="goal" rows="4" placeholder="Find one-way flights from Zurich to London on September 20, 2026… or: research, download, create files, run commands…"></textarea>
@@ -90,6 +96,24 @@
           <span class="hint" id="registry-status"></span>
         </div>
       </details>
+
+      <section id="activity" hidden>
+        <div class="status-line">
+          <span id="activity-status">idle</span>
+          <span id="activity-meta"></span>
+        </div>
+        <div class="progress" id="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <i id="progress-fill"></i>
+        </div>
+        <div class="tabs">
+          <button class="tab on" data-view="chat" title="What you asked, what the agent did, what it answered">💬 Conversation</button>
+          <button class="tab" data-view="log" title="Every event with its timestamp, in order">☰ Log</button>
+          <button id="activity-clear" class="ghost" title="Clear this view (the run keeps going)">Clear</button>
+        </div>
+        <div id="chat" class="chat"></div>
+        <div id="log" class="log" hidden></div>
+        <div class="hint" id="progress-note"></div>
+      </section>
 
       <section id="task" hidden>
         <div class="status-line">

@@ -57,6 +57,8 @@ SUSE package names carry no dot (`python312`, never `python3.12`). Details, per-
 
 ## What it does
 
+**You always know what it is doing.** The sidebar opens with a verdict — 🟢 ready, with the model each role will use, or 🔴 naming the roles that have no model — then walks the run in front of you: a progress bar (a real percentage when the host measured one, otherwise a moving bar plus the step number, the cap, the elapsed time and the tokens), a **conversation** view (*what you asked → what the agent said it would do → each tool call with its result → the answer*) and a **log** of every event with its timestamp and level. Nothing important is silent, including failures.
+
 **Agent loop with a plan.** A planner model writes a short checklist for the mission; a fast executor model picks one action per turn. The sidebar shows the checklist ticking ✓, the live page, the executed actions, and a **Stop** button.
 
 **Dynamic action space, not selectors.** Every observation produces an indexed table of the controls actually on screen (`[7] button · Search`) and the model chooses an operation and one element from it. It never writes CSS selectors or code, so a wrong choice cannot execute.

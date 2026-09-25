@@ -658,6 +658,7 @@ class TaskRunner:
 
     def current_state(self):
         from . import providers as provider_layer
+        from .orchestrator import MAX_ORCHESTRATOR_STEPS
 
         selection = current_selection()
         typesafe = bool(self._typesafe_key or os.environ.get("TYPESAFE_API_KEY"))
@@ -675,6 +676,9 @@ class TaskRunner:
             "tokens": self._tokens(),
             "permissions": permissions.describe(),
             "browserMode": self.mode_pref,
+            # How many steps an orchestrated run may take at most. The sidebar shows it
+            # next to the live step number: a cap is honest, an invented total is not.
+            "step_budget": MAX_ORCHESTRATOR_STEPS,
             "sandbox": self.sandbox_state(),
             "setup": provider_layer.setup_status(),
         }

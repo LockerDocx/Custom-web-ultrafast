@@ -15,6 +15,34 @@ Chrome, with TypeSafe's hosted policy and the Mercury text model. They are label
 appear. This build drives Firefox with Groq/NVIDIA and has not been measured yet.
 
 
+## [Unreleased]
+
+You can now see what the agent is doing instead of guessing.
+
+### Added
+
+- **A verdict before you run.** The sidebar answers "can it run?" in one line: green with the model each role will
+  use, or red naming the roles that have no model and how to fix it. It used to be three red dots and a paragraph to
+  interpret.
+- **A progress bar that does not invent numbers.** It is a real percentage when the host measured one (the plan
+  position in browser mode: *step 2 of 3*); otherwise it moves while the agent works and the meta line reports what is
+  actually known — step count, the cap (`step_budget`, 25), elapsed time, tokens.
+- **A conversation view.** What you asked, what the agent said it would do, each tool call with the result it returned,
+  the answer and the closing line, in the order it happened. The model's streaming output grows in place instead of
+  appearing and vanishing whenever a step arrived.
+- **A log view.** Every event with its timestamp and level (`SYSTEM` / `TOOL` / `OK` / `WARN` / `ERROR`), one line
+  each, including the failures that used to leave no trace.
+- **A headless harness for the panel.** `tests/sidebar_harness.mjs` runs `sidebar.js` against a stub DOM and
+  `tests/test_sidebar_activity.py` asserts on what a user would see: the order of the conversation, the indeterminate
+  bar when there is no total, a determinate one when there is, the log contents, the verdict. The panel's behaviour is
+  tested now instead of assumed (it skips where Node is missing).
+
+### Changed
+
+- **A role is named the same everywhere.** The messages said "the policy role" while the panel said "Executor", which
+  read like two different problems; both now use the panel's names (Planner, Executor, Text writer).
+- The host publishes `step_budget` in its state so the panel can say "at most 25 steps" without hardcoding it.
+
 ## [0.11.0] — 2026-09-25
 
 The version that took the project from "assumed macOS" to the systems people actually run, and that proves

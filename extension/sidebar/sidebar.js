@@ -40,6 +40,8 @@ function render() {
   renderProviders(state.providers);
   renderSetup(state.setup);
   renderError(state.error);
+  renderReady(state);
+  syncRun(state);
 }
 
 function renderLive(live) {
@@ -450,7 +452,7 @@ function renderProviders(providers) {
     renderSetup(state.setup || null);
   }
   box.hidden = false;
-  const names = { planner: "Planner", policy: "Executor", text: "Text writer" };
+  const names = ROLE_NAMES;
   box.innerHTML = Object.values(providers)
     .map((p) => {
       const dot = p.ok ? "🟢" : "🔴";
@@ -481,6 +483,255 @@ function renderError(error) {
   if (error) showError(error);
 }
 
+/* ── activity: progress, conversation, log ─────────────────────────
+   The three ways this panel answers "is it working?", all built from the
+   events the host already sends: a progress bar driven by real counters, a
+   conversation view (what you asked → what the agent did → what it answered)
+   and a timestamped log of every event.
+
+   Honesty rule: a percentage is only shown when the host measured something
+   (the plan position in browser mode, or a finished run). Otherwise the bar
+   runs indeterminate and the text says what is actually known — the step
+   number, the cap, the elapsed time — instead of inventing a total. */
+
+const ROLE_NAMES = { planner: "Planner", policy: "Executor", text: "Text writer" };
+const ROLE_ORDER = ["planner", "policy", "text"];
+const IDLE_STATUSES = ["idle", "done", "blocked", "stopped", "error"];
+const KIND_LABELS = {
+  you: "You",
+  agent: "Agent",
+  tool: "Tool",
+  ok: "Done",
+  warn: "Waiting",
+  error: "Error",
+  system: "System",
+};
+
+let entries = []; // {ts, kind, text, detail} — the whole run, in order
+let seenKeys = new Set(); // one entry per real event, however often the state is broadcast
+let activityView = "chat";
+let streamEntry = null; // the agent entry the model is writing into right now
+let lastStatus = null;
+
+const clock = (ts) => new Date(ts).toTimeString().slice(0, 8);
+const nearBottom = (el) => el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+
+function addEntry(kind, text, detail) {
+  const value = String(text ?? "").trim();
+  if (!value) return null;
+  const entry = { ts: Date.now(), kind, text: value, detail: detail ? String(detail) : "" };
+  entries.push(entry);
+  if (entries.length > 300) entries.splice(0, entries.length - 300);
+  renderActivity();
+  return entry;
+}
+
+/** The model is writing: one entry that grows, not one per token. */
+function streamEntryUpdate(text) {
+  const value = String(text ?? "");
+  if (!value) return;
+  if (streamEntry) {
+    streamEntry.text = value;
+    renderActivity();
+    return;
+  }
+  streamEntry = addEntry("agent", value, "writing…");
+}
+
+function renderActivity() {
+  const box = $("activity");
+  box.hidden = !entries.length;
+  if (box.hidden) return;
+  const chat = $("chat");
+  const log = $("log");
+  if (activityView === "chat") {
+    const stick = nearBottom(chat);
+    chat.innerHTML = entries
+      .map((entry) => {
+        const streaming = entry === streamEntry ? " streaming" : "";
+        const who = `${KIND_LABELS[entry.kind] || entry.kind}${entry.detail ? ` · ${escape(entry.detail)}` : ""}`;
+        return (
+          `<div class="msg ${entry.kind}${streaming}">` +
+          `<span class="who">${who}</span>` +
+          `<span class="text">${escape(entry.text)}</span>` +
+          `<span class="t">${clock(entry.ts)}</span></div>`
+        );
+      })
+      .join("");
+    if (stick) chat.scrollTop = chat.scrollHeight;
+    return;
+  }
+  const stick = nearBottom(log);
+  log.innerHTML = entries
+    .map(
+      (entry) =>
+        `<div class="${entry.kind}"><span class="t">${clock(entry.ts)}</span>` +
+        `<span class="lvl">${entry.kind.toUpperCase()}</span>` +
+        `<span class="msg">${escape(entry.text)}${entry.detail ? ` — ${escape(entry.detail)}` : ""}</span></div>`,
+    )
+    .join("");
+  if (stick) log.scrollTop = log.scrollHeight;
+}
+
+function tokensText(state) {
+  const tokens = state && state.tokens;
+  if (!tokens) return "";
+  return `${tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : tokens} tokens`;
+}
+
+function elapsedText(state) {
+  if (!state) return "";
+  const ms = state.elapsed_ms || state.latency_ms || (state.browser && state.browser.elapsed_ms);
+  return ms ? `${(ms / 1000).toFixed(1)} s` : "";
+}
+
+function renderProgress(state) {
+  const bar = $("progress");
+  const status = (state && state.status) || "idle";
+  const running = !IDLE_STATUSES.includes(status);
+  const plan = (state && state.plan) || [];
+  const index = state && typeof state.plan_index === "number" ? state.plan_index : null;
+  const budget = state && state.step_budget;
+  const hasPlan = plan.length > 1 && index !== null;
+  let pct = null;
+  let label = status;
+  if (running && hasPlan) {
+    pct = Math.round((index / plan.length) * 100);
+    label = `step ${Math.min(index + 1, plan.length)} of ${plan.length}`;
+  } else if (running) {
+    label = "working…";
+  } else if (status === "done") {
+    pct = 100;
+    label = "done ✓";
+  }
+  bar.classList.toggle("indeterminate", running && pct === null);
+  bar.classList.toggle("done", status === "done");
+  bar.setAttribute("aria-valuenow", String(pct === null ? 0 : pct));
+  $("progress-fill").style.width = pct === null ? "" : `${pct}%`;
+  $("activity-status").textContent = label;
+  const steps = (state && ((state.log || []).length || (state.history || []).length)) || 0;
+  $("activity-meta").textContent = [
+    steps ? `${steps} step${steps === 1 ? "" : "s"}` : "",
+    running && !hasPlan && budget ? `up to ${budget}` : "",
+    elapsedText(state),
+    tokensText(state),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  $("progress-note").textContent =
+    running && pct === null
+      ? `When it works the bar moves and fills at the end; how many steps a mission takes is only known as it goes${budget ? ` (at most ${budget})` : ""}.`
+      : "";
+}
+
+/** Turn the latest state into new entries: runs, plan steps, tool calls, answers. */
+function syncRun(state) {
+  if (!state) return;
+  const changed = state.status !== lastStatus;
+  const starting = changed && state.status === "running";
+  // Order matters for reading: "started" is written before the first step, while
+  // the closing entry ("finished", "stopped", the failure) is written after the
+  // steps it closes — otherwise the answer would appear below its own epilogue.
+  if (starting) {
+    addEntry("system", `Run started · ${state.mode === "orchestrated" ? "tools mode" : "browser mode"}`);
+  }
+  const trace = state.trace || "run";
+  for (const step of state.log || []) {
+    const key = `${trace}:task:${step.step}`;
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    if (step.final) {
+      addEntry("agent", trunc(step.final, 600), "final answer");
+      streamEntry = null;
+    } else if (step.tool) {
+      addEntry("tool", `${step.tool}(${compactArgs(step.args)})`, step.result ? trunc(step.result, 200) : "");
+      streamEntry = null;
+    } else if (step.error) {
+      addEntry("error", step.error);
+    }
+  }
+  for (const action of state.history || []) {
+    const key = `${trace}:act:${action.step}`;
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    addEntry(
+      "tool",
+      `${action.action}${action.text ? ` “${trunc(action.text, 80)}”` : ""}`,
+      action.latency_ms ? `${action.latency_ms} ms` : "",
+    );
+    streamEntry = null;
+  }
+  const plan = state.plan || [];
+  if (plan.length > 1 && typeof state.plan_index === "number") {
+    const key = `${trace}:plan:${state.plan_index}`;
+    if (!seenKeys.has(key) && plan[state.plan_index]) {
+      seenKeys.add(key);
+      addEntry("system", `Step ${state.plan_index + 1}/${plan.length} · ${trunc(plan[state.plan_index], 120)}`);
+    }
+  }
+  if (changed && !starting) {
+    if (state.status === "done") {
+      addEntry("ok", `Finished ✓ ${elapsedText(state)}`.trim(), tokensText(state));
+      streamEntry = null;
+    }
+    if (state.status === "stopped") addEntry("warn", "Stopped by you");
+    if (state.status === "error" || state.status === "blocked") {
+      addEntry("error", state.error || `Run ${state.status}`);
+    }
+  }
+  if (changed) lastStatus = state.status;
+  renderProgress(state);
+}
+
+/** One glance: can the agent run at all, and with which models? */
+function renderReady(state) {
+  const box = $("ready");
+  const providers = state && state.providers;
+  if (!providers || !Object.keys(providers).length) {
+    box.hidden = true;
+    return;
+  }
+  const rows = ROLE_ORDER.map((role) => providers[role]).filter(Boolean);
+  const good = rows.filter((p) => p.ok);
+  const bad = rows.filter((p) => !p.ok);
+  const ready = rows.length > 0 && bad.length === 0;
+  box.hidden = false;
+  box.classList.toggle("ok", ready);
+  box.classList.toggle("bad", !ready);
+  $("ready-dot").textContent = ready ? "🟢" : "🔴";
+  $("ready-text").innerHTML = ready
+    ? "<b>Ready to run</b> · " +
+      good
+        .map((p) => `${escape(ROLE_NAMES[p.role] || p.role)} <code>${escape(p.model || "?")}</code>`)
+        .join(" · ")
+    : `<b>Not ready: ${bad.map((p) => escape(ROLE_NAMES[p.role] || p.role)).join(", ")} have no model.</b> ` +
+      "One free key covers all three roles — paste it below and press Test setup.";
+}
+
+function setActivityView(view) {
+  activityView = view;
+  $("chat").hidden = view !== "chat";
+  $("log").hidden = view !== "log";
+  document.querySelectorAll("#activity .tab").forEach((tab) => tab.classList.toggle("on", tab.dataset.view === view));
+  renderActivity();
+}
+
+document.querySelectorAll("#activity .tab").forEach((tab) => {
+  tab.addEventListener("click", () => setActivityView(tab.dataset.view));
+});
+
+$("activity-clear").addEventListener("click", () => {
+  entries = [];
+  seenKeys = new Set();
+  streamEntry = null;
+  renderActivity();
+});
+
+$("ready-test").addEventListener("click", () => {
+  addEntry("system", "Testing every model connection…");
+  browser.runtime.sendMessage({ cmd: "check" }).catch(() => {});
+});
+
 /* ── approvals (MVP-4) ───────────────────────────────────────────── */
 
 function showApproval(message) {
@@ -508,18 +759,28 @@ browser.runtime.onMessage.addListener((message) => {
   if (message.type === "error") {
     // The next state broadcast carries the same error persistently; show it now.
     showError(message.message);
+    addEntry("error", message.message);
   }
   if (message.type === "checking") {
     $("providers").hidden = false;
     $("providers").innerHTML = '<div class="provider">⏳ Checking the model connections…</div>';
+    addEntry("system", "Checking the model connections…");
   }
   if (message.type === "models") {
     registry = message.registry || null;
     modelsSignature = ""; // force a rebuild with the fresh catalogue
     if (message.error) showError(message.error);
+    if (registry) {
+      const providers = Object.values(registry.providers || {}).filter((p) => p && p.ok);
+      const models = providers.reduce((sum, p) => sum + (p.models ? p.models.length : 0), 0);
+      addEntry("system", `Catalogue loaded: ${models} models from ${providers.length} providers`);
+    }
     if (state) render();
   }
-  if (message.type === "notice") showNotice(message.message);
+  if (message.type === "notice") {
+    showNotice(message.message);
+    addEntry("system", message.message);
+  }
   if (message.type === "setup") {
     state.setup = message;
     renderSetup(message);
@@ -527,17 +788,23 @@ browser.runtime.onMessage.addListener((message) => {
   if (message.type === "probe") {
     if (message.loading) {
       showNotice("Probing the model…");
+      addEntry("system", "Probing the model: one real request to see which parameters it accepts…");
     } else {
       const report = message.report || {};
       const dropped = (report.unsupported || []).length ? ` · unsupported: ${report.unsupported.join(", ")}` : "";
       showNotice(`${report.model || "model"} · ${report.schemaId || ""} · accepted: ${(report.verified || []).join(", ") || "none"}${dropped}`);
+      addEntry("system", `Model check: ${report.model || "model"} accepted ${(report.verified || []).join(", ") || "nothing"}${dropped}`);
       modelsSignature = ""; // the schema changed: rebuild the controls
     }
   }
-  if (message.type === "approval_request") showApproval(message);
+  if (message.type === "approval_request") {
+    showApproval(message);
+    addEntry("warn", `Waiting for your approval to run: ${message.command}`);
+  }
   if (message.type === "delta") {
     $("thinking").textContent = message.text || "";
     $("thinking").hidden = false;
+    streamEntryUpdate(message.text);
   }
 });
 
@@ -547,6 +814,10 @@ $("run").addEventListener("click", async () => {
   $("error").hidden = true;
   $("error").textContent = "";
   if (state) state.error = null;
+  seenKeys = new Set(); // a new mission: every step counts as new
+  streamEntry = null;
+  setActivityView("chat");
+  addEntry("you", goal);
   const reply = await browser.runtime.sendMessage({ cmd: "run", goal });
   if (reply && reply.error) showError(reply.error);
 });

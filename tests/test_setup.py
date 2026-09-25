@@ -84,7 +84,8 @@ def test_no_key_at_all_says_exactly_what_to_do(clean_env):
     with pytest.raises(ValueError) as error:
         providers.resolve("policy")
     message = str(error.value)
-    assert "One free key runs the whole agent" in message
+    assert "One free key covers all three roles" in message
+    assert providers.ROLE_LABELS["policy"] in message  # named the way the panel names it
     assert "GROQ_API_KEY" in message and "console.groq.com/keys" in message
 
 
@@ -110,7 +111,7 @@ def test_an_explicit_provider_without_a_key_still_fails_loudly(clean_env):
     clean_env.setenv("POLICY_PROVIDER", "groq")  # but no GROQ_API_KEY anywhere
     with pytest.raises(ValueError) as error:
         providers.resolve("policy")
-    assert "No API key for the policy role" in str(error.value) and "GROQ_API_KEY" in str(error.value)
+    assert "No API key for the Executor role" in str(error.value) and "GROQ_API_KEY" in str(error.value)
 
 
 def test_the_sidebar_shows_what_actually_runs(clean_env):
