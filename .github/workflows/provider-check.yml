@@ -32,19 +32,14 @@ jobs:
           pip install -e . "httpx[http2]" browser-harness==0.1.13
       - name: Check the configured providers
         env:
+          # Deliberately NO provider/model configuration: this check tests the same
+          # zero-config path a new user gets. With these two keys the agent must derive
+          # planner -> nvidia:z-ai/glm-5.3 and executor/text -> groq:openai/gpt-oss-20b
+          # (providers.DERIVED_MODELS), which is the measured-best arrangement. If the
+          # derivation ever picks something else, the report shows it here.
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          PLANNER_PROVIDER: nvidia
-          PLANNER_MODEL: z-ai/glm-5.3
-          POLICY_PROVIDER: groq
-          POLICY_MODEL: openai/gpt-oss-20b
           POLICY_REASONING: low
-          # The documented default for the text role (.env.example, docs/providers.md):
-          # measured at ~300 ms per field, against ~22 s for the NVIDIA flash model this
-          # check used to pin — which also kept answering 🔴 while the product's own
-          # recommendation was never the thing being tested.
-          TEXT_MODEL_PROVIDER: groq
-          TEXT_MODEL: openai/gpt-oss-20b
           TEXT_MODEL_REASONING: low
         run: |
           if [ -z "$NVIDIA_API_KEY" ] && [ -z "$GROQ_API_KEY" ]; then
