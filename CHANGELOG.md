@@ -15,7 +15,7 @@ Chrome, with TypeSafe's hosted policy and the Mercury text model. They are label
 appear. This build drives Firefox with Groq/NVIDIA and has not been measured yet.
 
 
-## [Unreleased]
+## [0.12.1] — 2026-09-25
 
 ### Added
 
