@@ -37,13 +37,10 @@ The version that answered a speed question with a measurement, and fixed what th
   field. It was written to answer one question — *"what if we limit the AI: glm-5.3 flash without reasoning?"* —
   and the answer stops the guesswork: flash with thinking off was the **slowest** NVIDIA candidate measured
   (85 s / 43 s / 42 s medians for planner, executor and text against 30 s / 36 s / 9 s for the shipped
-
-## [0.12.1] — 2026-09-25
-
-### Added
-
   defaults), because what costs time on that free tier is the queue, not the parameters. `docs/providers.md`
   carries the table.
+
+## [0.12.1] — 2026-09-25
 
 ### Fixed
 
