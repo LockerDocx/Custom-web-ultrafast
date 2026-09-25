@@ -36,6 +36,11 @@ INTERESTING = (
 )
 SAMPLE_LIMIT = 12
 LIMIT_MARKERS = ("HTTP 429", "HTTP 529", "rate limit", "tokens per day", "tokens per minute", "quota")
+# An endpoint that stalls leaves the probe with no verdict at all — that is the network,
+# not the parameter engine, so the probe is asked again before the report calls it a
+# failure. Parameter verdicts themselves are never softened: they stay a hard check.
+CONNECTION_MARKERS = ("Model connection failed", "Model stream failed", "Model unavailable")
+PROBE_ATTEMPTS = 3
 
 RESULTS = []
 
@@ -73,6 +78,41 @@ def provider_names():
 
 def section(title):
     print(f"\n## {title}\n", flush=True)
+
+
+def probe_with_retries(name, model_id):
+    """Probe one model for its parameter verdict; retry a stall, never a verdict.
+
+    An endpoint that never answers — a cold start, a load balancer, a hiccup on the wire —
+    leaves the probe with nothing to report, and by then the HTTP layer has already spent
+    its own three retries inside `discovery.probe_model` (76 s of waiting). That is the
+    network, not the parameter engine, so the probe is asked again; the attempt count is
+    reported, so a run that needed a retry never looks like one that did not. A parameter
+    the endpoint refuses is a verdict and is passed straight through.
+
+    Returns (report_or_None, attempts, milliseconds_spent_on_the_last_attempt).
+    """
+    attempts = 0
+    while True:
+        attempts += 1
+        started = time.monotonic()
+        try:
+            report = discovery.probe_model(name, model_id)
+        except Exception as error:  # noqa: BLE001
+            soft(f"Probe failed for {name}/{model_id}", str(error)[:160])
+            return None, attempts, round((time.monotonic() - started) * 1000)
+        waited_ms = round((time.monotonic() - started) * 1000)
+        stall = report.get("error") or ""
+        verdictless = bool(stall) and any(marker in stall for marker in CONNECTION_MARKERS)
+        if not verdictless or attempts >= PROBE_ATTEMPTS:
+            return report, attempts, waited_ms
+        pause = 10 * attempts
+        print(
+            f"| `{name}` | `{model_id}` | — | — | — | endpoint did not answer "
+            f"(attempt {attempts} of {PROBE_ATTEMPTS}); retrying in {pause} s |",
+            flush=True,
+        )
+        time.sleep(pause)
 
 
 def main():
@@ -185,19 +225,18 @@ def main():
     print("| Provider | Model | probed | verified | refused | endpoint error |", flush=True)
     print("| --- | --- | --- | --- | --- | --- |", flush=True)
     for name, model_id in probes[:4]:
-        started = time.monotonic()
-        try:
-            report = discovery.probe_model(name, model_id)
-        except Exception as error:  # noqa: BLE001
-            soft(f"Probe failed for {name}/{model_id}", str(error)[:160])
+        report, attempts, waited_ms = probe_with_retries(name, model_id)
+        if report is None:
             continue
         error = report.get("error") or "—"
         if error != "—" and any(marker.lower() in error.lower() for marker in LIMIT_MARKERS):
-            error = f"cuota agotada: {error[:80]}"
+            error = f"quota exhausted: {error[:80]}"
         elif error != "—":
             # How long it waited says more than the message does: a 25 s failure is
             # the request timing out, an instant one is the connection being refused.
-            error = f"{error} — {round((time.monotonic() - started) * 1000)} ms"
+            error = f"{error} — {waited_ms} ms"
+            if attempts > 1:
+                error += f" · after {attempts} attempts"
         print(
             f"| `{name}` | `{model_id}` | {', '.join(report['probed']) or '—'} | "
             f"{', '.join(report['verified']) or '—'} | {', '.join(report['unsupported']) or '—'} | {error} |",
@@ -311,11 +350,11 @@ def finish():
     print(f"- warnings: {len(warnings)}", flush=True)
     print(f"- failures: {len(failures)}", flush=True)
     if failures:
-        print("\n**Fallos:**", flush=True)
+        print("\n**Failures:**", flush=True)
         for _icon, title, detail in failures:
             print(f"- {title} — {detail}", flush=True)
     else:
-        print("\n**Todo verde: el motor de parámetros por modelo funciona contra las APIs reales.**", flush=True)
+        print("\n**All green: the per-model parameter engine works against the live APIs.**", flush=True)
     return 1 if hard.failed else 0
 
 

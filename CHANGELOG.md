@@ -15,6 +15,21 @@ Chrome, with TypeSafe's hosted policy and the Mercury text model. They are label
 appear. This build drives Firefox with Groq/NVIDIA and has not been measured yet.
 
 
+## [Unreleased]
+
+### Fixed
+
+- **The live-provider check no longer goes red when an endpoint simply stalls.** The run of 25 Sep was red on
+  NVIDIA NIM leaving `openai/gpt-oss-20b` unanswered for 76 s, while the same provider answered for
+  `z-ai/glm-5.3` in the same run and re-running it unchanged went green. A probe that comes back with no verdict
+  at all is now asked again — up to three attempts, and the number of attempts is printed — while a real verdict
+  (parameters verified or refused) is reported as it came, first time. The parameter check stays a hard one.
+- **A panel test that could fail on a slow machine is now decided by handshakes.** The test for a verdict
+  arriving from before the key slept 0.4 s hoping the key would be saved inside that window; on the Windows
+  runner it was not, so the check already in flight answered first and the test read that as a stale verdict
+  being published. The key save and the check's answer are now ordered with events, and the test additionally
+  asserts the discarded verdict was never broadcast to the sidebar at all.
+
 ## [0.12.0] — 2026-09-25
 
 You can now see what the agent is doing instead of guessing.

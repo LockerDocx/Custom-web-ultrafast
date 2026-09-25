@@ -428,15 +428,27 @@ class _RecordingBridge:
 
 
 def test_a_verdict_from_before_the_key_is_never_published(clean_env, tmp_path, monkeypatch):
-    """The classic race: a check starts with no key, the key arrives, the check answers anyway."""
+    """The classic race: a check starts with no key, the key arrives, the check answers anyway.
+
+    Decided by handshakes instead of by sleeping: the first check is held open until the key
+    has really been saved, so the outcome depends on the app's guard and not on how fast the
+    machine is. A 0.4 s sleep was plenty here and not on the Windows runner, where the save
+    came in after the first check had already answered.
+    """
     import time
 
     calls = []
+    first_check_running = threading.Event()
+    key_was_saved = threading.Event()
 
     def slow_check():
-        calls.append(len(calls) + 1)
-        time.sleep(0.4)  # long enough for the key to be saved mid-flight
-        return {"policy": {"role": "policy", "ok": len(calls) > 1, "detail": f"call {len(calls)}"}}
+        call = len(calls) + 1
+        calls.append(call)
+        if call == 1:
+            first_check_running.set()
+            key_was_saved.wait(20)  # the key arrives while this check is in flight
+            return {"policy": {"role": "policy", "ok": False, "detail": "call 1"}}
+        return {"policy": {"role": "policy", "ok": True, "detail": f"call {call}"}}
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("JEV_ENV_FILE", str(tmp_path / ".env"))
@@ -445,13 +457,23 @@ def test_a_verdict_from_before_the_key_is_never_published(clean_env, tmp_path, m
     runner = firefox.TaskRunner(bridge)
 
     threading.Thread(target=runner.run_provider_check, daemon=True).start()
-    time.sleep(0.1)  # the first check is running now
+    assert first_check_running.wait(20), "the first check never started"
     runner.handle_setup_key("GROQ_API_KEY", "gsk_arrived_late")
+    key_was_saved.set()
 
-    deadline = time.time() + 10
+    deadline = time.time() + 30
     while time.time() < deadline and runner.provider_check is None:
         time.sleep(0.05)
     assert runner.provider_check is not None, "no verdict was published at all"
     assert runner.provider_check["policy"]["detail"] == "call 2", "a stale verdict was published"
     assert len(calls) == 2, "the fresh check did not run"
+    # and the discarded verdict must never have reached the sidebar, not even for a moment
+    published = [
+        (message.get("state") or {}).get("providers", {}) or {}
+        for message in bridge.sent
+        if message.get("type") == "state"
+    ]
+    assert all((state.get("policy") or {}).get("detail") != "call 1" for state in published), (
+        "the stale verdict was broadcast to the sidebar"
+    )
     assert any("Saved GROQ_API_KEY" in m.get("message", "") for m in bridge.sent if m.get("type") == "notice")
