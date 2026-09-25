@@ -127,6 +127,67 @@ POLICY_HINT = (
 )
 
 
+def repo_root():
+    """The checkout this package lives in, or None when it was installed as a package."""
+    root = Path(__file__).resolve().parents[1]
+    return root if (root / "pyproject.toml").exists() else None
+
+
+def env_file_path():
+    """The one `.env` the agent reads *and* writes, whatever the working directory is.
+
+    The process cwd is not a reliable locator: Firefox chooses it when it launches the
+    native host, and a terminal user may run `jev-firefox` from anywhere. Resolving the
+    key file relative to the cwd meant the sidebar could save a key in one file while the
+    next start read another — the key looked lost ("nothing is configured" with a key
+    already saved). One installation, one file:
+
+      1. `JEV_ENV_FILE`, if set (tests, CI, anyone who keeps it elsewhere)
+      2. `<checkout>/.env` — the documented location, and where existing keys already are
+      3. `./.env`, only when there is no checkout (a package install run from a folder
+         that has one)
+      4. `~/.config/jev-ultrafast/.env` (a package install with nothing configured yet)
+    """
+    explicit = (os.environ.get("JEV_ENV_FILE") or "").strip()
+    if explicit:
+        return Path(explicit)
+    root = repo_root()
+    if root is not None:
+        return root / ".env"
+    local = Path.cwd() / ".env"
+    if local.exists():
+        return local
+    return Path.home() / ".config" / "jev-ultrafast" / ".env"
+
+
+def env_file_display():
+    """The path as shown in the sidebar: `~` instead of the user's home directory."""
+    path = env_file_path()
+    home = str(Path.home())
+    text = str(path)
+    return "~" + text[len(home):] if text.startswith(home + os.sep) else text
+
+
+def load_env_file(path=None):
+    """Read the key file into the environment. One reader for every entry point."""
+    target = Path(path) if path else env_file_path()
+    if not target.exists():
+        return target
+    try:
+        text = target.read_text(encoding="utf-8-sig", errors="replace")  # utf-8-sig drops a Notepad BOM
+    except OSError:
+        return target
+    for line in text.splitlines():
+        line = line.lstrip("\ufeff")
+        if "=" in line and not line.lstrip().startswith("#"):
+            name, value = line.split("=", 1)
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+                value = value[1:-1]  # Notepad and some editors wrap pasted values in quotes
+            os.environ.setdefault(name.strip(), value)
+    return target
+
+
 def detect_preset(base_url):
     url = base_url.rstrip("/")
     for name, preset in PROVIDERS.items():
@@ -329,7 +390,8 @@ def ensure_configured(prompt=input, notify=print, path=None, interactive=None):
 
 def _write_env(values, path=None):
     """Persist keys into .env, replacing existing lines instead of duplicating them."""
-    target = Path(path or os.environ.get("JEV_ENV_FILE", ".env"))
+    target = Path(path) if path else env_file_path()
+    target.parent.mkdir(parents=True, exist_ok=True)  # first key on a fresh install
     try:
         # utf-8-sig drops the BOM Notepad writes; a stray byte must not stop the agent
         lines = target.read_text(encoding="utf-8-sig", errors="replace").splitlines() if target.exists() else []
@@ -388,6 +450,8 @@ def setup_status():
         "typesafe": bool((os.environ.get("TYPESAFE_API_KEY") or "").strip()),
         "free": [{"variable": name, "label": label, "keys_url": url} for name, label, url in FREE_KEYS],
         "selection": {role: list(selection_for(role)) for role in SETUP_ROLES},
+        # shown in the sidebar: a key "not found" is usually a key in another file
+        "env_file": env_file_display(),
     }
 
 

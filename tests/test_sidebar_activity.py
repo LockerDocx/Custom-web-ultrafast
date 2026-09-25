@@ -108,6 +108,13 @@ def test_the_verdict_is_one_glance(panel):
     assert "one free key" in not_ready["text"].lower()
 
 
+def test_the_verdict_says_where_the_keys_are_read_from(panel):
+    """"Nothing configured" must come with the file the agent looked in: a key in another
+    file was the whole reason a saved NVIDIA key looked missing."""
+    assert "Not ready" in panel["readyBad"]["text"]
+    assert "~/.config/jev-ultrafast/.env" in panel["readyBad"]["text"]
+
+
 def test_clearing_the_view_does_not_stop_the_run(panel):
     """Clear empties the panel; the run continues in the background."""
     assert panel["afterClear"]["hidden"] is True

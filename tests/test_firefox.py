@@ -451,6 +451,7 @@ def test_env_loader_strips_quotes_and_bom(tmp_path, monkeypatch):
     )
     monkeypatch.chdir(tmp_path)
     try:
+        monkeypatch.setenv("JEV_ENV_FILE", str(env))  # one fixed file, not the cwd
         firefox.load_environment()
         assert os.environ["JEV_TEST_QUOTED_KEY"] == "nvapi-secret"
         assert os.environ["JEV_TEST_SINGLE_KEY"] == "gsk-single"

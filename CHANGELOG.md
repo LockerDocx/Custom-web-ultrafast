@@ -37,6 +37,15 @@ You can now see what the agent is doing instead of guessing.
   bar when there is no total, a determinate one when there is, the log contents, the verdict. The panel's behaviour is
   tested now instead of assumed (it skips where Node is missing).
 
+### Fixed
+
+- **A saved key can no longer hide in another file.** The key file was resolved relative to the process working
+  directory, and Firefox chooses that directory when it launches the native host: a key pasted in the sidebar (or
+  typed into the checkout's `.env`) was invisible the next time the agent started from elsewhere, which showed up as
+  *"nothing is configured"* with a key already saved. Reads and writes now resolve one file per installation — the
+  checkout's `.env`, `JEV_ENV_FILE` to move it, `~/.config/jev-ultrafast/.env` for a package install — and the panel
+  and the startup line both name that exact path, so the answer to "where did my key go?" is on screen.
+
 ### Changed
 
 - **A role is named the same everywhere.** The messages said "the policy role" while the panel said "Executor", which

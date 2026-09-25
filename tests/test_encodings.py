@@ -109,6 +109,9 @@ print("config:", json.dumps(parameters.current_selection(), ensure_ascii=False)[
     environment = {
         "PATH": os.environ.get("PATH", ""),
         "HOME": str(tmp_path),
+        # the key file no longer follows the cwd (one file per installation): pin it here,
+        # or this script would write into the checkout's real .env
+        "JEV_ENV_FILE": str(tmp_path / ".env"),
         "LC_ALL": "C",
         "LANG": "C",
         "PYTHONUTF8": "0",  # refuse the UTF-8 mode: this must work without it

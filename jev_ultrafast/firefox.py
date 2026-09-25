@@ -493,8 +493,9 @@ class NativeMessagingHost(Bridge):
 
 def repo_root():
     """The folder this checkout lives in, wherever the browser started us from."""
-    root = Path(__file__).resolve().parents[1]
-    return root if (root / "pyproject.toml").exists() else Path.cwd()
+    from . import providers as provider_layer
+
+    return provider_layer.repo_root() or Path.cwd()
 
 
 def native_main():
@@ -1168,21 +1169,11 @@ class TaskRunner:
         self.bridge.broadcast({"type": "state", "state": self.current_state()})
 
 
-def _clean_value(value):
-    value = value.strip()
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-        value = value[1:-1]  # Notepad and some editors wrap pasted values in quotes
-    return value
-
-
 def load_environment():
-    path = os.path.join(os.getcwd(), ".env")
-    if os.path.exists(path):
-        with open(path, encoding="utf-8-sig") as handle:  # utf-8-sig drops a Notepad BOM
-            for line in handle:
-                if "=" in line and not line.startswith("#"):
-                    key, value = line.split("=", 1)
-                    os.environ.setdefault(key.strip(), _clean_value(value))
+    """Read the key file (one location for every launch path: see providers.env_file_path)."""
+    from . import providers as provider_layer
+
+    return provider_layer.load_env_file()
 
 
 def main():
@@ -1200,6 +1191,11 @@ def main():
     _SERVER.start()
     print(f"AI Agent for Firefox bridge: ws://127.0.0.1:{_SERVER.port}", flush=True)
     print("Load extension/ in Firefox via about:debugging → This Firefox → Load Temporary Add-on.", flush=True)
+    print(
+        f"Keys are read from {provider_layer.env_file_display()} "
+        "(paste one in the sidebar and it lands there).",
+        flush=True,
+    )
     if provider_layer.is_configured():
         print(f"Policy model: {policy_description()}", flush=True)
     else:

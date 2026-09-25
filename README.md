@@ -119,7 +119,7 @@ Configuration, presets and self-hosted gateways: [docs/providers.md](docs/provid
 ## Privacy and safety
 
 - **Everything local except the model calls.** The bridge listens on `127.0.0.1` only, checks the `moz-extension://` origin, and the optional web console binds to `127.0.0.1` with a token.
-- **Your keys stay on your machine**, written to `.env` by the sidebar, never printed back and never sent anywhere except the provider you chose.
+- **Your keys stay on your machine**: one fixed file next to the code — the panel names the exact path — written by the sidebar and never printed back. The location does not depend on the folder you start the agent from: Firefox picks its own working directory, and a relative `.env` used to mean a key saved in one folder was invisible from another (`JEV_ENV_FILE` moves it if you want it elsewhere). Keys are only ever sent to the provider you chose.
 - **The agent cannot leave its workspace.** Files it creates go to `workspace/`; paths outside are refused.
 - **Firefox launches the agent itself** over native messaging (a per-user manifest, no admin rights). Closing Firefox stops it; nothing keeps running in the background.
 - No telemetry, no accounts, no server of ours in the middle.

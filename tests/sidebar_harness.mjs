@@ -134,7 +134,7 @@ const base = {
     policy: provider("policy", "openai/gpt-oss-20b"),
     text: provider("text", "openai/gpt-oss-20b"),
   },
-  setup: { configured: true, keys: {}, free: [], selection: {} },
+  setup: { configured: true, keys: {}, free: [], selection: {}, env_file: "~/.config/jev-ultrafast/.env" },
   sandbox: {},
   browserMode: "live",
   step_budget: 25,

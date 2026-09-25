@@ -23,16 +23,10 @@ AGENT = None
 
 
 def load_environment():
-    path = Path.cwd() / ".env"
-    if path.exists():
-        with open(path, encoding="utf-8-sig") as handle:
-            for line in handle:
-                if "=" in line and not line.startswith("#"):
-                    key, value = line.split("=", 1)
-                    value = value.strip()
-                    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-                        value = value[1:-1]
-                    os.environ.setdefault(key.strip(), value)
+    """Same key file as the Firefox host: one location, however the GUI is started."""
+    from . import providers as provider_layer
+
+    return provider_layer.load_env_file()
 
 
 def response_state():

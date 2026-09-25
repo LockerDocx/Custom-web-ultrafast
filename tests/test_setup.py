@@ -200,6 +200,71 @@ def test_typesafe_key_also_counts_as_configured(clean_env):
     assert providers.is_configured() is True
 
 
+# ── where the keys live: one file per installation, not per working directory ─────
+
+
+def test_a_key_saved_from_one_folder_is_found_from_any_other(tmp_path, monkeypatch):
+    """The bug behind "I pasted an NVIDIA key and it says nothing is configured".
+
+    The sidebar wrote .env relative to the process working directory and the host read
+    it the same way, so a key saved while the host ran from one folder was invisible the
+    next time it started from another one — and Firefox picks its own cwd when it
+    launches the native host. One installation, one key file.
+    """
+    keys = tmp_path / "keys.env"
+    monkeypatch.setenv("JEV_ENV_FILE", str(keys))
+    providers.save_key("NVIDIA_API_KEY", "nvapi-saved-in-one-folder")
+    assert keys.exists()
+
+    elsewhere = tmp_path / "a-different-folder-entirely"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+
+    providers.load_env_file()  # a fresh start, from somewhere else
+    assert providers.key_for("nvidia") == "nvapi-saved-in-one-folder"
+    assert providers.is_configured() is True
+    # and one NVIDIA key is enough for all three roles
+    assert providers.selection_for("planner") == ("nvidia", "z-ai/glm-5.3")
+    assert providers.selection_for("policy") == ("nvidia", "openai/gpt-oss-20b")
+    assert providers.selection_for("text") == ("nvidia", "openai/gpt-oss-20b")
+
+
+def test_the_key_file_lives_next_to_the_code_whatever_the_cwd_is(tmp_path, monkeypatch):
+    """A checkout has one key file, and the working directory cannot move it."""
+    monkeypatch.delenv("JEV_ENV_FILE", raising=False)
+    monkeypatch.chdir(tmp_path)
+    expected = providers.repo_root() / ".env"
+    assert providers.env_file_path() == expected
+    monkeypatch.chdir("/")
+    assert providers.env_file_path() == expected
+
+
+def test_an_installed_package_keeps_one_file_of_its_own(tmp_path, monkeypatch):
+    """Installed as a package (no checkout): the folder you work in, then the config dir."""
+    monkeypatch.delenv("JEV_ENV_FILE", raising=False)
+    monkeypatch.setattr(providers, "repo_root", lambda: None)
+    monkeypatch.chdir(tmp_path)
+    local = tmp_path / ".env"
+    local.write_text("GROQ_API_KEY=gsk_local\n", encoding="utf-8")
+    assert providers.env_file_path() == local
+
+    local.unlink()
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))  # Windows
+    assert providers.env_file_path() == tmp_path / "home" / ".config" / "jev-ultrafast" / ".env"
+
+
+def test_the_sidebar_is_told_which_file_holds_the_keys(tmp_path, monkeypatch):
+    """"No key" usually means "key in another file": the panel has to be able to say it."""
+    monkeypatch.setenv("JEV_ENV_FILE", str(tmp_path / ".env"))
+    assert providers.setup_status()["env_file"] == str(tmp_path / ".env")
+    from pathlib import Path
+
+    monkeypatch.setenv("JEV_ENV_FILE", str(Path.home() / "somewhere" / ".env"))
+    assert providers.setup_status()["env_file"] == "~/somewhere/.env"
+
+
 # ── the Firefox flow: the sidebar is the setup surface ───────────────────────
 
 
@@ -208,8 +273,9 @@ def _live_bridge(tmp_path, monkeypatch):
     from tests.test_firefox import FakeExtension  # the extension-side WebSocket client
 
     monkeypatch.chdir(tmp_path)
-    provider_layer = providers
-    provider_layer.save_key.__globals__["os"].environ.pop("JEV_ENV_FILE", None)
+    # the key file no longer follows the cwd: pin it, or this test would write into the
+    # checkout's real .env instead of tmp_path
+    monkeypatch.setenv("JEV_ENV_FILE", str(tmp_path / ".env"))
     server = firefox.BridgeServer(port=0)
     server.runner = firefox.TaskRunner(server)
     server.start()
@@ -275,6 +341,7 @@ def test_the_host_starts_without_a_key_and_points_at_the_sidebar(clean_env, tmp_
     """Double-click with no key: no prompt in the terminal, no early exit."""
     asked = []
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("JEV_ENV_FILE", str(tmp_path / ".env"))  # a fresh machine has no key file
     monkeypatch.setattr("builtins.input", lambda *a: asked.append(a) or "")
     class Stop(threading.Event):
         def wait(self, *_args, **_kwargs):
@@ -367,6 +434,7 @@ def test_a_verdict_from_before_the_key_is_never_published(clean_env, tmp_path, m
         return {"policy": {"role": "policy", "ok": len(calls) > 1, "detail": f"call {len(calls)}"}}
 
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("JEV_ENV_FILE", str(tmp_path / ".env"))
     monkeypatch.setattr(firefox, "check_providers", slow_check)
     bridge = _RecordingBridge()
     runner = firefox.TaskRunner(bridge)

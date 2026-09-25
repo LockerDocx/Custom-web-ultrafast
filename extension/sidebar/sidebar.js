@@ -395,6 +395,10 @@ function renderSetup(setup) {
     .filter(([, pair]) => pair && pair[1])
     .map(([role, pair]) => `${role} ${pair[0]}:${pair[1]}`)
     .join("   ·   ");
+  const file = $("setup-file");
+  if (file && setup.env_file) {
+    file.innerHTML = `Stored in <code>${escape(setup.env_file)}</code> on your machine — the agent reads it from there, whichever folder it starts in. Never sent anywhere else.`;
+  }
   $("setup-status").textContent = setup.configured
     ? `Ready — ${plan}`
     : "Paste one key and press Save. Nothing else to configure.";
@@ -705,7 +709,8 @@ function renderReady(state) {
         .map((p) => `${escape(ROLE_NAMES[p.role] || p.role)} <code>${escape(p.model || "?")}</code>`)
         .join(" · ")
     : `<b>Not ready: ${bad.map((p) => escape(ROLE_NAMES[p.role] || p.role)).join(", ")} have no model.</b> ` +
-      "One free key covers all three roles — paste it below and press Test setup.";
+      "One free key covers all three roles — paste it below and press Test setup. " +
+      (state.setup && state.setup.env_file ? `Keys are read from <code>${escape(state.setup.env_file)}</code>.` : "");
 }
 
 function setActivityView(view) {
