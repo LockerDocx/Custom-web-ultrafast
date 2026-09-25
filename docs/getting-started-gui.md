@@ -99,8 +99,8 @@ Four point-and-click options, best first:
 | --- | --- |
 | `Python 3.12 or newer is required` | Install Python from python.org and run the starter again. |
 | Starter window closes instantly | Open it from a terminal once to read the error, or reinstall Python with *Add to PATH*. |
-| Sidebar dot stays red | The host is not running — double-click the starter and wait for `bridge: ws://127.0.0.1:8767`. |
-| `Model provider returned HTTP 401` | A key in `.env` is missing or wrong (see [providers.md](providers.md)). |
+| Sidebar dot stays red | Opening the sidebar starts the host by itself; if it does not, that Firefox cannot launch local programs (snap/Flatpak builds) or the project folder moved — double-click the starter once, keep that window open. |
+| `Model provider returned HTTP 401` | The provider rejected the key: paste a fresh one with **🔑 API keys** in the models panel (no restart needed). |
 | Sidebar says *offline* right after Firefox restarts | Temporary add-ons are removed on restart — load it again via `about:debugging`. |
 | Agent refuses to act on a page | Privileged pages (`about:*`, add-ons manager) cannot be scripted; use a normal website. |
 

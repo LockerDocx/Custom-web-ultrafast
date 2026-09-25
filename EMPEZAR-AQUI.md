@@ -78,7 +78,7 @@ La clave es como una contraseña para que el asistente use una IA. La más fáci
    - **Desde la carpeta**: entra en **la carpeta del proyecto** (la del PASO 1) → subcarpeta **`extension`** → selecciona **`manifest.json`** → **Abrir**
 5. ✓ Comprobación: en la lista aparece **"Jev Ultrafast · Firefox Agent"**
 
-> ℹ️ **"Temporal" significa que al reiniciar Firefox desaparece.** Es normal (aún no está firmado). Cada vez que reinicies Firefox, repite este PASO 4 (30 segundos). La ventana negra del PASO 3 también debe estar abierta.
+> ℹ️ **"Temporal" significa que al reiniciar Firefox desaparece.** Es normal (aún no está firmado). Cada vez que reinicies Firefox, repite este PASO 4 (30 segundos). **La ventana del PASO 3 no hace falta**: el panel arranca el agente por su cuenta.
 
 ---
 
@@ -88,7 +88,7 @@ La clave es como una contraseña para que el asistente use una IA. La más fáci
    - ¿No lo ves? Pulsa la **pieza de puzzle 🧩** de la barra → Jev Agent. O menú **☰ → Panel lateral → Jev Agent**
 2. Se abre el **panel lateral** del agente. Mira el puntito de arriba a la derecha del panel:
    - 🟢 **Verde "host online"** = todo conectado ✓
-   - 🔴 Rojo "offline" = la ventana del host está cerrada → vuelve al PASO 3
+   - 🔴 Rojo "offline" = Firefox no ha podido arrancar el agente → **doble clic en el starter (PASO 3) una vez** y deja esa ventana abierta. (Suele pasar solo si moviste la carpeta o si tu Firefox es el *snap* de Ubuntu, que no deja lanzar programas locales.)
 3. **Pega aquí la clave** (esto es todo el setup): el panel te pide la clave en una tarjeta con un enlace para conseguirla gratis:
    ```
    🔑 One free key starts the agent
@@ -210,10 +210,10 @@ Existe un motor de decisión **gratis y de código abierto** (Laya, de Convai �
 
 | Veo esto… | Solución |
 |---|---|
-| El puntito del panel está **rojo "offline"** | La ventana negra del host está cerrada → doble clic en el starter (PASO 3, punto 8) |
+| El puntito del panel está **rojo "offline"** | Firefox no arrancó el agente: haz **doble clic en el starter** (PASO 3) y deja esa ventana abierta → todo sigue funcionando igual. Si acabas de mover la carpeta del proyecto, ese doble clic también la vuelve a registrar |
 | **Planner o Text writer en 🔴 con error 404 / "not found"** | El id del modelo estaba mal en versiones anteriores (`zai/glm-5.3` en vez de `z-ai/glm-5.3`). **Los starters nuevos lo corrigen solos** al arrancar (verás "Fixed an outdated model id") — o edita `.env` a mano: cambia `zai/` por `z-ai/` en las líneas PLANNER_MODEL y TEXT_MODEL |
-| **🔴 con error 401/403 "Authorization failed"** | El proveedor **rechazó tu clave** (está mal pegada, incompleta o revocada). Genera una clave nueva: NVIDIA en **build.nvidia.com** (icono de perfil → *API Keys* → *Generate API Key*), Groq en **console.groq.com/keys**. Pégala en `.env` en su línea (`NVIDIA_API_KEY=...`), **sin comillas ni espacios**, guarda y reinicia el starter. Ya no pegues la clave con comillas: el sistema ahora las ignora |
-| Un modelo está en **🔴 en el panel** | Pulsa **"Test setup"** y lee el mensaje exacto: `401` = clave mal pegada (repite PASO 3); `404` o `not found` = el nombre del modelo no existe en ese proveedor → córregelo en `.env` (el enlace correcto: Groq en console.groq.com/models, NVIDIA en build.nvidia.com/models) y reinicia el starter |
+| **🔴 con error 401/403 "Authorization failed"** | El proveedor **rechazó tu clave** (mal pegada, incompleta o revocada). Genera una nueva (Groq en **console.groq.com/keys**, NVIDIA en **build.nvidia.com** → perfil → *API Keys*) y **pégala en el propio panel**: botón **🔑 API keys** → Save. Se guarda y se aplica al momento, sin reiniciar nada |
+| Un modelo está en **🔴 en el panel** | Pulsa **"Test setup"** y lee el mensaje exacto: `401/403` = clave mal pegada → pégala otra vez con **🔑 API keys**; `404` o `not found` = ese nombre de modelo no existe en el proveedor → elige otro en el desplegable del panel **⚙️ Models & parameters** |
 | Sale un **error rojo en el panel** al pulsar Run | Léelo: ahora incluye la causa real (`HTTP 401: invalid key`, `HTTP 404: model ... does not exist`...). Cada caso está en esta tabla |
 | No encuentro `manifest.json` al cargar el add-on | Está DENTRO de la carpeta `extension` del proyecto (PASO 4, punto 4) |
 | Reinicié Firefox y el add-on desapareció | Normal, es "temporal" → repite el PASO 4 |
@@ -221,7 +221,7 @@ Existe un motor de decisión **gratis y de código abierto** (Laya, de Convai �
 | Estaba en la pestaña de inicio y di Run | No pasa nada: abre DuckDuckGo automáticamente y trabaja allí |
 | `Python 3.12 or newer is required` | Instala Python desde python.org y repite el PASO 3 |
 | La ventana negra se cierra al instante | En el instalador de Python marca **"Add python.exe a PATH"**, reinstala y repite |
-| Solo tengo clave de NVIDIA, no de Groq | Abre `.env` con el Bloc de notas y cambia la línea `POLICY_PROVIDER=groq` por `POLICY_PROVIDER=nvidia` y `POLICY_MODEL=openai/gpt-oss-20b` por un modelo de NVIDIA (míralos en build.nvidia.com/models). Guarda y arranca |
+| Solo tengo clave de NVIDIA, no de Groq | **No hay que hacer nada**: pégala y el agente se configura solo para usarla en los tres papeles (`nvidia:z-ai/glm-5.3` planifica) |
 | Quiero cambiar el modelo | Panel **⚙️ Models & parameters** → desplegable → elegir (se guarda solo). Sin panel: `docs/providers.md` |
 | El desplegable de modelos sale **vacío** | Pulsa **"Refresh catalogue"**. Si sigue vacío: falta la clave de ese proveedor en `.env` (cada desplegable solo lista proveedores con clave) |
 | *"Missing library for .pdf files"* al analizar un PDF | Cierra la ventana negra y vuelve a arrancar con el **starter nuevo** (instala el soporte de PDF/Word/Excel solo). Si persiste: en la carpeta del proyecto ejecuta `pip install -e ".[documents]"` y reinicia |
@@ -238,7 +238,7 @@ Existe un motor de decisión **gratis y de código abierto** (Laya, de Convai �
   que no servían para funcionar sin conexión). Lo único que corre en tu PC es el enrutador de
   decisiones opcional: `docs/laya.md`.
 - **Solo tengo una clave, ¿vale?** Sí: con la de Groq o con la de NVIDIA funciona todo
-  (`docs/providers.md` → «Todo con una sola clave»). Con las dos se reparte: NVIDIA para el
+  (`docs/providers.md` → *Zero configuration: one key is enough*). Con las dos se reparte: NVIDIA para el
   planificador y Groq para el ejecutor, que es lo más rápido.
 - **¿Mi clave está segura?** Sí: se guarda solo en TU ordenador (el archivo `.env`) y solo viaja a Groq/NVIDIA cuando el agente piensa. Nunca llega a las webs que visitas ni a la extensión.
 - **¿Puede descontrolarse mi navegador?** No: solo actúa en la pestaña donde lo lanzaste, hay botón Stop, y un máximo de acciones por tarea.
