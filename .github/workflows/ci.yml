@@ -23,6 +23,18 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[documents]" pytest ruff "httpx[http2]" browser-harness==0.1.13
+      - name: The double-click starters must stay executable
+        # The sandbox/CI filesystem reports them as 0644, so a plain `git add -A`
+        # silently strips the bit from someone's double-click entry point.
+        run: |
+          bad=$(git ls-files -s start-host.sh start-host.command install-laya.sh install-laya.command \
+                | awk '$1 != "100755" {print $4}')
+          if [ -n "$bad" ]; then
+            echo "These starters lost their executable bit: $bad"
+            echo "Fix with: git update-index --chmod=+x $bad"
+            exit 1
+          fi
+          echo "All starters are 100755."
       - name: Lint
         run: ruff check .
       - name: Tests
