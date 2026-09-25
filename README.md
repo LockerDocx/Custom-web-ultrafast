@@ -1,244 +1,144 @@
-<img src="docs/banner.svg" alt="Jev Ultrafast · Browser Use × TypeSafe" width="100%" />
+<img src="docs/banner.svg" alt="Jev Agent — open-source Firefox AI agent" width="100%" />
 
-# Jev Ultrafast ⚡
+# Jev Agent — the open-source Firefox AI agent
 
-> [!IMPORTANT]
-> **The Browser Use Cloud waitlist is open.** Get early access to ultrafast browser agents in the cloud.
-> **[Join the waitlist →](https://browser-use.com/ultrafast?utm_source=github&utm_medium=readme&utm_campaign=jev-ultrafast)**
+**A free AI agent that drives your own Firefox tab.** You write a goal in the sidebar — *"search Google Flights for Zürich to London next Sunday, one adult"* — and it navigates, clicks, types and scrolls for you, showing the plan and every action as it happens. It runs on your machine, uses **one free API key**, and needs no account, no subscription and no cloud dashboard.
 
-**A browser agent with a dynamic, indexed action space.**
+[![CI](https://github.com/LockerDocx/firefox-ai-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/LockerDocx/firefox-ai-agent/actions/workflows/ci.yml)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+![Firefox 109+](https://img.shields.io/badge/firefox-109%2B-orange)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20openSUSE%20%7C%20macOS-lightgrey)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Give it one goal. [TypeSafe's Jev](https://docs.typesafe.ai/introduction) picks an operation and an element. A small LLM writes text only when the operation is `TYPE_TEXT`.
+> 🇪🇸 **¿Prefieres español?** Manual paso a paso, sin consola: **[EMPEZAR-AQUI.md](EMPEZAR-AQUI.md)** ·
+> Guía detallada sistema por sistema: **[docs/setup-por-sistema.md](docs/setup-por-sistema.md)**.
 
-**Zürich → London on Google Flights in 7.1 seconds.** One natural-language goal, actual text generation, and loading waits included.
+<a href="docs/demo.gif"><img src="docs/demo.gif" alt="A real Google Flights search driven by the agent, with generated city names and dynamic click targets" width="100%" /></a>
 
-<a href="docs/demo.mp4"><img src="docs/demo.gif" alt="A real Google Flights search at 1× speed, with generated city names and dynamic operation/target decisions" width="100%" /></a>
+---
 
-[Watch the MP4](docs/demo.mp4) · [Measurements](docs/performance.md) · [Read the loop](jev_ultrafast/agent.py)
+## Quick start
 
-## The action space
+Five steps, about ten minutes, no commands to type.
 
-Every observation produces a new element table:
-
-```text
-[1] button    Change ticket type · Round trip
-[2] combobox  Where from?        · San Francisco
-[3] combobox  Where to?          · empty
-[4] textbox   Departure          · empty
-...
-```
-
-The operations are `CLICK`, `TYPE_TEXT`, `SELECT`, `SCROLL_UP`, `SCROLL_DOWN`, `WAIT`, `DONE`, and `BLOCKED`. Only supported operations and targets are offered.
-
-```text
-                      one TypeSafe request
-                     ┌───────────────────────────┐
-page → element table → operation                 │
-                     │ click_target              │
-                     │ type_text_target          │
-                     │ select_target, if present │
-                     └─────────────┬─────────────┘
-                         use the matching target
-                                   │
-                    CLICK [7] ─────┤──→ browser
-                TYPE_TEXT [3] ─────┘
-                          ↓
-                   small LLM → text → browser
-```
-
-Target questions are speculative. If the operation is `CLICK`, only `click_target` can execute. Two decisions, **one network round trip**. Each target head contains only compatible elements. Native dropdown choices carry an observed element/option index.
-
-There are no site-specific action scripts or prepared field strings in the policy. The Flights example supplies a goal and independently verifies the outcome. The screenshot renderer adds labels afterward; it does not drive the browser.
-
-## Try it
-
-```bash
-git clone https://github.com/browser-use/jev-ultrafast.git
-cd jev-ultrafast
-uv sync
-cp .env.example .env
-# One free key runs everything: paste GROQ_API_KEY (https://console.groq.com/keys).
-# The planner, executor and text model are derived from it — nothing else to configure.
-uv run jev
-```
-
-Open **http://127.0.0.1:8766** and click **Start demo → Run automatically**. Running the Firefox host
-instead (`uv run jev-firefox`), **the setup happens in the sidebar**: the first time you open it, the
-panel asks for that one key, saves it to `.env` on your machine, and reports what it bought you
-(`Ready — planner groq:openai/gpt-oss-120b · policy groq:openai/gpt-oss-20b`). No terminal prompts, no
-file editing, no restart. The inspector shows numbered elements, operation probabilities, target probabilities, and executed actions. **Choose next** pauses before execution.
-
-Chrome connects through [Browser Harness](https://github.com/browser-use/browser-harness), installed by `uv sync`. Run `uv run browser-harness --doctor` if it needs connecting. Allow remote debugging in Chrome when prompted.
-
-`TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting.
-
-## Bring your own model
-
-The policy and the text helper are pluggable. If `TYPESAFE_API_KEY` is set, Jev makes the choices. Without it, any OpenAI-compatible or Anthropic-compatible endpoint takes over — OpenRouter, NVIDIA NIM, OmniRoute, OpenAI, Anthropic, DeepSeek, Groq, Together, Mistral, xAI, Gemini, or your own gateway:
-
-```bash
-# .env — policy via OpenRouter, text helper via Anthropic
-POLICY_PROVIDER=openrouter
-OPENROUTER_API_KEY=sk-or-v1-...
-POLICY_MODEL=anthropic/claude-sonnet-4.5
-
-TEXT_MODEL_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-...
-TEXT_MODEL=claude-sonnet-4-5
-```
-
-Each preset knows its base URL, dialect, and key variable, so `POLICY_PROVIDER=nvidia` plus `NVIDIA_API_KEY` is enough for NIM (`POLICY_BASE_URL` overrides any default, e.g. a remote OmniRoute gateway). The generic policy sends the same indexed element table and rules in one request and validates the returned operation/target against the observed action space, so a wrong or invented choice never executes. Full configuration, including self-hosted gateways and reasoning controls: [providers.md](docs/providers.md). Which parameters each model actually exposes — Kimi's `low/high/max` effort, GLM's thinking toggle, the ones an endpoint rejects at runtime — is discovered, not hardcoded: [model-parameters.md](docs/model-parameters.md).
-
-An optional **planner** role adds a second, slower model that decomposes the mission into a step checklist once, while the fast policy executes one step per turn — two providers at once:
-
-```bash
-# .env — executor + text helper on Groq, planner on NVIDIA NIM
-POLICY_PROVIDER=groq
-GROQ_API_KEY=gsk-...
-POLICY_MODEL=openai/gpt-oss-20b
-
-TEXT_MODEL_PROVIDER=groq
-TEXT_MODEL=openai/gpt-oss-20b
-
-PLANNER_PROVIDER=nvidia
-NVIDIA_API_KEY=nvapi-...
-PLANNER_MODEL=z-ai/glm-5.3
-```
-
-## One model stays local: Laya, the decision router
-
-Local LLM runtimes (Ollama, LM Studio, llama.cpp, Jan) were **removed on purpose** (Sept 2026):
-the agent's job is driving a live web page, which needs the internet anyway, so a model on the
-same machine bought nothing but installs, docs and test surface to maintain. What stays is
-**[Laya](https://github.com/NandhaKishorM/laya)** (Convai Innovations, Apache 2.0): a 322M
-non-autoregressive decision engine — not a replacement model. Installed with
-`pip install -e ".[laya]"`, the agent uses it to route missions and pick skills in **any language**,
-falling back to keywords on low confidence. Numbers, honest limits and the fine-tuning path:
-**[docs/laya.md](docs/laya.md)** (Español).
-
-Any OpenAI-compatible endpoint is still reachable by URL (`POLICY_PROVIDER=https://…`, or a
-self-hosted gateway on your machine), and every cloud preset in
-[docs/providers.md](docs/providers.md) needs only a free key.
-
-## Run it inside Firefox
-
-`extension/` is a WebExtension that turns this agent into a Firefox sidebar driving your live tab — the same planner/executor loop, the same indexed action space, no Chrome required:
-
-```bash
-uv run --env-file .env jev-firefox        # start the local bridge host
-# Firefox → about:debugging → Load Temporary Add-on → extension/manifest.json
-```
-
-**No terminal?** Double-click `start-host.bat` (Windows), `start-host.command` (macOS), or `start-host.sh` (Linux) — the first run prepares everything, **registers the host with Firefox**, and then you paste your one free API key in the sidebar. From then on the starter is optional: the browser launches the host itself over native messaging, so the sidebar opening *is* the agent starting — no window, no port, no double click. (The starter stays as a fallback, and as the path for environments where a browser cannot launch local programs.) Full point-and-click walkthrough, including how to publish your own copy on GitHub from the web UI: [getting-started-gui.md](docs/getting-started-gui.md). **¿Español? Manual paso a paso súper sencillo: [EMPEZAR-AQUI.md](EMPEZAR-AQUI.md).**
-
-The sidebar shows the plan checklist with ✓ progress, live screenshots, every executed action, and a Stop button. Setup and architecture: [firefox-extension.md](docs/firefox-extension.md).
-
-## Beyond the browser: catalogue, tools, and permissions
-
-The sidebar has grown five more capabilities:
-
-**⚙️ Models & parameters (no `.env` editing), per model.** Open the *Models & parameters* panel: it fetches the live model list from every provider you have a key for (24 h cached registry, `Refresh catalogue` to force it), renders one picker per role — planner, executor, text writer — and derives the *controls from the selected model itself*: the provider dialect decides which parameters can travel (`seed`/`frequency_penalty` on OpenAI-compatible endpoints, not on Anthropic), discovered capabilities decide whether a reasoning control appears at all, family rules offer the values a model documents (Kimi-K: `low/high/max`), an endpoint rejection observed in a real request is remembered in `artifacts/model-runtime.json`, and the **Probe model** button runs one tiny request to record what that model really accepts. Unsupported fields are refused instead of sent, so switching to a leaner model can't leave a stale `reasoning` setting behind. Presets (*Fast / Balanced / Deep / Browser / Coding / Deterministic*) are projected onto the same surface. Selections persist in `artifacts/model-config.json` and override `.env` on the next start (`JEV_MODEL_CONFIG` moves that file). A picker switch re-runs **Test setup** automatically, so a broken model id shows up as 🔴 immediately.
-
-**🛠 Tools & skills.** Missions that need more than the tab don't go through the fast browser loop — they run through an orchestrator (your planner model) with nine tools:
-
-| Tool | What it does |
-|---|---|
-| `web_search` / `read_page` | DuckDuckGo search and readable page text |
-| `download_file` | saves a file into the per-task workspace (25 MB cap) |
-| `write_file` / `read_file` / `list_files` | text files inside the sandboxed workspace |
-| `parse_document` | extracts text from PDF / DOCX / XLSX (`pip install -e ".[documents]"` — the starters do it for you) |
-| `run_command` | shell command in the workspace under a permission policy |
-| `browser_task` | hands a browser step back to the fast JEV loop on the selected browser target |
-| `clipboard_read` / `clipboard_write` | the system clipboard, gated by the *clipboard* permission scope (default: ask) |
-
-Keyword-matched **skills** (`skills/` directories with a manifest + instructions) add procedural guidance for browser missions, web research, documents, and coding. Try: *"Download the Wikipedia page on Barcelona as a file, then write a summary"* or *"Create a python script that prints hello and run it"*.
-
-**🔐 Permission center.** Six scopes — *browser*, *terminal*, *files*, *network*, *clipboard*, *downloads* — each with **allow / ask / deny**, set from the sidebar and persisted in `artifacts/permissions.json`. Levels only narrow: `deny` disables a tool outright, `ask` routes every use (even a harmless `ls`) through an **Approve / Deny** prompt, and two invariants hold at every level — destructive commands (`sudo`, `rm -rf`, `curl | sh`, …) stay blocked and secret reads stay refused. Changing a level is audited like any other action, and every decision lands in `artifacts/audit.jsonl` next to the tool call it gated. No answer in 2 minutes means denied. Files can never leave the task workspace (`workspace/`), and every tool result is size-capped.
-
-**🧪 Isolated browser (Neko, sandbox mode).** The *Browser target* switch at the top of the sidebar chooses between *My current tab* and *Isolated browser*. The isolated target is a self-hosted [Neko](https://github.com/m1k1o/neko) container (Docker + WebRTC): the agent drives the browser inside it over CDP while you watch the same session in a tab (`Watch it`). The session manager publishes the stream URL, waits for the CDP port before declaring the session drivable (a container without remote debugging is reported as *manual* — watchable, not agent-drivable — instead of failing mid-mission), records sessions in `artifacts/neko-sessions.json`, survives host restarts, and tears the container down with `Stop session`. Ports and image: `NEKO_IMAGE`, `NEKO_WEB_PORT`, `NEKO_CDP_PORT`, `NEKO_PASSWORD`, `NEKO_BROWSER_ARGS`.
-
-## Use the library
-
-```python
-from datetime import date, timedelta
-
-from jev_ultrafast import Agent
-
-target = date.today() + timedelta(days=30)  # a date Google Flights can still sell
-with Agent(
-    "https://www.google.com/travel/flights?hl=en",
-    f"Find one-way flights from Zurich to London on {target:%B} {target.day}, {target.year}, "
-    "for one adult in economy. Stop when matching flight options are visible.",
-) as agent:
-    for state in agent.run():
-        print(state["elapsed_ms"], state["status"])
-```
-
-Run with `uv run --env-file .env python your_script.py`. The same policy can run a different task:
-
-```bash
-uv run --env-file .env python examples/run.py \
-  --url https://en.wikipedia.org/wiki/Main_Page \
-  --goal 'Find and open the Wikipedia article about Gödel’s incompleteness theorems.'
-```
-
-`uv run --env-file .env python examples/flights.py --keep-open` performs the flight search, checks the actual route/date/results, and saves its trace. It does not select or book a flight.
-
-## Why it moves
-
-- **One request per decision cycle.** Operation and target heads share the same observed state.
-- **No screenshots in the default agent loop.** Jev consumes structured state. The inspector opts into screenshots; the video uses a separate continuous screencast.
-- **One browser call per snapshot.** Read visible controls, their names, values, and text atomically. Keep references to the actual DOM nodes.
-- **Validate the selected target.** Clicks check the document, form values, target, and nearby context. Animation alone does not force another prediction. Resolve current geometry and reject covered controls before input.
-- **Wait for useful state.** After typing into a combobox, wait for visible suggestions, capped at 200 ms. Other interactions get at most two animation frames or 50 ms. These reads happen after execution is logged.
-- **Keep hidden tabs rendering.** Focus emulation prevents background animation throttling without switching Chrome's visible tab.
-- **Send visible text.** Offscreen article bodies and footers do not fill the model context.
-- **Reuse an interrupted text request.** A generated value survives a stale-page retry only if the entire text-helper input is unchanged.
-
-Every executed target is resolved from an observed node. The executor rechecks page freshness and click occlusion. Model output never becomes selectors, coordinates, shell commands, or executable JavaScript. Text-helper output must parse as a small JSON object before typing.
-
-## Small enough to read
-
-| File | Job |
+| Step | What you do |
 | --- | --- |
-| [agent.py](jev_ultrafast/agent.py) | The complete loop and text-helper handoff |
-| [snapshot.js](jev_ultrafast/snapshot.js) | Atomic DOM snapshot, indexed controls, freshness guards |
-| [browser.py](jev_ultrafast/browser.py) | Browser connection, current geometry, execution |
-| [model.py](jev_ultrafast/model.py) | Dynamic operation/target heads and text generation |
-| [questions.py](jev_ultrafast/questions.py) | Model instructions |
-| [demo.py](jev_ultrafast/demo.py) | Local inspector |
+| **1 · Download** | **[Download the ZIP](https://github.com/LockerDocx/firefox-ai-agent/archive/refs/heads/main.zip)** (or the `source.zip` from [Releases](https://github.com/LockerDocx/firefox-ai-agent/releases/latest)) and extract it somewhere you will keep it. |
+| **2 · Free key** | Get one at **[console.groq.com/keys](https://console.groq.com/keys)** (2 minutes, free, Google login works). It is the only thing the agent needs. |
+| **3 · One double-click** | Double-click the starter for your system — `start-host.bat` (Windows), `start-host.command` (macOS), `start-host.sh` (Linux). It prepares everything (~1 min) and **registers the agent with Firefox**. From then on this double-click is not needed again. |
+| **4 · Load the add-on** | Firefox → `about:debugging` → *This Firefox* → **Load Temporary Add-on…** → pick **`jev-agent-firefox.xpi`** from [Releases](https://github.com/LockerDocx/firefox-ai-agent/releases/latest) (or `extension/manifest.json`). |
+| **5 · Paste the key** | Open the **Jev sidebar** (toolbar button), paste the key into the card, press **Save**. Then press **Test setup**: every model turns green with its latency. |
 
-## Evidence and limits
+Write a goal, press **Run**, and watch your Firefox work. Full point-and-click walkthrough: **[docs/getting-started-gui.md](docs/getting-started-gui.md)**.
 
-The current video is a **7,073 ms** Google Flights run. Timing starts after initial page observation and includes model calls, generated text, browser work, stale decisions, and loading waits. A fresh independent check verifies the one-way setting, Zürich, London, September 20, 2026, and visible flight options. The video plays at 1×, with no opening hold and a 0.5-second final hold.
+### Python, per system
 
-In six alternating runs with identical models and settings, both versions passed **3/3**. Median task time went from **9.450 s → 7.092 s**, a **25% reduction**; median browser protocol calls went from **1,092 → 101**. This is three repeats of one task on one browser profile, not a general reliability benchmark.
+The starter looks for a compatible interpreter itself (`python3.13` → `python3.12` → `python3.11` → `python3`) and, if none is new enough, it prints the exact command for your distribution. To get ahead of it:
 
-The same policy opened the requested Wikipedia article in **2.798 s** and passed a local hotel search/filter task in **1.896 s**. Runs, failures, source hashes, and measurement boundaries are in [performance.md](docs/performance.md).
+| System | Install Python 3.11+ |
+| --- | --- |
+| **openSUSE / SUSE (Leap 15.6)** | `sudo zypper install python312 python312-pip` — ⚠️ Leap's own `python3` is 3.6 (the YaST one), so this install is required |
+| **openSUSE Tumbleweed** | nothing — its `python3` is already 3.13 |
+| **Ubuntu · Debian · Mint** | `sudo apt update && sudo apt install python3 python3-pip python3-venv` (on Ubuntu 22.04/Mint 21, get 3.12 from the deadsnakes PPA) |
+| **Fedora** | `sudo dnf install python3 python3-pip` |
+| **RHEL · Rocky · Alma 9** | `sudo dnf install python3.11 python3.11-pip` (their `python3` is 3.9) |
+| **Arch · Manjaro** | `sudo pacman -S python` |
+| **Windows** | the [python.org](https://www.python.org/downloads/) installer, ticking **Add python.exe to PATH**. If typing `python` opens the Microsoft Store, that is the Store stub — install the real one. |
+| **macOS** | `brew install python@3.12`, or the python.org installer |
 
-A `DONE` choice still requires independent outcome verification. The DOM reader handles common HTML and ARIA controls, not the full accessible-name specification. Shadow roots, frames, canvas, uploads, pop-up tabs, nested scrolling, and arbitrary keyboard widgets remain outside this MVP. Owned tabs share the existing Chrome profile.
+SUSE package names carry no dot (`python312`, never `python3.12`). Details, per-system terminal tricks and troubleshooting: **[docs/setup-por-sistema.md](docs/setup-por-sistema.md)**.
 
-**Routing at scale (0.4.0).** A labelled battery of **241 missions** (6 languages × 36, plus 25 adversarial: mixed intent, multi-clause, bilingual, telegraphic, typos) measures the two-way decision on every PR. Measured over the same battery through the real `route_task`: the 0.3.0 Spanish/English keyword layer hit **77% (186/241) with 54 dangerous confusions** (tool missions sent to the browser loop); the 0.4.0 six-language layer with word-start matching hits **100% (241/241) with 0 dangerous**. The battery also caught two real defects, both fixed: `inscription` matched `script` (a form page was routed to the tool loop) and inflected words had no coverage in German, French, Italian or Portuguese. CI adds the raw-Laya column with the real weights, and the whole-stack flights mission runs against live Google Flights with 2.4 s pacing and seven independent page checks. Numbers, ground truth and limits: [calidad-a-escala.md](docs/calidad-a-escala.md).
+---
+
+## What it does
+
+**Agent loop with a plan.** A planner model writes a short checklist for the mission; a fast executor model picks one action per turn. The sidebar shows the checklist ticking ✓, the live page, the executed actions, and a **Stop** button.
+
+**Dynamic action space, not selectors.** Every observation produces an indexed table of the controls actually on screen (`[7] button · Search`) and the model chooses an operation and one element from it. It never writes CSS selectors or code, so a wrong choice cannot execute.
+
+**Tools beyond the browser.** Web search, file writing inside `workspace/`, PDF/docx/xlsx reading, downloads, and terminal commands.
+
+**🔐 Approval lock.** Anything with side effects (running a command, installing, deleting) pauses with the exact command on screen and **Approve / Deny** buttons. No answer in 2 minutes means *deny*. Destructive commands and secret reading stay blocked whatever you set.
+
+**Permissions centre.** Six scopes — browser, terminal, files, network, clipboard, downloads — each with `allow` / `ask` / `deny`. Every change and every approval is written to `artifacts/audit.jsonl`.
+
+**⚙️ Models & parameters, per model.** The sidebar lists the live models from every provider you hold a key for and renders only the controls each selected model really accepts — a rejected parameter is remembered instead of sent, so switching models cannot leave stale settings behind. Presets (*Fast*, *Balanced*, *Deep*, *Browser*, *Coding*), saved profiles, no `.env` editing.
+
+**🧪 Isolated browser (optional).** Point the agent at a **Neko** container in Docker instead of your tab, watch it live by WebRTC, and keep your own cookies and accounts untouched.
+
+**Laya: a local decision router (optional).** A 322M non-autoregressive engine routes and classifies missions in any language, on your CPU, in milliseconds. Cloud models are only ever used for the reasoning itself. Local LLM runtimes (Ollama, LM Studio, llama.cpp, Jan) were deliberately removed: the agent drives a live web page, which needs the internet anyway. Numbers and limits: [docs/laya.md](docs/laya.md).
+
+## How it works
+
+```text
+page → indexed element table → one request → operation + target → execute
+```
+
+Each decision is a single network round trip: the model returns the operation (`CLICK`, `TYPE_TEXT`, `SELECT`, `SCROLL_UP`, `SCROLL_DOWN`, `WAIT`, `DONE`, `BLOCKED`) and, for that operation only, which element to act on. Text generation happens only when the operation is `TYPE_TEXT`. Native dropdown options carry an observed option index, and a stale decision invalidates instead of executing blindly.
+
+- Loop and snapshotting: [`jev_ultrafast/agent.py`](jev_ultrafast/agent.py) · [docs/design.md](docs/design.md)
+- Firefox sidebar, bridge and native messaging: [docs/firefox-extension.md](docs/firefox-extension.md)
+- Full product and architecture specification: [docs/firefox-agent-specification.md](docs/firefox-agent-specification.md)
+
+## Performance
+
+The reference loop completed a real Google Flights task — Zürich → London, one way, one adult, typed city names generated by the model — in **7.07 s** at 1× speed, with a median decision latency of 178 ms. It is a small controlled comparison against the pre-optimisation loop, not a general benchmark; the same example still ships in [`examples/flights.py`](examples/flights.py).
+
+Measurements, method and raw evidence: [docs/performance.md](docs/performance.md) · [docs/flights-measurement.json](docs/flights-measurement.json).
+
+## Requirements
+
+| | |
+| --- | --- |
+| **Firefox** | 109 or newer (the add-on is loaded temporarily; the sidebar is the UI) |
+| **Python** | 3.11+ (3.11 / 3.12 / 3.13 tested) |
+| **Machine** | anything — the host process uses ~40 MB of RAM and no GPU; 8 GB is plenty |
+| **Keys** | one free Groq key. An optional free NVIDIA NIM key upgrades the planner to `z-ai/glm-5.3` |
+| **Docker** | optional, only for the isolated browser (≈2 GB of disk) |
+
+## Providers
+
+Any OpenAI-compatible or Anthropic-compatible endpoint can drive any role: Groq, NVIDIA NIM, DeepSeek, OpenRouter, Together, Mistral, xAI, Gemini, your own gateway, or a loopback server (`POLICY_BASE_URL`). The measured-best default arrangement is NVIDIA NIM planning and Groq executing; one key runs all three roles on its own. TypeSafe's Jev policy is still supported through `TYPESAFE_API_KEY` if you have one.
+
+Configuration, presets and self-hosted gateways: [docs/providers.md](docs/providers.md) · which parameters each model really accepts: [docs/model-parameters.md](docs/model-parameters.md).
+
+## Privacy and safety
+
+- **Everything local except the model calls.** The bridge listens on `127.0.0.1` only, checks the `moz-extension://` origin, and the optional web console binds to `127.0.0.1` with a token.
+- **Your keys stay on your machine**, written to `.env` by the sidebar, never printed back and never sent anywhere except the provider you chose.
+- **The agent cannot leave its workspace.** Files it creates go to `workspace/`; paths outside are refused.
+- **Firefox launches the agent itself** over native messaging (a per-user manifest, no admin rights). Closing Firefox stops it; nothing keeps running in the background.
+- No telemetry, no accounts, no server of ours in the middle.
+
+## Documentation
+
+| Guide | For |
+| --- | --- |
+| [EMPEZAR-AQUI.md](EMPEZAR-AQUI.md) (ES) · [docs/getting-started-gui.md](docs/getting-started-gui.md) | Setup with no console |
+| [docs/setup-por-sistema.md](docs/setup-por-sistema.md) (ES) | Every OS in detail: commands, verification, uninstall |
+| [docs/requisitos.md](docs/requisitos.md) · [docs/requisitos-hardware.md](docs/requisitos-hardware.md) (ES) | Requirements and hardware |
+| [docs/firefox-extension.md](docs/firefox-extension.md) · [docs/firefox-agent-specification.md](docs/firefox-agent-specification.md) | How the sidebar, bridge and hosts work |
+| [docs/providers.md](docs/providers.md) · [docs/model-parameters.md](docs/model-parameters.md) | Models, keys, per-model parameters |
+| [docs/laya.md](docs/laya.md) (ES) | The local decision router |
+| [docs/evaluacion-a-produccion.md](docs/evaluacion-a-produccion.md) (ES) · [docs/calidad-a-escala.md](docs/calidad-a-escala.md) (ES) | Honest evaluation and the mission battery |
+| [docs/](docs/README.md) | Complete index |
 
 ## Development
 
 ```bash
-uv run ruff check .
-uv run pytest
-node --check jev_ultrafast/static/app.js
-node --check jev_ultrafast/snapshot.js
-uv build
+git clone https://github.com/LockerDocx/firefox-ai-agent.git
+cd firefox-ai-agent
+python -m venv .venv && .venv/bin/pip install -e ".[documents]" pytest ruff   # Windows: .venv\Scripts\pip
+.venv/bin/python -m pytest -q        # 413 tests, no paid API calls
+.venv/bin/python -m ruff check .
 ```
 
-Tests are offline. `uv run python scripts/check_guards.py` checks real controls in a local browser without model calls. Live examples and recording scripts make paid API calls. `scripts/record_flights.py <new-folder>` captures original browser timestamps; `scripts/render_demo.py <recording-folder>` renders that verified run at 1× and crops out the Google account strip. Credentials and raw traces stay ignored.
+CI runs the full suite on **Python 3.11, 3.12 and 3.13**, inside real **openSUSE Leap 15.6** and **Tumbleweed** containers (zypper, the starter, native-messaging registration) and on **Windows** (stdlib native messaging, registry, key handling) — plus the whole suite again under a non-UTF-8 locale, which is how the Windows encoding bugs were caught. Model checks that need keys live in separate workflows and never run on forks.
 
-The 0.4.0 quality instruments run offline first: `python scripts/bench_routing.py --selftest` measures the keyword layer over all 241 missions without weights or keys, and `python scripts/e2e_flights.py --selftest` proves the pacing wrapper and the seven page checks in ten offline assertions. `python scripts/bench_providers.py` measures latency and tokens per role and per real operation against the configured providers.
+Entry points: `jev-firefox` (sidebar host), `jev-firefox-native` (native-messaging host), `jev-register-host` (`--status` / `--unregister`), `jev` (local web console at `127.0.0.1:8766`).
 
----
+## Credits and license
 
-[Browser Use](https://github.com/browser-use/browser-use) · [Browser Harness](https://github.com/browser-use/browser-harness) · [TypeSafe speculative fan-out](https://docs.typesafe.ai/patterns/fan-out)
+Built on **[Browser Use](https://github.com/browser-use/browser-use)**'s `jev-ultrafast` reference loop and **[Browser Harness](https://github.com/browser-use/browser-harness)**; the Firefox sidebar, native-messaging host, cross-platform starters, tools, permissions and model panel are this project's work. [Laya](https://github.com/NandhaKishorM/laya) (Convai Innovations) is Apache-2.0.
 
-
-- [Historia de ramas](docs/historia-ramas.md)
-- [Requisitos](docs/requisitos.md): qué hace falta para que funcione bien (y qué pasa si falta)
-- [Requisitos de hardware](docs/requisitos-hardware.md): cuánto pide de verdad (medido: 38,6 MB el host)
+MIT — the original copyright notice is preserved in [LICENSE](LICENSE).

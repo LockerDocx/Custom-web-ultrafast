@@ -29,12 +29,14 @@ Si algo falla, mira la tabla de [problemas comunes](#-problemas-comunes) al fina
 > ⚠️ **En openSUSE Leap 15.6 el `python3` del sistema es Python 3.6** (el que usa YaST), así que no sirve: hay que instalar el 3.12 con el comando de arriba (`zypper`). El arranque lo detecta solo y usa `python3.12` sin que toques nada — y si te falta, te lo dice con ese mismo comando.
 >
 > En **Tumbleweed** no hay que instalar nada: su `python3` ya es 3.13.
+>
+> 📚 **Guía completa sistema por sistema** (comandos, cómo abrir la terminal en cada uno, comprobaciones y desinstalación): **[docs/setup-por-sistema.md](docs/setup-por-sistema.md)**.
 
 ---
 
 ## 🟦 PASO 1 — Descargar el proyecto (1 minuto)
 
-1. Abre en Firefox: **https://github.com/LockerDocx/Custom-web-ultrafast**
+1. Abre en Firefox: **https://github.com/LockerDocx/firefox-ai-agent**
 2. Pulsa el **botón verde "Code"** → **"Download ZIP"**
 3. El ZIP baja a tu carpeta de *Descargas*. Descomprímelo:
    - **Windows**: clic derecho sobre el ZIP → **"Extraer todo…"** → Extraer

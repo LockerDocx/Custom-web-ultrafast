@@ -32,7 +32,7 @@ PROVIDERS = {
         "base_url": "https://openrouter.ai/api/v1",
         "dialect": "openai",
         "key_env": ["OPENROUTER_API_KEY"],
-        "headers": {"X-Title": "custom-web-ultrafast"},
+        "headers": {"X-Title": "FirefoxAI-Agent"},
         "keys_url": "https://openrouter.ai/keys",
     },
     "nvidia": {

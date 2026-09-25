@@ -1,5 +1,7 @@
 # Requisitos para que funcione bien
 
+> 🔧 **Instalación paso a paso en tu sistema concreto** (comandos exactos y comprobaciones): [setup-por-sistema.md](setup-por-sistema.md).
+
 Extraído del propio código (no de suposiciones): `pyproject.toml`, `extension/manifest.json`,
 `jev_ultrafast/firefox.py`, `neko.py` y `tools.py`. Se separa lo **imprescindible** de lo
 **opcional por función**, y qué ocurre exactamente si falta cada cosa.
