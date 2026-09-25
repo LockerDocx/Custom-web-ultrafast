@@ -28,7 +28,7 @@ FIREFOX                          LOCAL HOST (this repo)
 
    …or double-click `start-host.bat` (Windows) / `start-host.command` (macOS) / `start-host.sh` (Linux). The first run creates the environment, registers the host with the browser and starts it; you then paste one free API key into the sidebar, which writes it to `.env` for you — the full no-console walkthrough is [getting-started-gui.md](getting-started-gui.md).
 
-   It prints `Jev Ultrafast Firefox bridge: ws://127.0.0.1:8767` and waits.
+   It prints `Jev Agent bridge: ws://127.0.0.1:8767` and waits.
 
 2. **Load the extension**: Firefox → `about:debugging` → *This Firefox* → *Load Temporary Add-on* → select `extension/manifest.json` (or the `.xpi` attached to the GitHub release).
 

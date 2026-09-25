@@ -96,7 +96,7 @@ Registering the host with Firefox...
 4. Elige **un archivo**, la opción que te sea más cómoda:
    - ⭐ **El `.xpi`**: descarga `jev-agent-firefox-v0.11.0.xpi` de la página **Releases** y selecciónalo tal cual (un solo archivo, lo más simple)
    - **O desde la carpeta**: entra en la carpeta del proyecto → subcarpeta **`extension`** → selecciona **`manifest.json`**
-5. ✓ En la lista debe aparecer **"Jev Ultrafast · Firefox Agent"**
+5. ✓ En la lista debe aparecer **"Jev Agent · Firefox AI agent"**
 
 > ⚠️ **"Temporal" significa que al cerrar Firefox desaparece.** Es normal: aún no está firmado. Cada vez que reinicies Firefox, repite este paso (30 segundos). **No** hace falta repetir el Paso 3.
 
@@ -468,7 +468,7 @@ Mueve la carpeta y haz **un doble clic** en el starter: vuelve a registrar la ru
 1. **Quitar el registro de Firefox** (desde la carpeta del proyecto):
    - Windows: `.venv\Scripts\jev-register-host --unregister`
    - Linux/macOS: `.venv/bin/jev-register-host --unregister`
-2. **Quitar el add-on de Firefox**: `about:debugging` → *Este Firefox* → **Jev Ultrafast · Firefox Agent** → **Remove**. (El temporal desaparece igual al cerrar Firefox.)
+2. **Quitar el add-on de Firefox**: `about:debugging` → *Este Firefox* → **Jev Agent · Firefox AI agent** → **Remove**. (El temporal desaparece igual al cerrar Firefox.)
 3. **Borrar la carpeta del proyecto.** Ahí vivían tus claves (`.env`), los registros y los archivos que creó (`workspace/`).
 
 ## Comprobar desde la terminal

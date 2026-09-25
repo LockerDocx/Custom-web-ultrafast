@@ -51,7 +51,7 @@ def manifest_path():
 def manifest_for(root=None, path=None):
     return {
         "name": HOST_NAME,
-        "description": "Jev Ultrafast local host: plans and executes browser missions for the sidebar.",
+        "description": "Jev Agent local host: plans and executes browser missions for the sidebar.",
         "path": str(path or executable(root)),
         "type": "stdio",
         "allowed_extensions": [EXTENSION_ID],  # only our add-on may talk to it

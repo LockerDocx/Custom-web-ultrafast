@@ -147,7 +147,7 @@ def main():
         raise SystemExit(1)
     atexit.register(close_browser)
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    print(f"Jev Ultrafast: {ORIGIN}", flush=True)
+    print(f"Jev Agent: {ORIGIN}", flush=True)
     print(f"Policy model: {policy_description()}", flush=True)
     try:
         server.serve_forever()

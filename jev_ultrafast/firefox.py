@@ -1194,7 +1194,7 @@ def main():
     _SERVER = BridgeServer(port=port, token=token)
     _SERVER.runner = TaskRunner(_SERVER)
     _SERVER.start()
-    print(f"Jev Ultrafast Firefox bridge: ws://127.0.0.1:{_SERVER.port}", flush=True)
+    print(f"Jev Agent bridge: ws://127.0.0.1:{_SERVER.port}", flush=True)
     print("Load extension/ in Firefox via about:debugging → This Firefox → Load Temporary Add-on.", flush=True)
     if provider_layer.is_configured():
         print(f"Policy model: {policy_description()}", flush=True)
