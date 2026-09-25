@@ -32,7 +32,7 @@ OS_RELEASES = {
 def stub(directory, name, body):
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / name
-    path.write_text(body)
+    path.write_text(body, encoding="utf-8")
     path.chmod(path.stat().st_mode | stat.S_IEXEC)
     return path
 
@@ -57,7 +57,7 @@ def sandbox(tmp_path):
 def run_starter(script, sandbox, os_release=None, dry_run=True, extra_env=None):
     release = Path(sandbox) / f"os-release-{os_release or 'none'}"
     if os_release:
-        release.write_text(OS_RELEASES[os_release])
+        release.write_text(OS_RELEASES[os_release], encoding="utf-8")
     environment = {
         "PATH": f"{sandbox}:/usr/bin:/bin",
         "HOME": str(Path(sandbox) / "home"),
@@ -122,14 +122,14 @@ def test_an_unknown_system_still_gets_an_answer(sandbox):
 def test_the_requirement_is_311_not_312():
     """openSUSE Leap 15.6 ships 3.11: demanding 3.12 would lock those users out."""
     for script in ("start-host.sh", "start-host.command"):
-        text = (ROOT / script).read_text()
+        text = (ROOT / script).read_text(encoding="utf-8")
         assert "REQUIRED_MINOR=11" in text, script
         assert "sys.version_info >= ($REQUIRED_MAJOR, $REQUIRED_MINOR)" in text, script
         assert "Python $REQUIRED_MAJOR.$REQUIRED_MINOR or newer" in text, script
-    windows = (ROOT / "start-host.bat").read_text()
+    windows = (ROOT / "start-host.bat").read_text(encoding="utf-8")
     assert "sys.version_info >= (3, 11)" in windows
     assert "Python 3.11 or newer" in windows
-    assert 'requires-python = ">=3.11"' in (ROOT / "pyproject.toml").read_text()
+    assert 'requires-python = ">=3.11"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
 
 # ── what the scripts do once they have an interpreter ───────────────────────
@@ -139,13 +139,13 @@ def test_the_requirement_is_311_not_312():
 def test_the_starters_use_the_interpreter_they_found():
     """The chosen interpreter must create the venv; assuming python3 breaks SUSE."""
     for script in ("start-host.sh", "start-host.command"):
-        text = (ROOT / script).read_text()
+        text = (ROOT / script).read_text(encoding="utf-8")
         assert '"$PY" -m venv .venv' in text, script
         assert "python3 -m venv" not in text, script
 
 
 def test_windows_discovers_the_launcher_and_the_store_stub_case():
-    text = (ROOT / "start-host.bat").read_text()
+    text = (ROOT / "start-host.bat").read_text(encoding="utf-8")
     assert 'py -3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)"' in text
     assert 'set "PY=python"' in text, "a python.exe install must also be accepted"
     assert "%PY% -m venv .venv" in text
@@ -154,7 +154,7 @@ def test_windows_discovers_the_launcher_and_the_store_stub_case():
 
 def test_the_dry_run_hook_the_tests_use_cannot_change_normal_behaviour():
     """JEV_START_DRY_RUN only short-circuits after a real interpreter was found."""
-    text = (ROOT / "start-host.sh").read_text()
+    text = (ROOT / "start-host.sh").read_text(encoding="utf-8")
     dry = text.index("JEV_START_DRY_RUN")
     assert dry > text.index("find_python"), "the hook must come after discovery"
     assert "exec .venv/bin/jev-firefox" in text[dry:], "and before the real work"

@@ -45,7 +45,7 @@ def test_apply_params_sets_env_and_persists():
 
     assert os.environ["PLANNER_REASONING"] == "high"
     assert os.environ["PLANNER_TEMPERATURE"] == "0.4"
-    saved = json.loads(parameters.CONFIG_PATH.read_text())
+    saved = json.loads(parameters.CONFIG_PATH.read_text(encoding="utf-8"))
     assert saved["params"]["planner"] == {"reasoning": "high", "temperature": 0.4}
 
 
@@ -56,7 +56,7 @@ def test_apply_params_none_clears_the_value():
     assert os.environ.get("TEXT_MODEL_TEMPERATURE")
     parameters.apply_params("text", {"temperature": None})
     assert "TEXT_MODEL_TEMPERATURE" not in os.environ
-    saved = json.loads(parameters.CONFIG_PATH.read_text())
+    saved = json.loads(parameters.CONFIG_PATH.read_text(encoding="utf-8"))
     assert "temperature" not in saved["params"]["text"]
 
 
@@ -103,7 +103,7 @@ def test_apply_model_switches_provider_and_model():
     parameters.apply_model("text", "groq", "openai/gpt-oss-20b")
     assert os.environ["TEXT_MODEL_PROVIDER"] == "groq"
     assert os.environ["TEXT_MODEL"] == "openai/gpt-oss-20b"
-    saved = json.loads(parameters.CONFIG_PATH.read_text())
+    saved = json.loads(parameters.CONFIG_PATH.read_text(encoding="utf-8"))
     assert saved["models"]["text"] == {"provider": "groq", "model": "openai/gpt-oss-20b"}
     # a colon in the model id is fine: some catalogues tag their models
     parameters.apply_model("text", "groq", "openai/gpt-oss-20b:free")
@@ -134,7 +134,7 @@ def test_apply_saved_config_survives_broken_file(tmp_path):
     monkey = pytest.MonkeyPatch()
     monkey.setattr(parameters, "CONFIG_PATH", tmp_path / "broken.json")
     try:
-        tmp_path.joinpath("broken.json").write_text("{not json")
+        tmp_path.joinpath("broken.json").write_text("{not json", encoding="utf-8")
         assert parameters.apply_saved_config() == {}
     finally:
         monkey.undo()

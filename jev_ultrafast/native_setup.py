@@ -90,7 +90,7 @@ def register(root=None, path=None):
     target = executable(root) if path is None else Path(path)
     destination = manifest_path()
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(json.dumps(manifest_for(root, target), indent=2) + "\n")
+    destination.write_text(json.dumps(manifest_for(root, target), indent=2) + "\n", encoding="utf-8")
     if os.name == "nt":
         _write_registry(destination)
     return {"manifest": destination, "executable": target, "exists": target.exists()}
@@ -115,7 +115,7 @@ def status():
     destination = manifest_path()
     entry = {"manifest": destination, "registered": False, "executable": None, "exists": False}
     try:
-        data = json.loads(destination.read_text())
+        data = json.loads(destination.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return entry
     entry["registered"] = data.get("name") == HOST_NAME and EXTENSION_ID in (data.get("allowed_extensions") or [])

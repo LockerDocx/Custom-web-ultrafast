@@ -150,7 +150,7 @@ def test_the_self_test_covers_every_derived_role(clean_env, monkeypatch):
 def test_a_pasted_key_is_saved_to_env(clean_env, tmp_path):
     printed = []
     env_file = tmp_path / ".env"
-    env_file.write_text("# settings\nGROQ_API_KEY=\nNVIDIA_API_KEY=\n")
+    env_file.write_text("# settings\nGROQ_API_KEY=\nNVIDIA_API_KEY=\n", encoding="utf-8")
     ok = providers.ensure_configured(
         prompt=lambda _question: "gsk_pasted",
         notify=printed.append,
@@ -158,7 +158,7 @@ def test_a_pasted_key_is_saved_to_env(clean_env, tmp_path):
         interactive=True,
     )
     assert ok is True
-    saved = env_file.read_text()
+    saved = env_file.read_text(encoding="utf-8")
     assert "GROQ_API_KEY=gsk_pasted" in saved
     assert saved.count("GROQ_API_KEY") == 1  # replaced in place, not appended twice
     assert os.environ["GROQ_API_KEY"] == "gsk_pasted"  # and usable right away
@@ -239,7 +239,7 @@ def test_a_key_pasted_in_the_sidebar_configures_the_host(clean_env, tmp_path, mo
         assert notices and "GROQ_API_KEY" in notices[0]["message"], frames
 
         # saved where every other path reads it
-        assert (tmp_path / ".env").read_text().strip() == "GROQ_API_KEY=gsk_from_firefox"
+        assert (tmp_path / ".env").read_text(encoding="utf-8").strip() == "GROQ_API_KEY=gsk_from_firefox"
         assert providers.selection_for("planner") == ("groq", "openai/gpt-oss-120b")
 
         # the sidebar is told the new state, and the key never travels back
@@ -303,7 +303,7 @@ def test_the_host_starts_without_a_key_and_points_at_the_sidebar(clean_env, tmp_
 def _read(path):
     from pathlib import Path
 
-    return Path(path).read_text()
+    return Path(path).read_text(encoding="utf-8")
 
 
 def test_every_message_the_extension_sends_is_understood_by_the_host():

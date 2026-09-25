@@ -25,7 +25,10 @@ Si algo falla, mira la tabla de [problemas comunes](#-problemas-comunes) al fina
 > | **Fedora / RHEL / Rocky** | `sudo dnf install python3.12 python3-pip` |
 > | **Arch / Manjaro / EndeavourOS** | `sudo pacman -S python` |
 >
-> Con openSUSE Leap 15.6 te vale el `python3.11` que ya trae (por eso pedimos 3.11, no 3.12); si prefieres el 3.12, instálalo con `zypper` y el arranque lo usará solo.
+
+> ⚠️ **En openSUSE Leap 15.6 el `python3` del sistema es Python 3.6** (el que usa YaST), así que no sirve: hay que instalar el 3.12 con el comando de arriba (`zypper`). El arranque lo detecta solo y usa `python3.12` sin que toques nada — y si te falta, te lo dice con ese mismo comando.
+>
+> En **Tumbleweed** no hay que instalar nada: su `python3` ya es 3.13.
 
 ---
 

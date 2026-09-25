@@ -11,12 +11,14 @@ def test_builtin_skills_load_with_valid_manifests():
     ids = {s["id"] for s in loaded}
     assert {"browser", "web-research", "documents", "coding"} <= ids
     for skill in loaded:
-        manifest = json.loads(Path(skill["_dir"], "skill.json").read_text())
+        manifest = json.loads(Path(skill["_dir"], "skill.json").read_text(encoding="utf-8"))
         assert manifest["id"] == skill["id"]
         assert skill.get("keywords"), f"{skill['id']} needs keywords"
         assert skill.get("tools"), f"{skill['id']} needs tools"
         instructions = Path(skill["_instructions_path"])
-        assert instructions.is_file() and instructions.read_text().strip(), f"{skill['id']} needs instructions"
+        assert instructions.is_file() and instructions.read_text(encoding="utf-8").strip(), (
+        f"{skill['id']} needs instructions"
+    )
 
 
 def test_select_skills_matches_by_keyword():
@@ -50,6 +52,6 @@ def test_skill_instructions_concatenate_selected():
 def test_broken_skills_dir_is_ignored(tmp_path, monkeypatch):
     monkeypatch.setattr(skills, "DEFAULT_SKILLS_DIR", tmp_path)
     (tmp_path / "broken").mkdir()
-    (tmp_path / "broken" / "skill.json").write_text("{invalid")
+    (tmp_path / "broken" / "skill.json").write_text("{invalid", encoding="utf-8")
     assert skills.load_skills() == []
     assert skills.select_skills("anything") == []

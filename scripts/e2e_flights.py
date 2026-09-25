@@ -469,7 +469,7 @@ def run_mission(max_seconds, artifacts, attempts=2, mission="prepared"):
     if artifacts and result:
         folder = Path(artifacts)
         folder.mkdir(parents=True, exist_ok=True)
-        (folder / "state.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
+        (folder / "state.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     return result, error, timed_out, round(time.perf_counter() - started, 1)
 
 
@@ -741,7 +741,9 @@ def main():
                             note="Skipped: " + "; ".join(reasons)))
         if args.json:
             Path(args.json).parent.mkdir(parents=True, exist_ok=True)
-            Path(args.json).write_text(json.dumps({"outcome": "skipped", "reasons": reasons}, indent=2))
+            Path(args.json).write_text(
+                json.dumps({"outcome": "skipped", "reasons": reasons}, indent=2), encoding="utf-8"
+            )
         return 0
 
     with paced_requests(args.pacing, tpm=args.tpm, window=args.window, retries=args.retries) as paced:
@@ -779,7 +781,7 @@ def main():
             "final_url": page.get("url"),
             "error": error,
             "steps": (state or {}).get("steps", []),
-        }, indent=2, ensure_ascii=False))
+        }, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"\nJSON written to {destination}")
 
     # A blocked site or a provider that refuses to serve is infrastructure; a mission that

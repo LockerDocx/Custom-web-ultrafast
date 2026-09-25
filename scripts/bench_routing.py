@@ -432,7 +432,7 @@ def main():
         }
         destination = Path(args.json)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+        destination.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"\nJSON written to {destination}")
 
     shipped = keyword_runs[list(keyword_runs)[-1]]

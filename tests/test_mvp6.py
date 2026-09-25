@@ -314,7 +314,7 @@ def test_orchestrated_run_appends_to_runs_log(bridge, monkeypatch, tmp_path, iso
     stop.set()
     thread.join(timeout=2)
 
-    lines = (tmp_path / "runs.jsonl").read_text().strip().splitlines()
+    lines = (tmp_path / "runs.jsonl").read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 1
     record = json.loads(lines[0])
     assert record["mode"] == "orchestrated" and record["status"] == "done"

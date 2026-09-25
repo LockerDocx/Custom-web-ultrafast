@@ -327,18 +327,21 @@ def _write_env(values, path=None):
     """Persist keys into .env, replacing existing lines instead of duplicating them."""
     target = Path(path or os.environ.get("JEV_ENV_FILE", ".env"))
     try:
-        lines = target.read_text().splitlines() if target.exists() else []
+        # utf-8-sig drops the BOM Notepad writes; a stray byte must not stop the agent
+        lines = target.read_text(encoding="utf-8-sig", errors="replace").splitlines() if target.exists() else []
     except OSError:
         lines = []
     remaining = dict(values)
     out = []
     for line in lines:
+        # A doubled BOM (tools that append to a BOM'd file) must not hide a key.
+        line = line.lstrip("\ufeff")
         stripped = line.lstrip()
         name = line.split("=", 1)[0].strip() if "=" in line and not stripped.startswith("#") else ""
         out.append(f"{name}={remaining.pop(name)}" if name in remaining else line)
     out.extend(f"{name}={value}" for name, value in remaining.items())
     try:
-        target.write_text("\n".join(out).rstrip("\n") + "\n")
+        target.write_text("\n".join(out).rstrip("\n") + "\n", encoding="utf-8")
     except OSError:
         pass  # the key still lives in the environment for this run
     return target

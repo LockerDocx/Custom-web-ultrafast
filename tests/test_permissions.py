@@ -18,7 +18,7 @@ def isolated_permissions(tmp_path, monkeypatch):
 
 
 def read_audit(path):
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 # ── levels, persistence, defaults ────────────────────────────────────────────
@@ -35,7 +35,7 @@ def test_every_scope_has_a_default_level():
 def test_set_level_validates_persists_and_resets():
     permissions.set_level("network", "deny")
     assert permissions.level("network") == "deny"
-    assert json.loads(permissions.PERMISSIONS_PATH.read_text())["levels"]["network"] == "deny"
+    assert json.loads(permissions.PERMISSIONS_PATH.read_text(encoding="utf-8"))["levels"]["network"] == "deny"
     with pytest.raises(ValueError):
         permissions.set_level("network", "sometimes")
     with pytest.raises(ValueError):

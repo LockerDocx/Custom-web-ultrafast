@@ -16,10 +16,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image: opensuse/leap:15.6     # zypper, python312 from the distro repos
-            python: python3.12
-          - image: opensuse/tumbleweed:latest  # rolling: python313
-            python: python3.13
+          # SUSE package names carry no dot (python312, never python3.12) and a
+          # release's default python3 can be far older than the agent needs: Leap
+          # 15.6 ships Python 3.6 as `python3`, so the starter has to pick
+          # /usr/bin/python3.12 instead of settling for the first python3 it meets.
+          # These are exactly the packages the starter tells a SUSE user to
+          # install, and both names were checked against the release repositories.
+          - image: opensuse/leap:15.6
+            packages: python312 python312-pip
+            interpreter: python3.12
+          - image: opensuse/tumbleweed:latest
+            packages: python313 python313-pip
+            interpreter: python3.13
     container:
       image: ${{ matrix.image }}
     steps:
@@ -28,17 +36,19 @@ jobs:
       - name: Install git and Python the way openSUSE does
         run: |
           zypper --non-interactive --gpg-auto-import-keys refresh
-          zypper --non-interactive install git ${{ matrix.python }} python3-pip
-      - name: The starter must accept this system's interpreter
+          zypper --non-interactive install git ${{ matrix.packages }}
+      - name: The starter must pick this release's interpreter
         run: |
           git clone --depth 1 https://github.com/${{ github.repository }}.git /src
           cd /src
           # JEV_START_DRY_RUN stops the starter right after it picked an interpreter
-          JEV_START_DRY_RUN=1 bash start-host.sh
+          JEV_START_DRY_RUN=1 bash start-host.sh | tee /tmp/picked
+          # It must be the new one, not the 3.6 that also answers to `python3`
+          grep -qx "PYTHON=${{ matrix.interpreter }}" /tmp/picked
       - name: Install and test inside openSUSE
         run: |
           cd /src
-          ${{ matrix.python }} -m venv .venv
+          ${{ matrix.interpreter }} -m venv .venv
           .venv/bin/python -m pip install --quiet --upgrade pip
           .venv/bin/python -m pip install --quiet -e ".[documents]" pytest ruff
           .venv/bin/python -m ruff check .
@@ -123,6 +133,11 @@ jobs:
             done
           fi
           exit "$status"
+      - name: Tests under a legacy code page
+        # Windows does not default to UTF-8: this catches the file I/O that
+        # would only ever fail on a user's machine.
+        run: |
+          LC_ALL=C LANG=C PYTHONUTF8=0 PYTHONCOERCECLOCALE=0 pytest -q
       - name: JS syntax
         run: |
           node --check jev_ultrafast/static/app.js

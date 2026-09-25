@@ -82,7 +82,7 @@ class NekoSessionManager:
 
     def _load(self):
         try:
-            data = json.loads(self.registry_path.read_text())
+            data = json.loads(self.registry_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return {}
         return data if isinstance(data, dict) else {}
@@ -90,7 +90,7 @@ class NekoSessionManager:
     def _save(self, data):
         try:
             self.registry_path.parent.mkdir(parents=True, exist_ok=True)
-            self.registry_path.write_text(json.dumps(data, indent=2))
+            self.registry_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
         except OSError:
             pass
 

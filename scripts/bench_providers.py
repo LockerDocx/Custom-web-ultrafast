@@ -286,7 +286,7 @@ def main():
             "prices": prices,
             "skipped": [{"operation": name, "reason": reason} for name, reason in skipped],
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        }, indent=2, ensure_ascii=False))
+        }, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"\nJSON written to {destination}")
 
     if results and not any(entry["ok"] for entry in results):

@@ -248,7 +248,7 @@ def probe_model(provider_name, model_id, refresh=True):
 
 def _load_registry():
     try:
-        data = json.loads(REGISTRY_PATH.read_text())
+        data = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) and "providers" in data else None
@@ -256,4 +256,4 @@ def _load_registry():
 
 def _save_registry(registry):
     REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REGISTRY_PATH.write_text(json.dumps(registry, indent=2))
+    REGISTRY_PATH.write_text(json.dumps(registry, indent=2), encoding="utf-8")

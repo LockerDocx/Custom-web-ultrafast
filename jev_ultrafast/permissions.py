@@ -76,7 +76,7 @@ def load():
     """The persisted levels, missing scopes filled with their default."""
     levels = defaults()
     try:
-        stored = json.loads(PERMISSIONS_PATH.read_text())
+        stored = json.loads(PERMISSIONS_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return levels
     if not isinstance(stored, dict):
@@ -90,7 +90,7 @@ def load():
 def save(levels):
     try:
         PERMISSIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        PERMISSIONS_PATH.write_text(json.dumps({"levels": levels}, indent=2))
+        PERMISSIONS_PATH.write_text(json.dumps({"levels": levels}, indent=2), encoding="utf-8")
     except OSError:
         pass  # a read-only filesystem must not break a run
 

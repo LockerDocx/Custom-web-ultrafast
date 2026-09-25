@@ -72,7 +72,7 @@ def audited_box(tmp_path):
 
 
 def read_audit(tmp_path):
-    return [json.loads(line) for line in (tmp_path / "audit.jsonl").read_text().splitlines()]
+    return [json.loads(line) for line in (tmp_path / "audit.jsonl").read_text(encoding="utf-8").splitlines()]
 
 
 def test_every_tool_call_is_audited(tmp_path, audited_box):
@@ -185,5 +185,5 @@ def test_task_runner_assigns_a_trace_and_carries_it_everywhere(monkeypatch, tmp_
 
     trace = runner.current_state()["trace"]
     assert trace and len(trace) == 12
-    record = json.loads((tmp_path / "runs.jsonl").read_text().splitlines()[-1])
+    record = json.loads((tmp_path / "runs.jsonl").read_text(encoding="utf-8").splitlines()[-1])
     assert record["trace"] == trace  # runs.jsonl ties to the same task

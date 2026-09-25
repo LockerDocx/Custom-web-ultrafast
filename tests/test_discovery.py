@@ -107,13 +107,13 @@ def test_discover_reports_failures_without_breaking(monkeypatch):
     assert registry["providers"]["groq"]["ok"] is True
     assert registry["providers"]["nvidia"]["ok"] is False
     assert "boom" in registry["providers"]["nvidia"]["error"]
-    assert json.loads(discovery.REGISTRY_PATH.read_text())["providers"]["groq"]["ok"] is True
+    assert json.loads(discovery.REGISTRY_PATH.read_text(encoding="utf-8"))["providers"]["groq"]["ok"] is True
 
 
 def test_stale_registry_is_ignored(monkeypatch, tmp_path):
     monkeypatch.setenv("GROQ_API_KEY", "gsk-test")
     stale = {"fetchedAt": 0, "providers": {"groq": {"ok": True, "models": []}}}
-    discovery.REGISTRY_PATH.write_text(json.dumps(stale))
+    discovery.REGISTRY_PATH.write_text(json.dumps(stale), encoding="utf-8")
     monkeypatch.setattr(discovery, "fetch_models", lambda name: [])
     fresh = discovery.discover()
     assert fresh["fetchedAt"] > 0

@@ -71,7 +71,7 @@ def test_run_orchestration_executes_tools_then_finishes(tmp_path, monkeypatch):
     result = run_orchestration("create and verify note.txt", box, on_step=steps_seen.append)
 
     assert result["final"] == "The file note.txt contains: hello from the orchestrator"
-    assert (tmp_path / "ws" / "note.txt").read_text() == "hello from the orchestrator"
+    assert (tmp_path / "ws" / "note.txt").read_text(encoding="utf-8") == "hello from the orchestrator"
     assert len(steps_seen) == 3
     assert steps_seen[0]["tool"] == "write_file"
     assert "Wrote" in steps_seen[0]["result"]

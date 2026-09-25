@@ -18,7 +18,7 @@ You can use, install, and even re-publish this project **without opening a termi
 | macOS | `brew install python@3.12` (or python.org) |
 | Windows | python.org installer, tick *Add python.exe to PATH* |
 
-openSUSE Leap 15.6 already ships Python 3.11, which is enough — that is why the bar is 3.11 and not 3.12. The starter looks for `python3.13`, `python3.12`, `python3.11`, `python3` in that order and uses the newest one it finds.
+openSUSE Leap 15.6's own `python3` is Python 3.6 (the one YaST uses), so on Leap the zypper command above is required; on Tumbleweed the shipped `python3` is already 3.13 and nothing has to be installed. The bar is 3.11 because that is the oldest interpreter current distributions still ship as an option. The starter looks for `python3.13`, `python3.12`, `python3.11`, `python3` in that order and uses the newest one it finds, so the 3.6 on Leap is never picked.
 - **One free API key** — a Groq key ([console.groq.com](https://console.groq.com)). The planner, executor and text helper are all derived from it. An NVIDIA NIM key ([build.nvidia.com](https://build.nvidia.com)) is optional and upgrades the planner to `z-ai/glm-5.3`.
 
 ## 1. Get the code

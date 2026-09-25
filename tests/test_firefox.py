@@ -138,7 +138,9 @@ def connect_fake_extension(bridge_instance, handler):
 
 
 def test_extension_snapshot_copy_stays_in_sync():
-    assert (ROOT / "extension" / "snapshot.js").read_text() == (ROOT / "jev_ultrafast" / "snapshot.js").read_text()
+    assert (ROOT / "extension" / "snapshot.js").read_text(encoding="utf-8") == (
+        ROOT / "jev_ultrafast" / "snapshot.js"
+    ).read_text(encoding="utf-8")
 
 
 def test_handshake_welcomes_a_moz_extension_origin(bridge):

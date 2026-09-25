@@ -202,7 +202,7 @@ def test_role_schema_follows_the_selected_model_and_prunes_values():
     assert parameters.role_schema("planner")["schemaId"] == "glm-v1"
     removed = parameters.apply_model("planner", "nvidia", "moonshotai/kimi-k3")
     assert removed == ["top_p"]
-    saved = json.loads(parameters.CONFIG_PATH.read_text())
+    saved = json.loads(parameters.CONFIG_PATH.read_text(encoding="utf-8"))
     assert saved["params"]["planner"] == {"temperature": 0.4}
 
 

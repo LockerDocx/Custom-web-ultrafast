@@ -229,7 +229,7 @@ def test_firefox_can_run_the_whole_first_run_setup_by_itself(browser, tmp_path):
         lambda m: m.get("type") == "state" and m["state"]["setup"]["configured"] is True
     )
     assert configured, [m.get("type") for m in browser.received]
-    assert (tmp_path / ".env").read_text().strip() == "GROQ_API_KEY=gsk_started_by_firefox"
+    assert (tmp_path / ".env").read_text(encoding="utf-8").strip() == "GROQ_API_KEY=gsk_started_by_firefox"
     assert configured["state"]["setup"]["selection"]["planner"] == ["groq", "openai/gpt-oss-120b"]
 
 
@@ -279,7 +279,7 @@ def test_registration_writes_the_exact_manifest_firefox_looks_for(tmp_path, monk
     entry = native_setup.register(root=ROOT, path=tmp_path / "jev-firefox-native")
     assert entry["manifest"].name == f"{native_setup.HOST_NAME}.json"
     assert entry["manifest"].parent.name in {"native-messaging-hosts", "NativeMessagingHosts"}
-    manifest = json.loads(Path(entry["manifest"]).read_text())
+    manifest = json.loads(Path(entry["manifest"]).read_text(encoding="utf-8"))
     assert manifest["name"] == native_setup.HOST_NAME
     assert manifest["type"] == "stdio"
     assert manifest["allowed_extensions"] == [native_setup.EXTENSION_ID]
@@ -308,7 +308,7 @@ def test_the_checkout_venv_wins_over_the_path_when_both_exist(tmp_path, monkeypa
     scripts, suffix = ("Scripts", ".exe") if os.name == "nt" else ("bin", "")
     entry = checkout / ".venv" / scripts / f"{native_setup.BUILD_SCRIPT}{suffix}"
     entry.parent.mkdir(parents=True)
-    entry.write_text("")
+    entry.write_text("", encoding="utf-8")
     assert native_setup.executable(checkout) == entry
 
 
@@ -327,29 +327,29 @@ def test_status_is_honest_when_nothing_is_registered(tmp_path, monkeypatch):
 
 
 def test_the_extension_asks_for_the_host_the_installer_registered():
-    background = (ROOT / "extension/background.js").read_text()
+    background = (ROOT / "extension/background.js").read_text(encoding="utf-8")
     name = re.search(r'const NATIVE_HOST = "([^"]+)"', background).group(1)
     assert name == native_setup.HOST_NAME
 
 
 def test_the_manifest_allows_exactly_our_add_on():
-    manifest = json.loads((ROOT / "extension/manifest.json").read_text())
+    manifest = json.loads((ROOT / "extension/manifest.json").read_text(encoding="utf-8"))
     assert manifest["permissions"].count("nativeMessaging") == 1
     assert manifest["browser_specific_settings"]["gecko"]["id"] == native_setup.EXTENSION_ID
 
 
 def test_the_extension_still_works_when_native_messaging_is_not_registered():
-    background = (ROOT / "extension/background.js").read_text()
+    background = (ROOT / "extension/background.js").read_text(encoding="utf-8")
     assert "nativeUnavailable" in background and "openSocket()" in background
     assert re.search(r"if \(!nativeUnavailable && \(await tryNative\(\)\)\) return;", background)
 
 
 def test_the_starters_register_the_host_they_just_installed():
     for name in ("start-host.sh", "start-host.command", "start-host.bat"):
-        assert "jev-register-host" in (ROOT / name).read_text(), f"{name} never registers the host"
+        assert "jev-register-host" in (ROOT / name).read_text(encoding="utf-8"), f"{name} never registers the host"
 
 
 def test_the_console_scripts_are_declared():
-    pyproject = (ROOT / "pyproject.toml").read_text()
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert 'jev-firefox-native = "jev_ultrafast.firefox:native_main"' in pyproject
     assert 'jev-register-host = "jev_ultrafast.native_setup:main"' in pyproject

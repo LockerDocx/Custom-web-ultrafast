@@ -354,7 +354,7 @@ def _reasoning_schema(rule, capabilities):
 
 def _load_runtime():
     try:
-        data = json.loads(RUNTIME_PATH.read_text())
+        data = json.loads(RUNTIME_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
@@ -363,7 +363,7 @@ def _load_runtime():
 def _save_runtime(data):
     try:
         RUNTIME_PATH.parent.mkdir(parents=True, exist_ok=True)
-        RUNTIME_PATH.write_text(json.dumps(data, indent=2, sort_keys=True))
+        RUNTIME_PATH.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
     except OSError:
         pass  # evidence is an optimization; never break a run over it
 
