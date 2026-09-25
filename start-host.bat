@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title Jev Agent - local host
+title AI Agent for Firefox - local host
 
 rem ============================================================
 rem  Double-click starter. Prepares everything and runs the host.
@@ -62,7 +62,7 @@ echo  Registering the host with Firefox...
 if errorlevel 1 (
   echo   [!] Could not register it - keep this window open while you use the agent.
 ) else (
-  echo   Done: from now on the sidebar starts Jev by itself, no window needed.
+  echo   Done: from now on the sidebar starts the agent by itself, no window needed.
   echo   This one stays open only as a fallback: if the panel says offline, it is to blame.
 )
 echo.
@@ -75,7 +75,7 @@ echo  Now in Firefox:
 echo    1. Type  about:debugging  in the address bar and press Enter
 echo    2. Click "This Firefox"  then  "Load Temporary Add-on..."
 echo    3. Open this folder, then the "extension" folder, pick "manifest.json"
-echo    4. Open the Jev sidebar with the toolbar button
+echo    4. Open the AI Agent sidebar with the toolbar button
 echo.
 ".venv\Scripts\jev-firefox"
 echo.

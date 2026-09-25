@@ -37,11 +37,11 @@ Everything the project documents, sorted by what you are trying to do. Spanish g
 
 | Document | What it covers |
 | --- | --- |
-| [performance.md](performance.md) | The Google Flights run: 7.07 s at 1×, matched comparison against the pre-optimisation loop, raw evidence |
-| [performance-prepared.md](performance-prepared.md) | Historical prepared recording, kept for reference |
+| [performance.md](performance.md) ⚠️ | **Upstream numbers** (Chrome + TypeSafe Jev + Mercury, not this build): 7.07 s at 1×, matched comparison, raw evidence |
+| [performance-prepared.md](performance-prepared.md) ⚠️ | Upstream historical recording, kept for reference |
 | [calidad-a-escala.md](calidad-a-escala.md) **(ES)** | The 241-mission battery: accuracy, dangerous routings, latency |
 | [evaluacion-a-produccion.md](evaluacion-a-produccion.md) **(ES)** | An honest evaluation: what is production-ready and what is not |
-| `*-measurement.json`, `flights-result.png` | The raw numbers behind those pages |
+| `*-measurement.json`, `flights-result.png`, `inspector.png`, `demo.gif/mp4` ⚠️ | The raw evidence and footage behind those upstream pages — recorded with Chrome and TypeSafe's model, not with this build |
 
 ## Archive
 

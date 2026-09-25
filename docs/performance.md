@@ -1,5 +1,10 @@
 # Faster on the real web
 
+> ⚠️ **Upstream material, not this build.** These measurements were recorded on **Chrome** with
+> **TypeSafe's hosted Jev policy** and the **Mercury** text model, by the reference project this fork started from
+> (`browser-use/jev-ultrafast`), before this fork existed. They are kept as context for the loop. They are **not** a
+> measurement of this build, which drives **Firefox** with **Groq/NVIDIA**.
+
 The current video completes the Google Flights task in **7.073 seconds at 1×**. It starts with one natural-language goal and uses dynamic controls throughout. Jev selects operation + target in one request; Mercury generates the city strings when TYPE_TEXT is selected.
 
 [Video](demo.mp4) · [Recording measurements](flights-measurement.json) · [Matched run measurements](full-speed-measurement.json)

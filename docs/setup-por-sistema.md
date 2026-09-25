@@ -1,4 +1,4 @@
-# Setup y uso, sistema por sistema — Jev Agent **v0.11.0**
+# Setup y uso, sistema por sistema — **AI Agent for Firefox** v0.11.0
 
 Guía definitiva: qué haces **una vez** (setup) y qué haces **cada día** (uso), con los comandos exactos de tu sistema.
 
@@ -96,14 +96,14 @@ Registering the host with Firefox...
 4. Elige **un archivo**, la opción que te sea más cómoda:
    - ⭐ **El `.xpi`**: descarga `jev-agent-firefox-v0.11.0.xpi` de la página **Releases** y selecciónalo tal cual (un solo archivo, lo más simple)
    - **O desde la carpeta**: entra en la carpeta del proyecto → subcarpeta **`extension`** → selecciona **`manifest.json`**
-5. ✓ En la lista debe aparecer **"Jev Agent · Firefox AI agent"**
+5. ✓ En la lista debe aparecer **"AI Agent for Firefox"**
 
 > ⚠️ **"Temporal" significa que al cerrar Firefox desaparece.** Es normal: aún no está firmado. Cada vez que reinicies Firefox, repite este paso (30 segundos). **No** hace falta repetir el Paso 3.
 
 ## Paso 5 · Pegar la clave y probarlo
 
-1. Arriba a la derecha en Firefox, pulsa el **icono de Jev** en la barra de herramientas.
-   - ¿No lo ves? Pieza de puzzle 🧩 → **Jev Agent**, o menú **☰ → Panel lateral → Jev Agent**.
+1. Arriba a la derecha en Firefox, pulsa el **icono del agente** en la barra de herramientas.
+   - ¿No lo ves? Pieza de puzzle 🧩 → **AI Agent**, o menú **☰ → Panel lateral → AI Agent**.
 2. Se abre el **panel lateral**. Mira el puntito de arriba a la derecha:
    - 🟢 **host online** = conectado ✓
    - 🔴 **offline** = Firefox no pudo arrancar el agente → haz **doble clic en el starter** (Paso 3) **y deja esa ventana abierta**: todo funciona igual. (Pasa sobre todo si moviste la carpeta, o con Firefox *snap*/*Flatpak*.)
@@ -139,7 +139,7 @@ Con esas 4 en verde, está perfecto. Lo demás es uso.
 
 ### Lo básico (es siempre igual en todos los sistemas)
 
-1. **Abre el panel**: icono de Jev en la barra de herramientas (o ☰ → Panel lateral → Jev Agent). El agente arranca solo.
+1. **Abre el panel**: icono del agente en la barra de herramientas (o ☰ → Panel lateral → AI Agent). El agente arranca solo.
 2. **Navega** a la web donde quieras que trabaje (o déjalo: abrirá un buscador).
 3. **Escribe la misión** en el cuadro de abajo y pulsa **Run**.
 4. Mira el **Plan** (los pasos, con ✓ al completarse) y los **Steps** (qué herramienta usó en cada uno: 🔧, y la respuesta final con 🏁).
@@ -468,7 +468,7 @@ Mueve la carpeta y haz **un doble clic** en el starter: vuelve a registrar la ru
 1. **Quitar el registro de Firefox** (desde la carpeta del proyecto):
    - Windows: `.venv\Scripts\jev-register-host --unregister`
    - Linux/macOS: `.venv/bin/jev-register-host --unregister`
-2. **Quitar el add-on de Firefox**: `about:debugging` → *Este Firefox* → **Jev Agent · Firefox AI agent** → **Remove**. (El temporal desaparece igual al cerrar Firefox.)
+2. **Quitar el add-on de Firefox**: `about:debugging` → *Este Firefox* → **AI Agent for Firefox** → **Remove**. (El temporal desaparece igual al cerrar Firefox.)
 3. **Borrar la carpeta del proyecto.** Ahí vivían tus claves (`.env`), los registros y los archivos que creó (`workspace/`).
 
 ## Comprobar desde la terminal
@@ -518,4 +518,4 @@ Ocupa unos **2 GB** en disco y descarga una imagen de ~630 MB la primera vez. El
 
 ---
 
-<sub>Jev Agent v0.11.0 · Verificado en CI sobre contenedores reales de openSUSE Leap 15.6 y Tumbleweed, en Windows (windows-latest) y en Linux con Python 3.11, 3.12 y 3.13. Informe técnico: `informe-suse-linux-windows.md`.</sub>
+<sub>AI Agent for Firefox v0.11.0 · Verificado en CI sobre contenedores reales de openSUSE Leap 15.6 y Tumbleweed, en Windows (windows-latest) y en Linux con Python 3.11, 3.12 y 3.13. Informe técnico: `informe-suse-linux-windows.md`.</sub>

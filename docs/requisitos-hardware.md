@@ -7,7 +7,7 @@ cuatro cosas que sí consumen, y solo una es obligatoria:
 | # | Qué consume | ¿Obligatorio? | Cuánto |
 | --- | --- | --- | --- |
 | 1 | **El navegador** (Firefox con la extensión) | Sí | el navegador que ya tienes abierto |
-| 2 | **El host de Jev** (Python) | Sí | **38,6 MB de RAM** · ~2 % de un núcleo |
+| 2 | **El host del agente** (Python) | Sí | **38,6 MB de RAM** · ~2 % de un núcleo |
 | 3 | **Laya** (motor de decisión local) | No | ~1 GB RAM + ~1,2 GB disco |
 | 4 | **Sandbox Neko** (navegador aislado en Docker) | No | ~2 GB disco + ~1-2 GB RAM del contenedor |
 | 5 | ~~Modelos locales~~ | **No existen** | retirados en sept 2026: ver §4 |
@@ -21,7 +21,7 @@ mientras hacía el circuito entero (catálogo real + sonda en vivo + 3 llamadas 
 ```
 ENTORNO DE MEDICIÓN (peor que cualquier PC real): contenedor de 2 núcleos y 2 GB de RAM, sin GPU
 
-Host de Jev (jev-firefox)   RAM: 38,6 MB constante   ·   CPU pico: 2,2 % de un núcleo
+Host del agente (jev-firefox)   RAM: 38,6 MB constante   ·   CPU pico: 2,2 % de un núcleo
 Proveedor simulado          RAM: 18 MB
 Disco: repositorio 8,6 MB + entorno virtual 46 MB  (sin torch)
 ```

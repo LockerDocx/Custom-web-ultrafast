@@ -508,7 +508,7 @@ def native_main():
     from . import providers as provider_layer
 
     state = "configured" if provider_layer.is_configured() else "no API key yet - paste one in the sidebar"
-    print(f"Jev host started by Firefox (native messaging): {state}.", file=sys.stderr, flush=True)
+    print(f"Agent host started by Firefox (native messaging): {state}.", file=sys.stderr, flush=True)
     try:
         host.serve()
     except KeyboardInterrupt:
@@ -1194,12 +1194,12 @@ def main():
     _SERVER = BridgeServer(port=port, token=token)
     _SERVER.runner = TaskRunner(_SERVER)
     _SERVER.start()
-    print(f"Jev Agent bridge: ws://127.0.0.1:{_SERVER.port}", flush=True)
+    print(f"AI Agent for Firefox bridge: ws://127.0.0.1:{_SERVER.port}", flush=True)
     print("Load extension/ in Firefox via about:debugging → This Firefox → Load Temporary Add-on.", flush=True)
     if provider_layer.is_configured():
         print(f"Policy model: {policy_description()}", flush=True)
     else:
-        print("No API key yet — open the Jev sidebar in Firefox and paste one there; it takes 2 minutes.", flush=True)
+        print("No API key yet — open the agent sidebar in Firefox and paste one there; it takes 2 minutes.", flush=True)
     try:
         threading.Event().wait()
     except KeyboardInterrupt:

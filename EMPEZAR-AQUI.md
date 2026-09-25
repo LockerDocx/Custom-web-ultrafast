@@ -92,7 +92,7 @@ La clave es como una contraseña para que el asistente use una IA. La más fáci
 4. Se abre una ventana para elegir archivo. Dos formas, la que te resulte más cómoda:
    - **Un solo archivo** ⭐: descarga `jev-agent-firefox-….xpi` de la página **Releases** del proyecto (la misma de donde bajaste el ZIP) y selecciónalo tal cual
    - **Desde la carpeta**: entra en **la carpeta del proyecto** (la del PASO 1) → subcarpeta **`extension`** → selecciona **`manifest.json`** → **Abrir**
-5. ✓ Comprobación: en la lista aparece **"Jev Agent · Firefox AI agent"**
+5. ✓ Comprobación: en la lista aparece **"AI Agent for Firefox"**
 
 > ℹ️ **"Temporal" significa que al reiniciar Firefox desaparece.** Es normal (aún no está firmado). Cada vez que reinicies Firefox, repite este PASO 4 (30 segundos). **La ventana del PASO 3 no hace falta**: el panel arranca el agente por su cuenta.
 
@@ -100,8 +100,8 @@ La clave es como una contraseña para que el asistente use una IA. La más fáci
 
 ## 🟦 PASO 5 — Pegar la clave EN FIREFOX y probarlo (2 minutos)
 
-1. Arriba a la derecha en Firefox, pulsa el **icono de Jev** en la barra de herramientas.
-   - ¿No lo ves? Pulsa la **pieza de puzzle 🧩** de la barra → Jev Agent. O menú **☰ → Panel lateral → Jev Agent**
+1. Arriba a la derecha en Firefox, pulsa el **icono del agente** en la barra de herramientas.
+   - ¿No lo ves? Pulsa la **pieza de puzzle 🧩** de la barra → AI Agent. O menú **☰ → Panel lateral → AI Agent**
 2. Se abre el **panel lateral** del agente. Mira el puntito de arriba a la derecha del panel:
    - 🟢 **Verde "host online"** = todo conectado ✓
    - 🔴 Rojo "offline" = Firefox no ha podido arrancar el agente → **doble clic en el starter (PASO 3) una vez** y deja esa ventana abierta. (Suele pasar solo si moviste la carpeta, o en Firefox *snap*/*Flatpak*, donde el sistema pide permiso para lanzar programas locales.)

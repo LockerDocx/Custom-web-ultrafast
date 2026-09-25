@@ -1,4 +1,4 @@
-"""Register the native-messaging host, so Firefox starts Jev by itself.
+"""Register the native-messaging host, so Firefox starts the agent by itself.
 
 Firefox deliberately never lets an add-on install or launch local software on its
 own: the user (or the installer they ran) has to point the browser at the program
@@ -51,7 +51,7 @@ def manifest_path():
 def manifest_for(root=None, path=None):
     return {
         "name": HOST_NAME,
-        "description": "Jev Agent local host: plans and executes browser missions for the sidebar.",
+        "description": "AI Agent for Firefox local host: plans and executes browser missions for the sidebar.",
         "path": str(path or executable(root)),
         "type": "stdio",
         "allowed_extensions": [EXTENSION_ID],  # only our add-on may talk to it
@@ -97,7 +97,7 @@ def register(root=None, path=None):
 
 
 def unregister():
-    """Undo register(): the browser stops launching Jev by itself."""
+    """Undo register(): the browser stops launching the agent by itself."""
     destination = manifest_path()
     removed = False
     try:
@@ -129,14 +129,14 @@ def main(argv=None):
     arguments = list(sys.argv[1:] if argv is None else argv)
     if "--unregister" in arguments:
         gone = unregister()
-        print("Jev will no longer be started by Firefox." if gone else "Nothing was registered.")
+        print("The agent will no longer be started by Firefox." if gone else "Nothing was registered.")
         return 0
     if "--status" in arguments:
         state = status()
         print(f"registered: {state['registered']}  host: {state['executable'] or '-'}  present: {state['exists']}")
         return 0 if state["registered"] and state["exists"] else 1
     entry = register()
-    print(f"Firefox will now start Jev by itself ({entry['manifest']}).")
+    print(f"Firefox will now start the agent by itself ({entry['manifest']}).")
     if not entry["exists"]:
         print("Note: the host program is not built yet - run the starter once, then re-run this.", file=sys.stderr)
         return 1

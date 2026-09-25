@@ -1,5 +1,5 @@
 #!/bin/bash
-# Starter for the Jev Agent Firefox bridge host (Linux).
+# Starter for the AI Agent for Firefox bridge host (Linux).
 # Run it from your file manager by double-clicking this file.
 # Double-click it, or run it from a terminal.
 
@@ -110,11 +110,11 @@ fi
 echo ""
 echo "Registering the host with Firefox..."
 if .venv/bin/jev-register-host >/dev/null 2>&1; then
-  echo "  Done: from now on the sidebar starts Jev by itself - you will not need this window again."
+  echo "  Done: from now on the sidebar starts the agent by itself - you will not need this window again."
   echo "  This one stays open only as a fallback: if the panel says offline, it is to blame."
   echo ""
 else
-  echo "  [!] Could not register it (Firefox will not start Jev on its own)."
+  echo "  [!] Could not register it (Firefox will not start the agent on its own)."
   echo "      Keep this window open while you use the agent - it still works exactly the same."
   echo ""
 fi
@@ -127,6 +127,6 @@ echo "Now in Firefox:"
 echo "  1. Type about:debugging in the address bar and press Enter"
 echo "  2. Click 'This Firefox' then 'Load Temporary Add-on...'"
 echo "  3. Open this folder, then the 'extension' folder, pick 'manifest.json'"
-echo "  4. Open the Jev sidebar with the toolbar button"
+echo "  4. Open the AI Agent sidebar with the toolbar button"
 echo ""
 exec .venv/bin/jev-firefox

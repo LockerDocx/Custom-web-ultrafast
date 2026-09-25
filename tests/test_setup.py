@@ -292,7 +292,7 @@ def test_the_host_starts_without_a_key_and_points_at_the_sidebar(clean_env, tmp_
     firefox.main()  # returns instead of waiting forever
 
     printed = capsys.readouterr().out
-    assert "open the Jev sidebar" in printed
+    assert "open the agent sidebar" in printed
     assert "Policy model" not in printed  # nothing configured yet
     assert asked == []  # never asked anything on the command line
 

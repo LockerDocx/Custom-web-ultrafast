@@ -193,7 +193,7 @@ DERIVED_MODELS = {
 DERIVATION_ORDER = ("nvidia", "groq", "deepseek")
 
 NO_CONFIG_MESSAGE = (
-    "Nothing is configured for the {role} role yet. One free key runs the whole agent: paste it in the Jev "
+    "Nothing is configured for the {role} role yet. One free key runs the whole agent: paste it in the agent "
     "sidebar, or set {key} in .env - GROQ_API_KEY (https://console.groq.com/keys) is free in 2 minutes."
 )
 
@@ -267,7 +267,7 @@ No API key found. One free key runs the whole agent:
 
   1. Open https://console.groq.com/keys (log in with Google is fine)
   2. Click "Create API key" and copy it
-  3. Paste it in the Jev sidebar in Firefox (it asks on first open), or here
+  3. Paste it in the agent sidebar in Firefox (it asks on first open), or here
      when this starter asks, or in .env as GROQ_API_KEY=... and run again.
 
 Free, no card required. The NVIDIA key (https://build.nvidia.com) is optional
@@ -302,7 +302,7 @@ def ensure_configured(prompt=input, notify=print, path=None, interactive=None):
         notify(NO_KEY_HELP)
         return False
     notify("")
-    notify("Jev needs one free API key. It is stored locally in .env and never leaves your machine.")
+    notify("The agent needs one free API key. It is stored locally in .env and never leaves your machine.")
     saved = {}
     for variable, label, url in FREE_KEYS:
         notify(f"  {label}: {url}")
@@ -433,7 +433,7 @@ def resolve(role):
             options = " or ".join([env["key"], *preset["key_env"]])
             raise ValueError(
                 f"No API key for the {role} role: set {options}. No request was sent. One free key runs the "
-                "whole agent - paste it in the Jev sidebar, or GROQ_API_KEY in .env (https://console.groq.com/keys)."
+                "whole agent - paste it in the agent sidebar, or GROQ_API_KEY in .env (https://console.groq.com/keys)."
             )
         raise ValueError(
             f"{env['key']} is not set, and {env['provider']} is not a named provider. "

@@ -1,4 +1,4 @@
-# Jev Agent — firefox-ai-agent
+# AI Agent for Firefox — firefox-ai-agent
 
 Read README.md before editing. This repository ships a Firefox AI agent: the sidebar is the product,
 the browser loop below is its engine. Keep the five-step, no-console setup working for a

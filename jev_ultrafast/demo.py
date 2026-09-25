@@ -1,4 +1,4 @@
-"""Loopback-only inspector for the Jev browser agent."""
+"""Loopback-only inspector for the Firefox browser agent."""
 
 import atexit
 import json
@@ -147,7 +147,7 @@ def main():
         raise SystemExit(1)
     atexit.register(close_browser)
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    print(f"Jev Agent: {ORIGIN}", flush=True)
+    print(f"AI Agent for Firefox: {ORIGIN}", flush=True)
     print(f"Policy model: {policy_description()}", flush=True)
     try:
         server.serve_forever()

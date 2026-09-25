@@ -62,7 +62,7 @@ Every option is described in [providers.md](providers.md), and to change what ru
 
 ## 2b. After the first run you can forget about the starter
 
-That first run registers Jev as a **native messaging host** for your user (one JSON manifest in
+That first run registers the host as a **native messaging host** for your user (one JSON manifest in
 Firefox's own folder; on Windows the same file plus one `HKEY_CURRENT_USER` value — no administrator
 rights, nothing system-wide). From then on:
 
@@ -84,7 +84,7 @@ run the agent, with everything else identical.
 1. Open Firefox and type `about:debugging` in the address bar.
 2. Click **This Firefox** → **Load Temporary Add-on…**
 3. Pick `extension/manifest.json` inside the project folder (or the `.xpi` from the Release page — the file picker filters by type; choose *All files* if needed).
-4. Open the sidebar with the Jev toolbar button (or menu → View → Sidebar → **Jev Agent**).
+4. Open the sidebar with the agent's toolbar button (or menu → View → Sidebar → **AI Agent**).
 
 The dot in the sidebar header turns **green** when it reaches the host. If it stays red, start the host first (step 2).
 

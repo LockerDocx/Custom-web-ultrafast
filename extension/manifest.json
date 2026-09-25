@@ -1,6 +1,6 @@
 {
   "manifest_version": 2,
-  "name": "Jev Agent · Firefox AI agent",
+  "name": "AI Agent for Firefox",
   "version": "0.11.0",
   "description": "Sidebar agent: plan with a deep model, execute fast, drive your own Firefox tab.",
   "browser_specific_settings": {
@@ -21,10 +21,10 @@
     ]
   },
   "browser_action": {
-    "default_title": "Open the Jev sidebar"
+    "default_title": "Open the AI Agent sidebar"
   },
   "sidebar_action": {
-    "default_title": "Jev Agent",
+    "default_title": "AI Agent",
     "default_panel": "sidebar/sidebar.html",
     "open_at_install": false
   }

@@ -1,5 +1,10 @@
 # A real flight search, at real speed
 
+> ⚠️ **Upstream material, not this build.** These measurements were recorded on **Chrome** with
+> **TypeSafe's hosted Jev policy** and the **Mercury** text model, by the reference project this fork started from
+> (`browser-use/jev-ultrafast`), before this fork existed. They are kept as context for the loop. They are **not** a
+> measurement of this build, which drives **Firefox** with **Groq/NVIDIA**.
+
 **12.884 seconds on Google Flights.** Zürich → London, one way, Sunday 20 September 2026, one adult, economy. Historical prepared recording (the primary demo has since been replaced) · [Machine-readable evidence](flights-prepared-measurement.json).
 
 | Recorded run | Measurement |
