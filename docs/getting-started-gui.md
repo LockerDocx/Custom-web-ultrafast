@@ -23,7 +23,7 @@ The agent runs on your machine as a small local process ("the host"). Unzip the 
 
 | System | Double-click | What happens |
 | --- | --- | --- |
-| Windows | `start-host.bat` | First run: creates a private Python environment (about a minute, internet needed), then starts the host. Nothing to type here. |
+| Windows | `start-host.bat` | First run: creates a private Python environment (about a minute, internet needed), registers the host with Firefox, then starts it. Nothing to type here. |
 | macOS | `start-host.command` | Same. If macOS blocks it: right-click → **Open**. |
 | Linux | `start-host.sh` | Same (run it from your file manager). |
 
@@ -44,6 +44,24 @@ button in *Models & parameters*) to upgrade the planner to `z-ai/glm-5.3`. (Pref
 Copy `.env.example` to `.env` and fill in the lines you want — both paths are equivalent.)
 
 Every option is described in [providers.md](providers.md), and to change what runs, use the **Models & parameters** panel in the sidebar.
+
+## 2b. After the first run you can forget about the starter
+
+That first run registers Jev as a **native messaging host** for your user (one JSON manifest in
+Firefox's own folder; on Windows the same file plus one `HKEY_CURRENT_USER` value — no administrator
+rights, nothing system-wide). From then on:
+
+- opening the **sidebar** starts the host by itself, with no window and no port;
+- closing Firefox stops it; nothing stays running in the background;
+- the host is only reachable through the browser, and only for this add-on id
+  (`allowed_extensions`), which is stronger than a shared secret;
+- **moving the project folder** breaks the registration until you run the starter once more (it
+  re-registers with the new paths).
+
+Firefox deliberately never lets an extension install local software on its own: that one-time
+registration is the browser's security model, and the starter is what does it for you. Some
+packaged builds (Ubuntu's *snap*, Flatpak) refuse to launch native hosts at all; there the starter
+window remains the way to run the agent, and everything else works identically.
 
 ## 3. Install the extension in Firefox
 

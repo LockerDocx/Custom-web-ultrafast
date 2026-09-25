@@ -46,10 +46,19 @@ if not exist ".env" (
   copy /y ".env.example" ".env" >nul
 )
 
+echo  Registering the host with Firefox...
+".venv\Scripts\jev-register-host.exe" >nul 2>nul
+if errorlevel 1 (
+  echo   [!] Could not register it - keep this window open while you use the agent.
+) else (
+  echo   Done: from now on the sidebar starts Jev by itself, no window needed.
+  echo   This one stays open only as a fallback: if the panel says offline, it is to blame.
+)
+echo.
 echo  Host starting. KEEP THIS WINDOW OPEN while you use the sidebar.
 echo.
-echo  First time? It will ask for one free API key - paste it and press Enter.
-echo  Get one in 2 minutes at  https://console.groq.com/keys
+echo  Paste your free API key in the sidebar - it will ask
+echo  ^(2 minutes at https://console.groq.com/keys^).
 echo.
 echo  Now in Firefox:
 echo    1. Type  about:debugging  in the address bar and press Enter

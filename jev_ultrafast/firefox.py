@@ -12,6 +12,7 @@ import os
 import secrets
 import socket
 import struct
+import sys
 import threading
 import time
 from pathlib import Path
@@ -94,6 +95,7 @@ def check_providers():
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 DEFAULT_PORT = 8767
 COMMAND_TIMEOUT = 60.0
+NATIVE_MESSAGE_LIMIT = 1024 * 1024  # Firefox rejects anything larger from the app
 
 
 RUNS_LOG = Path(os.environ.get("JEV_RUNS_LOG", "artifacts/runs.jsonl"))
@@ -172,111 +174,39 @@ def _send_frame(sock, payload, opcode=1):
     sock.sendall(head + payload)
 
 
-class BridgeServer:
-    """A single-client WebSocket server bound to loopback; the Firefox extension is the client."""
+class Bridge:
+    """Transport-independent half of the bridge: routing, request ids, and the task runner.
 
-    def __init__(self, port=0, token=None):
+    Two transports speak it, and the sidebar cannot tell them apart:
+      * ``BridgeServer``     - the loopback WebSocket, used when someone double-clicks the host.
+      * ``NativeMessagingHost`` - Firefox starts the host itself and talks over stdin/stdout,
+        so there is no port, no window and no token to configure.
+    """
+
+    def __init__(self, token=None):
         self.token = token
         self.runner = None
         self._send_lock = threading.Lock()
         self._pending = {}
         self._next_id = 1
-        self._client = None
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._sock.bind(("127.0.0.1", port))
-        self._sock.listen(1)
-        self.port = self._sock.getsockname()[1]
 
     @property
     def connected(self):
-        return self._client is not None
+        raise NotImplementedError
+
+    def _write_locked(self, message):
+        """Put one message on the wire; the caller already holds ``_send_lock``."""
+        raise NotImplementedError
 
     def close(self):
-        try:
-            self._sock.close()
-        except OSError:
-            pass
+        pass
 
-    def start(self):
-        thread = threading.Thread(target=self._accept_loop, daemon=True)
-        thread.start()
-        return thread
-
-    def _accept_loop(self):
-        while True:
-            try:
-                conn, _address = self._sock.accept()
-            except OSError:
-                return
-            try:
-                self._serve(conn)
-            except (ConnectionError, OSError, ValueError):
-                pass
-            finally:
-                try:
-                    conn.close()
-                except OSError:
-                    pass
-                self._clear_client(conn)
-
-    def _clear_client(self, conn):
-        with self._send_lock:
-            if self._client is conn:
-                self._client = None
+    def _fail_pending(self, reason):
+        """Nobody will answer these: unblock every waiter with the reason."""
         for entry in self._pending.values():
-            entry["error"] = "Firefox extension disconnected"
+            entry["error"] = reason
             entry["event"].set()
         self._pending = {}
-
-    def _serve(self, conn):
-        headers = self._read_handshake(conn)
-        origin = headers.get("origin", "")
-        if origin and not origin.startswith("moz-extension://"):
-            conn.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
-            raise ValueError("Forbidden origin")
-        accept = base64.b64encode(hashlib.sha1((headers["sec-websocket-key"] + GUID).encode()).digest()).decode()
-        conn.sendall(
-            (
-                "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-                f"Sec-WebSocket-Accept: {accept}\r\n\r\n"
-            ).encode()
-        )
-        with self._send_lock:
-            self._client = conn
-        while True:
-            opcode, payload = _read_frame(conn)
-            if opcode == 8:
-                return
-            if opcode == 9:
-                with self._send_lock:
-                    _send_frame(conn, payload, opcode=10)
-                continue
-            if opcode != 1:
-                continue
-            try:
-                self._route(json.loads(payload.decode("utf-8")))
-            except Exception as error:  # a malformed message must not kill the reader
-                self.broadcast({"type": "error", "message": f"Bridge error: {error}"})
-
-    @staticmethod
-    def _read_handshake(conn):
-        data = b""
-        while b"\r\n\r\n" not in data:
-            chunk = conn.recv(4096)
-            if not chunk:
-                raise ConnectionError("Closed during handshake")
-            data += chunk
-            if len(data) > 16384:
-                raise ValueError("Oversized handshake")
-        headers = {}
-        for line in data.decode("latin-1").split("\r\n\r\n", 1)[0].split("\r\n")[1:]:
-            if ":" in line:
-                name, value = line.split(":", 1)
-                headers[name.strip().lower()] = value.strip()
-        if "sec-websocket-key" not in headers:
-            raise ValueError("Not a WebSocket handshake")
-        return headers
 
     def _route(self, message):
         if "id" in message and ("ok" in message or "error" in message):
@@ -364,10 +294,7 @@ class BridgeServer:
 
     def send(self, message):
         with self._send_lock:
-            client = self._client
-            if client is None:
-                raise BridgeError("Firefox extension is not connected")
-            _send_frame(client, json.dumps(message).encode("utf-8"))
+            self._write_locked(message)
 
     def broadcast(self, message):
         try:
@@ -377,8 +304,7 @@ class BridgeServer:
 
     def command(self, kind, **payload):
         with self._send_lock:
-            client = self._client
-            if client is None:
+            if not self.connected:
                 raise BridgeError(
                     "Firefox extension is not connected. Start the host (jev-firefox), "
                     "install the extension via about:debugging, and open the sidebar."
@@ -387,13 +313,206 @@ class BridgeServer:
             self._next_id += 1
             entry = {"event": threading.Event()}
             self._pending[command_id] = entry
-            _send_frame(client, json.dumps({"id": command_id, "type": kind, **payload}).encode("utf-8"))
+            self._write_locked({"id": command_id, "type": kind, **payload})
         if not entry["event"].wait(COMMAND_TIMEOUT):
             self._pending.pop(command_id, None)
             raise BridgeError(f"Firefox extension did not answer '{kind}' within {COMMAND_TIMEOUT:.0f}s")
         if "error" in entry:
             raise BridgeError(str(entry["error"]))
         return entry.get("result")
+
+
+class BridgeServer(Bridge):
+    """A single-client WebSocket server bound to loopback; the Firefox extension is the client."""
+
+    def __init__(self, port=0, token=None):
+        super().__init__(token=token)
+        self._client = None
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.bind(("127.0.0.1", port))
+        self._sock.listen(1)
+        self.port = self._sock.getsockname()[1]
+
+    @property
+    def connected(self):
+        return self._client is not None
+
+    def _write_locked(self, message):
+        client = self._client
+        if client is None:
+            raise BridgeError("Firefox extension is not connected")
+        _send_frame(client, json.dumps(message).encode("utf-8"))
+
+    def close(self):
+        try:
+            self._sock.close()
+        except OSError:
+            pass
+
+    def start(self):
+        thread = threading.Thread(target=self._accept_loop, daemon=True)
+        thread.start()
+        return thread
+
+    def _accept_loop(self):
+        while True:
+            try:
+                conn, _address = self._sock.accept()
+            except OSError:
+                return
+            try:
+                self._serve(conn)
+            except (ConnectionError, OSError, ValueError):
+                pass
+            finally:
+                try:
+                    conn.close()
+                except OSError:
+                    pass
+                self._clear_client(conn)
+
+    def _clear_client(self, conn):
+        with self._send_lock:
+            if self._client is conn:
+                self._client = None
+        self._fail_pending("Firefox extension disconnected")
+
+    def _serve(self, conn):
+        headers = self._read_handshake(conn)
+        origin = headers.get("origin", "")
+        if origin and not origin.startswith("moz-extension://"):
+            conn.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
+            raise ValueError("Forbidden origin")
+        accept = base64.b64encode(hashlib.sha1((headers["sec-websocket-key"] + GUID).encode()).digest()).decode()
+        conn.sendall(
+            (
+                "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                f"Sec-WebSocket-Accept: {accept}\r\n\r\n"
+            ).encode()
+        )
+        with self._send_lock:
+            self._client = conn
+        while True:
+            opcode, payload = _read_frame(conn)
+            if opcode == 8:
+                return
+            if opcode == 9:
+                with self._send_lock:
+                    _send_frame(conn, payload, opcode=10)
+                continue
+            if opcode != 1:
+                continue
+            try:
+                self._route(json.loads(payload.decode("utf-8")))
+            except Exception as error:  # a malformed message must not kill the reader
+                self.broadcast({"type": "error", "message": f"Bridge error: {error}"})
+
+    @staticmethod
+    def _read_handshake(conn):
+        data = b""
+        while b"\r\n\r\n" not in data:
+            chunk = conn.recv(4096)
+            if not chunk:
+                raise ConnectionError("Closed during handshake")
+            data += chunk
+            if len(data) > 16384:
+                raise ValueError("Oversized handshake")
+        headers = {}
+        for line in data.decode("latin-1").split("\r\n\r\n", 1)[0].split("\r\n")[1:]:
+            if ":" in line:
+                name, value = line.split(":", 1)
+                headers[name.strip().lower()] = value.strip()
+        if "sec-websocket-key" not in headers:
+            raise ValueError("Not a WebSocket handshake")
+        return headers
+
+
+
+class NativeMessagingHost(Bridge):
+    """Firefox starts this process itself and talks over stdin/stdout.
+
+    This is the setup-free transport: no port to free, no window to keep open, no
+    token to configure - the browser only runs a host whose manifest lists this
+    add-on id, which is the access control. Frame format is the documented one:
+    a 4-byte-length header in native byte order followed by UTF-8 JSON.
+    """
+
+    port = 0  # nothing listens; kept so callers that print a port keep working
+
+    def __init__(self, stdin=None, stdout=None):
+        super().__init__(token=None)
+        self._in = stdin if stdin is not None else sys.stdin.buffer
+        self._out = stdout if stdout is not None else sys.stdout.buffer
+        self._closed = False
+
+    @property
+    def connected(self):
+        return not self._closed
+
+    def _write_locked(self, message):
+        frame = json.dumps(message, separators=(",", ":")).encode("utf-8")
+        self._out.write(struct.pack("<I", len(frame)) + frame)
+        self._out.flush()
+
+    def close(self):
+        self._closed = True
+
+    def read_message(self, limit=NATIVE_MESSAGE_LIMIT):
+        """One message from Firefox; None means the browser closed the channel."""
+        header = self._in.read(4)
+        if not header or len(header) < 4:
+            return None
+        length = struct.unpack("<I", header)[0]
+        if length == 0 or length > limit:
+            return None
+        payload = self._in.read(length)
+        if not payload or len(payload) < length:
+            return None
+        try:
+            return json.loads(payload.decode("utf-8"))
+        except ValueError:
+            return None
+
+    def serve(self):
+        """Read until Firefox goes away (stanza by stanza, like the WebSocket reader)."""
+        while True:
+            try:
+                message = self.read_message()
+            except (ValueError, OSError):
+                break
+            if message is None:
+                break
+            try:
+                self._route(message)
+            except Exception as error:  # a malformed message must not kill the host
+                self.broadcast({"type": "error", "message": f"Bridge error: {error}"})
+        self._closed = True
+        self._fail_pending("Firefox closed the connection")
+
+
+def repo_root():
+    """The folder this checkout lives in, wherever the browser started us from."""
+    root = Path(__file__).resolve().parents[1]
+    return root if (root / "pyproject.toml").exists() else Path.cwd()
+
+
+def native_main():
+    """Entry point Firefox launches by itself: no window, no port, nothing to click."""
+    real_stdout = os.dup(1)
+    os.dup2(2, 1)  # anything printed from here on goes to stderr; stdout is the protocol
+    os.chdir(repo_root())  # .env, workspace/ and artifacts/ live next to the code
+    load_environment()
+    host = NativeMessagingHost(stdout=os.fdopen(real_stdout, "wb", buffering=0))
+    host.runner = TaskRunner(host)
+    from . import providers as provider_layer
+
+    state = "configured" if provider_layer.is_configured() else "no API key yet - paste one in the sidebar"
+    print(f"Jev host started by Firefox (native messaging): {state}.", file=sys.stderr, flush=True)
+    try:
+        host.serve()
+    except KeyboardInterrupt:
+        pass
 
 
 class FirefoxBrowser:

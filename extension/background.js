@@ -1,9 +1,13 @@
 /* WebSocket bridge client: relays host commands to the tab and task requests to the host. */
 
 const DEFAULT_PORT = 8767;
+// Must match HOST_NAME in jev_ultrafast/native_setup.py (the registered host manifest).
+const NATIVE_HOST = "jev_ultrafast_host";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let ws = null;
+let nativePort = null;
+let nativeUnavailable = false; // no host registered for this Firefox: use the socket
 let connected = false;
 let nextId = 1;
 let lastState = null;
@@ -19,11 +23,74 @@ function setStatus(value) {
 }
 
 function send(message) {
+  if (nativePort) {
+    nativePort.postMessage(message);
+    return;
+  }
   if (!ws || ws.readyState !== 1) throw new Error("Host is not connected");
   ws.send(JSON.stringify(message));
 }
 
+/* Native messaging first: Firefox starts the host itself, so there is no window to
+   keep open and no port to know about. If nothing is registered, fall back to the
+   loopback socket (someone double-clicked the starter). */
+function tryNative() {
+  return new Promise((resolve) => {
+    let port;
+    try {
+      port = browser.runtime.connectNative(NATIVE_HOST);
+    } catch (error) {
+      nativeUnavailable = true;
+      return resolve(null);
+    }
+    let settled = false;
+    const giveUp = () => {
+      if (settled) return;
+      settled = true;
+      nativeUnavailable = true;
+      try {
+        port.disconnect();
+      } catch (error) {
+        /* already gone */
+      }
+      resolve(null);
+    };
+    port.onDisconnect.addListener(() => {
+      void browser.runtime.lastError; // consume it: "no such native application" is expected
+      const wasRunning = nativePort === port;
+      if (wasRunning) {
+        nativePort = null;
+        setStatus(false);
+      }
+      if (!settled) return giveUp();
+      if (wasRunning) setTimeout(connect, 2000); // the host died: Firefox can start it again
+    });
+    port.onMessage.addListener((message) => {
+      if (!settled) {
+        settled = true;
+        nativePort = port;
+        setStatus(true);
+        resolve(port);
+      }
+      handleHostMessage(message).catch((error) => {
+        console.error("bridge message failed", error);
+      });
+    });
+    try {
+      port.postMessage({ type: "hello" });
+    } catch (error) {
+      giveUp();
+    }
+    setTimeout(giveUp, 2500); // nothing answered: this Firefox has no host registered
+  });
+}
+
 async function connect() {
+  if (!nativeUnavailable && (await tryNative())) return;
+  openSocket();
+}
+
+async function openSocket() {
   const config = await settings();
   const socket = new WebSocket(`ws://127.0.0.1:${config.port}`);
   ws = socket;

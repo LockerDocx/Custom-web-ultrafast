@@ -45,24 +45,26 @@ La clave es como una contraseña para que el asistente use una IA. La más fáci
 
 ---
 
-## 🟦 PASO 3 — Encender el agente (1 minuto)
+## 🟦 PASO 3 — Encender el agente (1 minuto, y solo esta vez)
 
 1. Entra en la carpeta que descomprimiste en el PASO 1
 2. **Doble clic** en el arranque de tu sistema:
    - **Windows** → `start-host.bat`
    - **macOS** → `start-host.command` *(la primera vez: clic derecho → **Abrir** → **Abrir**)*
    - **Linux** → `start-host.sh`
-3. **La primera vez** se prepara todo solo (instala lo necesario, ~1 minuto). Al terminar verás una ventana con:
+3. **La primera vez** se prepara todo solo (instala lo necesario, ~1 minuto) y deja el agente **registrado en Firefox**:
    ```
-   Jev Ultrafast Firefox bridge: ws://127.0.0.1:8767
-   No API key yet — open the Jev sidebar in Firefox and paste one there; it takes 2 minutes.
+   Registering the host with Firefox...
+     Done: from now on the sidebar starts Jev by itself - you will not need this window again.
    ```
-   ✓ **El agente está encendido.** ⚠️ **NO CIERRES ESA VENTANA** mientras uses el asistente (puedes minimizarla).
-   **No hay que escribir nada aquí**: la clave se pega en Firefox, en el PASO 5.
+4. 🎉 **A partir de aquí este doble clic ya no hace falta.** En Firefox, al abrir el panel, el agente arranca **solo** (no verás ninguna ventana). La ventana que se ha abierto ahora queda como **respaldo**: puedes dejarla o cerrarla, tú decides.
+   - Si el panel dijera **🔴 offline**, es que Firefox no dejó arrancarlo solo (pasa con Firefox instalado como *snap* en Ubuntu): deja esa ventana abierta y **todo funciona igual**.
+   - Si mueves la carpeta de sitio, vuelve a hacer doble clic una vez (se registra de nuevo).
 
 **❌ Si algo sale mal aquí:**
 - *Dice "Python 3.12 or newer is required"* → instala Python (ver 📋) y repite el PASO 3
 - *La ventana se cierra al instante* → instala Python marcando **"Add python.exe to PATH"** y repite
+- *El panel dice "offline"* → deja abierta la ventana del PASO 3 (es el modo respaldo)
 
 ---
 

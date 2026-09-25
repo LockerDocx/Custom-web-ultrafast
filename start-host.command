@@ -38,10 +38,20 @@ if [ ! -f ".env" ]; then
 fi
 
 echo ""
+echo "Registering the host with Firefox..."
+if .venv/bin/jev-register-host >/dev/null 2>&1; then
+  echo "  Done: from now on the sidebar starts Jev by itself - you will not need this window again."
+  echo "  This one stays open only as a fallback: if the panel says offline, it is to blame."
+  echo ""
+else
+  echo "  [!] Could not register it (Firefox will not start Jev on its own)."
+  echo "      Keep this window open while you use the agent - it still works exactly the same."
+  echo ""
+fi
+echo ""
 echo "Host starting. KEEP THIS WINDOW OPEN while you use the sidebar."
 echo ""
-echo "First time? It will ask for one free API key - paste it and press Enter."
-echo "Get one in 2 minutes at https://console.groq.com/keys"
+echo "Paste your free API key in the sidebar - it will ask (2 minutes at https://console.groq.com/keys)."
 echo ""
 echo "Now in Firefox:"
 echo "  1. Type about:debugging in the address bar and press Enter"

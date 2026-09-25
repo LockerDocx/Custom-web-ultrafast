@@ -129,7 +129,7 @@ uv run --env-file .env jev-firefox        # start the local bridge host
 # Firefox → about:debugging → Load Temporary Add-on → extension/manifest.json
 ```
 
-**No terminal?** Double-click `start-host.bat` (Windows), `start-host.command` (macOS), or `start-host.sh` (Linux) — the first run prepares everything, starts the host, and then you paste your one free API key in the Firefox sidebar (nothing is asked in that window). Full point-and-click walkthrough, including how to publish your own copy on GitHub from the web UI: [getting-started-gui.md](docs/getting-started-gui.md). **¿Español? Manual paso a paso súper sencillo: [EMPEZAR-AQUI.md](EMPEZAR-AQUI.md).**
+**No terminal?** Double-click `start-host.bat` (Windows), `start-host.command` (macOS), or `start-host.sh` (Linux) — the first run prepares everything, **registers the host with Firefox**, and then you paste your one free API key in the sidebar. From then on the starter is optional: the browser launches the host itself over native messaging, so the sidebar opening *is* the agent starting — no window, no port, no double click. (The starter stays as a fallback, and as the path for environments where a browser cannot launch local programs.) Full point-and-click walkthrough, including how to publish your own copy on GitHub from the web UI: [getting-started-gui.md](docs/getting-started-gui.md). **¿Español? Manual paso a paso súper sencillo: [EMPEZAR-AQUI.md](EMPEZAR-AQUI.md).**
 
 The sidebar shows the plan checklist with ✓ progress, live screenshots, every executed action, and a Stop button. Setup and architecture: [firefox-extension.md](docs/firefox-extension.md).
 

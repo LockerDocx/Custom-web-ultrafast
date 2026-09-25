@@ -34,6 +34,9 @@ Extraído del propio código (no de suposiciones): `pyproject.toml`, `extension/
   para *policy* y *text* (273–281 ms), NVIDIA `z-ai/glm-5.3` para *planner* (≈1 s).
   `*_REASONING=low` acelera sin perder calidad.
 - **Instalación**: `uv sync` (hay `uv.lock`) o `python -m venv .venv && pip install -e .`
+- **Arranque (opcional)**: `start-host.*` registra el host en Firefox (manifest nativo por usuario, sin admin) y a partir
+  de ahí el navegador lo arranca solo al abrir el sidebar. `jev-register-host --unregister` lo revierte;
+  `--status` dice si está registrado y hacia qué ejecutable apunta.
 - **Cuotas**: si un modelo agota su límite, la app lo marca 🟡 «limitado ahora mismo» — estado
   propio, no un fallo rojo.
 
