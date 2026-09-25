@@ -3,10 +3,9 @@
 import json
 import threading
 import time
-
-import httpx
 from unittest.mock import Mock
 
+import httpx
 import pytest
 
 from jev_ultrafast import discovery, firefox, model, orchestrator, parameters, providers
