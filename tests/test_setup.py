@@ -257,12 +257,17 @@ def test_an_installed_package_keeps_one_file_of_its_own(tmp_path, monkeypatch):
 
 def test_the_sidebar_is_told_which_file_holds_the_keys(tmp_path, monkeypatch):
     """"No key" usually means "key in another file": the panel has to be able to say it."""
-    monkeypatch.setenv("JEV_ENV_FILE", str(tmp_path / ".env"))
-    assert providers.setup_status()["env_file"] == str(tmp_path / ".env")
     from pathlib import Path
 
+    monkeypatch.setenv("JEV_ENV_FILE", str(tmp_path / ".env"))
+    status = providers.setup_status()
+    # compare against the helper: where the temp dir sits under the home directory
+    # (Windows CI) the panel shortens that prefix to ~, which is the point of it
+    assert status["env_file"] == providers.env_file_display()
+    assert status["env_file"].endswith(".env")
+
     monkeypatch.setenv("JEV_ENV_FILE", str(Path.home() / "somewhere" / ".env"))
-    assert providers.setup_status()["env_file"] == "~/somewhere/.env"
+    assert providers.setup_status()["env_file"] == "~" + os.sep + "somewhere" + os.sep + ".env"
 
 
 # ── the Firefox flow: the sidebar is the setup surface ───────────────────────
