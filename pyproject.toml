@@ -5,6 +5,7 @@ description = "Free open-source AI agent that drives your Firefox: you say the g
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
+dependencies = ["browser-harness==0.1.13", "httpx[http2]>=0.28,<1"]
 
 [project.urls]
 Homepage = "https://github.com/LockerDocx/firefox-ai-agent"
@@ -12,7 +13,6 @@ Repository = "https://github.com/LockerDocx/firefox-ai-agent"
 Issues = "https://github.com/LockerDocx/firefox-ai-agent/issues"
 Releases = "https://github.com/LockerDocx/firefox-ai-agent/releases"
 Documentation = "https://github.com/LockerDocx/firefox-ai-agent/blob/main/docs/README.md"
-dependencies = ["browser-harness==0.1.13", "httpx[http2]>=0.28,<1"]
 
 [project.optional-dependencies]
 # document parsing for the parse_document tool: pip install -e ".[documents]"

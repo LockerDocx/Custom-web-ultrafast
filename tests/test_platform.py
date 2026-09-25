@@ -158,3 +158,21 @@ def test_the_dry_run_hook_the_tests_use_cannot_change_normal_behaviour():
     dry = text.index("JEV_START_DRY_RUN")
     assert dry > text.index("find_python"), "the hook must come after discovery"
     assert "exec .venv/bin/jev-firefox" in text[dry:], "and before the real work"
+
+def test_the_package_metadata_survives_a_real_install():
+    """A key that ends up in the wrong TOML table installs locally and fails in CI.
+
+    `pip install -e .` is what caught it the first time: hatchling refused a
+    `dependencies` entry living under `[project.urls]`, so every CI job died at
+    the install step while the local suite stayed green (nothing re-installs).
+    """
+    import tomllib
+
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    project = data["project"]
+    assert project["dependencies"], "the runtime dependencies must stay declared"
+    urls = project.get("urls", {})
+    assert urls, "the public URLs are part of the package metadata"
+    unknown = set(urls) - {"Homepage", "Repository", "Issues", "Releases", "Documentation", "Changelog"}
+    assert not unknown, f"not a project URL key: {unknown}"
+    assert "dependencies" not in urls, "a misplaced key here breaks every install"
