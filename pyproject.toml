@@ -1,10 +1,17 @@
 [project]
 name = "jev-ultrafast"
 version = "0.11.0"
-description = "A browser agent that chooses instead of generating."
+description = "Free open-source AI agent that drives your Firefox: you say the goal, it navigates, clicks and types."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
+
+[project.urls]
+Homepage = "https://github.com/LockerDocx/firefox-ai-agent"
+Repository = "https://github.com/LockerDocx/firefox-ai-agent"
+Issues = "https://github.com/LockerDocx/firefox-ai-agent/issues"
+Releases = "https://github.com/LockerDocx/firefox-ai-agent/releases"
+Documentation = "https://github.com/LockerDocx/firefox-ai-agent/blob/main/docs/README.md"
 dependencies = ["browser-harness==0.1.13", "httpx[http2]>=0.28,<1"]
 
 [project.optional-dependencies]

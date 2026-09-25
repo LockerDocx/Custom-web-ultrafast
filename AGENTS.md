@@ -1,6 +1,9 @@
-# Jev Ultrafast
+# Jev Agent — firefox-ai-agent
 
-Read README.md before editing. Keep the loop small: page -> indexed elements -> operation + target -> execution.
+Read README.md before editing. This repository ships a Firefox AI agent: the sidebar is the product,
+the browser loop below is its engine. Keep the five-step, no-console setup working for a
+non-technical user, and keep the suite green on Python 3.11, openSUSE Leap 15.6, Tumbleweed and
+Windows — those are the platforms CI proves. Keep the loop small: page -> indexed elements -> operation + target -> execution.
 
 - The input is one natural-language goal. Do not add site-specific plans or hardcoded field values.
 - TypeSafe chooses an operation and operation-specific target heads in one request. Consume only the selected operation's target.
