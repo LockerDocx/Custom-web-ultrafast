@@ -34,38 +34,14 @@ if [ -f ".env" ] && grep -q "zai/glm-5.3" .env; then
 fi
 
 if [ ! -f ".env" ]; then
-  cp env-template.txt .env
-  echo ""
-  echo "Settings file created: .env - opening it in your text editor now."
-  echo ""
-  echo "NEXT - paste ONE API key. Easiest option, free, 2 minutes:"
-  echo "  1. Open https://console.groq.com/keys and log in"
-  echo "  2. Click 'Create API Key' and copy it"
-  echo "  3. Replace PASTE-YOUR-GROQ-KEY-HERE with your key"
-  echo "  4. Save with Cmd+S and close the editor"
-  echo "  5. Run this file again"
-  echo ""
-  open -t .env
-  read -n 1 -s -r -p "Press any key to close..."
-  echo ""
-  exit 0
-fi
-
-if grep -q "PASTE-YOUR-GROQ-KEY-HERE" .env && grep -q "PASTE-YOUR-NVIDIA-KEY-HERE" .env; then
-  echo ""
-  echo " [!] No API key configured yet."
-  echo "     The file .env is opening in your text editor."
-  echo "     Paste at least one key - free Groq key: https://console.groq.com/keys"
-  echo "     Save, close, and run this file again."
-  echo ""
-  open -t .env
-  read -n 1 -s -r -p "Press any key to close..."
-  echo ""
-  exit 1
+  cp .env.example .env
 fi
 
 echo ""
 echo "Host starting. KEEP THIS WINDOW OPEN while you use the sidebar."
+echo ""
+echo "First time? It will ask for one free API key - paste it and press Enter."
+echo "Get one in 2 minutes at https://console.groq.com/keys"
 echo ""
 echo "Now in Firefox:"
 echo "  1. Type about:debugging in the address bar and press Enter"

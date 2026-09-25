@@ -43,40 +43,13 @@ if exist ".env" (
 )
 
 if not exist ".env" (
-  copy /y "env-template.txt" ".env" >nul
-  echo.
-  echo  Settings file created: .env  -  opening it in Notepad now.
-  echo.
-  echo  NEXT - paste ONE API key. Easiest option, free, 2 minutes:
-  echo    1. Open  https://console.groq.com/keys  and log in
-  echo    2. Click "Create API Key" and copy it
-  echo    3. In Notepad, replace  PASTE-YOUR-GROQ-KEY-HERE  with your key
-  echo    4. Save with Ctrl+S and close Notepad
-  echo    5. Double-click this file again
-  echo.
-  start notepad ".env"
-  pause
-  exit /b 0
+  copy /y ".env.example" ".env" >nul
 )
 
-findstr /C:"PASTE-YOUR-GROQ-KEY-HERE" ".env" >nul 2>nul
-if not errorlevel 1 (
-  findstr /C:"PASTE-YOUR-NVIDIA-KEY-HERE" ".env" >nul 2>nul
-  if not errorlevel 1 (
-    echo.
-    echo  [!] No API key configured yet.
-    echo      The file .env is opening in Notepad.
-    echo      Paste at least one key - free Groq key: https://console.groq.com/keys
-    echo      Save, close, and double-click this file again.
-    echo.
-    start notepad ".env"
-    pause
-    exit /b 1
-  )
-)
-
-echo.
 echo  Host starting. KEEP THIS WINDOW OPEN while you use the sidebar.
+echo.
+echo  First time? It will ask for one free API key - paste it and press Enter.
+echo  Get one in 2 minutes at  https://console.groq.com/keys
 echo.
 echo  Now in Firefox:
 echo    1. Type  about:debugging  in the address bar and press Enter

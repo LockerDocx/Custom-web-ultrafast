@@ -4,6 +4,7 @@ import atexit
 import json
 import os
 import secrets
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -140,6 +141,10 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     load_environment()
+    from . import providers as provider_layer
+
+    if not provider_layer.ensure_configured() and sys.stdin.isatty():
+        raise SystemExit(1)
     atexit.register(close_browser)
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"Jev Ultrafast: {ORIGIN}", flush=True)

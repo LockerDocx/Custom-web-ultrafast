@@ -41,7 +41,7 @@ La clave es como una contraseña para que el asistente use una IA. La más fáci
 4. Aparece un texto que empieza por `gsk_...` → **cópialo** con el botón de copiar 📋
 5. ⚠️ Guárdala en un sitio seguro. **Nunca la compartas ni la pegues en webs raras.**
 
-> 🧠 **Opcional (recomendado más adelante):** la clave de **NVIDIA** (también gratis) activa el "cerebro planificador" que descompone tu misión en pasos. Se consigue en **https://build.nvidia.com** → botón *Login* → icono de tu perfil → **Get API Key**. Si no la pones ahora, todo funciona igual (sin planificador).
+> 🧠 **Opcional:** con la clave de **NVIDIA** (también gratis) el "cerebro planificador" pasa a ser un modelo más profundo (`z-ai/glm-5.3`). Se consigue en **https://build.nvidia.com** → botón *Login* → icono de tu perfil → **Get API Key**. **Si no la pones, no pasa nada: con tu clave de Groq ya funciona todo**, planificador incluido.
 
 ---
 
@@ -52,28 +52,25 @@ La clave es como una contraseña para que el asistente use una IA. La más fáci
    - **Windows** → `start-host.bat`
    - **macOS** → `start-host.command` *(la primera vez: clic derecho → **Abrir** → **Abrir**)*
    - **Linux** → `start-host.sh`
-3. **La primera vez** se prepara todo solo (verás que instala cosas, ~1 minuto). Al terminar **se abre el Bloc de notas** con el archivo de configuración (`.env`)
-4. En el Bloc de notas, **busca esta línea**:
+3. **La primera vez** se prepara todo solo (verás que instala cosas, ~1 minuto). Al terminar **te pide la clave en esa misma ventana**:
    ```
-   GROQ_API_KEY=PASTE-YOUR-GROQ-KEY-HERE
+   Jev needs one free API key. It is stored locally in .env and never leaves your machine.
+   Groq · fast executor (recommended): https://console.groq.com/keys
+   Paste GROQ_API_KEY and press Enter (or just Enter to skip):
    ```
-5. **Borra** `PASTE-YOUR-GROQ-KEY-HERE` y **pega tu clave** (Ctrl+V). Tiene que quedar así (con TU clave):
+4. **Pega tu clave** (Ctrl+V o clic derecho en la ventana) y pulsa **Enter**. Nada más: **no hay que abrir ni editar ningún archivo**.
+5. *(Opcional)* Te preguntará también por la clave de NVIDIA. Si no la tienes, pulsa **Enter** y listo.
    ```
-   GROQ_API_KEY=gsk_AbCdEf123456...
-   ```
-6. *(Opcional)* Haz lo mismo con la línea `NVIDIA_API_KEY=...` si conseguiste la clave de NVIDIA
-7. **Guarda**: Ctrl+S (Windows) o Cmd+S (macOS). Cierra el Bloc de notas
-8. **Doble clic otra vez** en el arranque → se abre una **ventana negra** que dice:
-   ```
+   Saved to .env. Nothing else to configure.
    Jev Ultrafast Firefox bridge: ws://127.0.0.1:8767
    Policy model: groq:openai/gpt-oss-20b
    ```
-   ✓ **¡El agente está encendido!** ⚠️ **NO CIERRES ESA VENTANA** mientras uses el asistente (puedes minimizarla).
+   ✓ **¡El agente está encendido!** ⚠️ **NO CIERRES ESA VENTANA** mientras uses el asistente (puedes minimizarla). Las siguientes veces arrancará directo, sin preguntar nada.
 
 **❌ Si algo sale mal aquí:**
 - *Dice "Python 3.12 or newer is required"* → instala Python (ver 📋) y repite el PASO 3
-- *Dice "No API key configured yet"* → la clave no se pegó bien: repite los puntos 4-7
 - *La ventana se cierra al instante* → instala Python marcando **"Add python.exe to PATH"** y repite
+- *Pulsaste Enter sin querer (o la clave estaba mal)* → escribe `GROQ_API_KEY=tu_clave` en el archivo `.env` de la carpeta, guarda y vuelve a hacer doble clic
 
 ---
 

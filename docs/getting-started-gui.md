@@ -8,7 +8,7 @@ You can use, install, and even re-publish this project **without opening a termi
 
 - **Firefox** (109 or newer).
 - **Python 3.12+** from [python.org/downloads](https://www.python.org/downloads/) — on Windows, tick *"Add python.exe to PATH"* during install.
-- **One API key**: a Groq key (free, [console.groq.com](https://console.groq.com)) for the fast executor, and/or an NVIDIA NIM key ([build.nvidia.com](https://build.nvidia.com)) for the planner and text helper.
+- **One free API key** — a Groq key ([console.groq.com](https://console.groq.com)). The planner, executor and text helper are all derived from it. An NVIDIA NIM key ([build.nvidia.com](https://build.nvidia.com)) is optional and upgrades the planner to `z-ai/glm-5.3`.
 
 ## 1. Get the code
 
@@ -23,23 +23,23 @@ The agent runs on your machine as a small local process ("the host"). Unzip the 
 
 | System | Double-click | What happens |
 | --- | --- | --- |
-| Windows | `start-host.bat` | First run: creates a private Python environment (about a minute, internet needed), then opens the `.env` settings file in Notepad. |
+| Windows | `start-host.bat` | First run: creates a private Python environment (about a minute, internet needed), then asks for your API key in the window — paste it, press Enter, done. |
 | macOS | `start-host.command` | Same. If macOS blocks it: right-click → **Open**. |
 | Linux | `start-host.sh` | Same (run it from your file manager). |
 
-**First run flow:** the starter creates the `.env` file and opens it. Add your keys, save, close the editor, and double-click the starter again. Example `.env`:
+**First run flow:** the starter creates `.env` and asks for one key right there:
 
-```ini
-POLICY_PROVIDER=groq
-GROQ_API_KEY=gsk_...your key...
-POLICY_MODEL=openai/gpt-oss-20b
-
-PLANNER_PROVIDER=nvidia
-NVIDIA_API_KEY=nvapi-...your key...
-PLANNER_MODEL=z-ai/glm-5.3
+```
+Jev needs one free API key. It is stored locally in .env and never leaves your machine.
+Groq · fast executor (recommended): https://console.groq.com/keys
+Paste GROQ_API_KEY and press Enter (or just Enter to skip):
 ```
 
-Keep the black host window open while you use the agent. Every option is described in [providers.md](providers.md).
+Paste it, press Enter, and the host starts — `.env` now contains `GROQ_API_KEY=gsk_...` and nothing
+else is needed; every provider and model is derived from it. Later launches go straight to the
+host window. (Prefer editing files? Copy `.env.example` to `.env` and fill in the lines you want.)
+
+Keep the black host window open while you use the agent. Every option is described in [providers.md](providers.md), and to change what runs, use the **Models & parameters** panel in the sidebar — no `.env` editing required.
 
 ## 3. Install the extension in Firefox
 

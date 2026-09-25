@@ -23,8 +23,13 @@ Extraído del propio código (no de suposiciones): `pyproject.toml`, `extension/
 
 ## 2. Configuración recomendada
 
-- **`.env`** en la raíz (lo crea `start-host.*`; plantilla en `env-template.txt`):
-  `POLICY_PROVIDER`, `POLICY_MODEL`, `PLANNER_PROVIDER`, `PLANNER_MODEL`, `TEXT_MODEL_PROVIDER`, `TEXT_MODEL` + claves.
+- **Nada obligatorio**: con **una sola clave** (la de Groq) el host deriva proveedor y modelo para los tres
+  roles — planner incluido ( `groq:openai/gpt-oss-120b`), executor y text (`openai/gpt-oss-20b`). Con la clave de
+  NVIDIA además, el planner pasa a `nvidia:z-ai/glm-5.3` (la pareja medida como mejor). El host la pide en la
+  primera ejecución y la guarda en `.env` (plantilla: `.env.example`; para escribir a mano, basta
+  `GROQ_API_KEY=...`).
+- **Overrides opcionales** en `.env`/panel: `POLICY_*`, `PLANNER_*`, `TEXT_MODEL_*` (`PROVIDER`/`MODEL`/`BASE_URL`/`API_KEY`
+  por rol). Lo configurado a mano siempre gana a lo derivado. Referencia completa: `docs/providers.md`.
 - **Modelos que mejor rinden** (medidos en la prueba real de hoy): Groq `openai/gpt-oss-20b`
   para *policy* y *text* (273–281 ms), NVIDIA `z-ai/glm-5.3` para *planner* (≈1 s).
   `*_REASONING=low` acelera sin perder calidad.

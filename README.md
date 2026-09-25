@@ -57,11 +57,14 @@ git clone https://github.com/browser-use/jev-ultrafast.git
 cd jev-ultrafast
 uv sync
 cp .env.example .env
-# Add TYPESAFE_API_KEY and TEXT_MODEL_API_KEY.
+# One free key runs everything: paste GROQ_API_KEY (https://console.groq.com/keys).
+# The planner, executor and text model are derived from it — nothing else to configure.
 uv run jev
 ```
 
-Open **http://127.0.0.1:8766** and click **Start demo → Run automatically**. The inspector shows numbered elements, operation probabilities, target probabilities, and executed actions. **Choose next** pauses before execution.
+Open **http://127.0.0.1:8766** and click **Start demo → Run automatically**. Running the Firefox host
+instead (`uv run jev-firefox`), the first launch asks for that one key in the terminal and saves it to
+`.env` itself. The inspector shows numbered elements, operation probabilities, target probabilities, and executed actions. **Choose next** pauses before execution.
 
 Chrome connects through [Browser Harness](https://github.com/browser-use/browser-harness), installed by `uv sync`. Run `uv run browser-harness --doctor` if it needs connecting. Allow remote debugging in Chrome when prompted.
 
@@ -124,7 +127,7 @@ uv run --env-file .env jev-firefox        # start the local bridge host
 # Firefox → about:debugging → Load Temporary Add-on → extension/manifest.json
 ```
 
-**No terminal?** Double-click `start-host.bat` (Windows), `start-host.command` (macOS), or `start-host.sh` (Linux) — the first run prepares everything and opens the `.env` settings file for your keys. Full point-and-click walkthrough, including how to publish your own copy on GitHub from the web UI: [getting-started-gui.md](docs/getting-started-gui.md). **¿Español? Manual paso a paso súper sencillo: [EMPEZAR-AQUI.md](EMPEZAR-AQUI.md).**
+**No terminal?** Double-click `start-host.bat` (Windows), `start-host.command` (macOS), or `start-host.sh` (Linux) — the first run prepares everything and asks for one free API key right there; paste it and press Enter. Full point-and-click walkthrough, including how to publish your own copy on GitHub from the web UI: [getting-started-gui.md](docs/getting-started-gui.md). **¿Español? Manual paso a paso súper sencillo: [EMPEZAR-AQUI.md](EMPEZAR-AQUI.md).**
 
 The sidebar shows the plan checklist with ✓ progress, live screenshots, every executed action, and a Stop button. Setup and architecture: [firefox-extension.md](docs/firefox-extension.md).
 

@@ -12,6 +12,7 @@ import os
 import secrets
 import socket
 import struct
+import sys
 import threading
 import time
 from pathlib import Path
@@ -49,7 +50,7 @@ def check_providers():
     from . import providers as provider_layer
 
     roles = []
-    if any(os.environ.get(name, "").strip() for name in ("PLANNER_PROVIDER", "PLANNER_BASE_URL")):
+    if provider_layer.planner_enabled():
         roles.append("planner")
     roles.append("policy")
     roles.append("text")
@@ -1011,6 +1012,10 @@ def load_environment():
 def main():
     global _SERVER
     load_environment()
+    from . import providers as provider_layer
+
+    if not provider_layer.ensure_configured() and sys.stdin.isatty():
+        raise SystemExit(1)  # a human is watching: stop with the instructions on screen
     port = int(os.environ.get("FIREFOX_BRIDGE_PORT", str(DEFAULT_PORT)))
     token = os.environ.get("FIREFOX_BRIDGE_TOKEN") or None
     _SERVER = BridgeServer(port=port, token=token)

@@ -421,8 +421,12 @@ def field_text(context):
 
 
 def planning_config():
-    """The planner provider config when the user configured one; None keeps the original single-goal loop."""
-    if not any(os.environ.get(name, "").strip() for name in ("PLANNER_PROVIDER", "PLANNER_BASE_URL")):
+    """The planner provider config, or None to keep the original single-goal loop.
+
+    Enabled by configuration or derived from a free key (one key is enough to
+    run the whole agent), so a fresh install plans its missions out of the box.
+    """
+    if not providers.planner_enabled():
         return None
     return providers.resolve("planner")
 

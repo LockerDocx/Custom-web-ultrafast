@@ -115,13 +115,14 @@ def _role_keys():
 
 
 def model_for(role):
-    """(provider, model_id) currently configured for a role, from the environment."""
-    provider_env, model_env = ROLE_MODEL_ENV[role]
-    provider_name = (os.environ.get(provider_env) or "").strip()
-    model_id = (os.environ.get(model_env) or "").strip()
-    if provider_name.startswith(("http://", "https://")):
-        provider_name = "custom"
-    return provider_name.lower(), model_id
+    """(provider, model_id) in force for a role: the .env first, derived after.
+
+    The derivation (zero-config start) lives in providers.selection_for so the
+    panel, the planner gate and the request builder can never disagree.
+    """
+    from . import providers
+
+    return providers.selection_for(role)
 
 
 def capabilities_for(provider_name, model_id):
@@ -388,9 +389,8 @@ def current_selection():
     from . import providers
 
     selection = {}
-    for role, (provider_env, model_env) in ROLE_MODEL_ENV.items():
-        provider_name = os.environ.get(provider_env, "")
-        model = os.environ.get(model_env, "")
+    for role in ROLE_MODEL_ENV:
+        provider_name, model = model_for(role)
         schema = role_schema(role)
         selection[role] = {
             "provider": provider_name,

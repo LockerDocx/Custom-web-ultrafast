@@ -8,7 +8,9 @@ POLICY_* / TEXT_MODEL_* variables, falls back to the provider's own key variable
 import json
 import os
 import re
+import sys
 import urllib.parse
+from pathlib import Path
 
 from . import schemas
 
@@ -117,7 +119,6 @@ ROLE_ENV = {
     for role, prefix in schemas.ROLE_ENV_PREFIX.items()
 }
 
-DEFAULT_TEXT_MODEL = "deepseek-chat"
 POLICY_HINT = (
     "Set TYPESAFE_API_KEY to use Jev, or configure your own provider: "
     "POLICY_PROVIDER (openai, anthropic, openrouter, nvidia, omniroute, deepseek, groq, "
@@ -177,12 +178,188 @@ def _is_loopback_url(base_url):
     return host in {"127.0.0.1", "localhost", "::1"}
 
 
+# ── zero-config defaults ────────────────────────────────────────────────────
+# One free key runs the whole agent: nobody should have to pick three models to
+# get started. Quality is not traded away — these are the measured-best
+# arrangements of the free tiers (docs/providers.md):
+#
+#   both keys → NVIDIA plans (deep, once per mission) + Groq executes (~280 ms/step)
+#   one key   → that provider runs all three roles, with its strongest planner
+DERIVED_MODELS = {
+    "nvidia": {"planner": "z-ai/glm-5.3", "policy": "openai/gpt-oss-20b", "text": "openai/gpt-oss-20b"},
+    "groq": {"planner": "openai/gpt-oss-120b", "policy": "openai/gpt-oss-20b", "text": "openai/gpt-oss-20b"},
+    "deepseek": {"planner": "deepseek-chat", "policy": "deepseek-chat", "text": "deepseek-chat"},
+}
+DERIVATION_ORDER = ("nvidia", "groq", "deepseek")
+
+NO_CONFIG_MESSAGE = (
+    "Nothing configured for the {role} role: set {key} (or {provider} + {base}). "
+    "One free key runs the whole agent: paste GROQ_API_KEY in .env "
+    "(https://console.groq.com/keys)."
+)
+
+
+def key_for(provider_name):
+    """The API key available for a provider, looked up in its own variables."""
+    preset = PROVIDERS.get(provider_name) or {}
+    for variable in preset.get("key_env", []):
+        value = (os.environ.get(variable) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def derived_provider(role):
+    """The provider a role would use when the user configured nothing, or None."""
+    present = [name for name in DERIVATION_ORDER if key_for(name)]
+    if not present:
+        return None
+    if role == "planner" and "nvidia" in present:
+        return "nvidia"  # the deep planner: called once per mission
+    return "groq" if "groq" in present else present[0]
+
+
+def derived_for(role):
+    """(provider, model) for a role when nothing was configured, or None."""
+    provider_name = derived_provider(role)
+    if not provider_name:
+        return None
+    return provider_name, DERIVED_MODELS[provider_name][role]
+
+
+def selection_for(role):
+    """(provider, model) actually in force for a role: the .env first, derived after.
+
+    One source of truth for resolve(), the sidebar and the planner gate, so what
+    the panel shows is what the agent sends.
+    """
+    env = ROLE_ENV[role]
+    raw = (os.environ.get(env["provider"]) or "").strip()
+    model = (os.environ.get(env["model"]) or "").strip()
+    if raw.startswith(("http://", "https://")):
+        provider_name = "custom"
+    else:
+        provider_name = ALIASES.get(raw.lower(), raw.lower()) if raw else ""
+    if not provider_name:
+        derived = derived_for(role)
+        if not derived:
+            return "", ""
+        provider_name = derived[0]
+        model = model or derived[1]
+    elif not model:
+        table = DERIVED_MODELS.get(provider_name)
+        if table:
+            model = table[role]  # a provider on its own implies its documented models
+    return provider_name, model
+
+
+def planner_enabled():
+    """True when a planner can run (explicitly configured or derived from a key)."""
+    return bool(selection_for("planner")[1])
+
+
+# ── the only setup step ─────────────────────────────────────────────────────
+FREE_KEYS = (
+    ("GROQ_API_KEY", "Groq · fast executor (recommended)", "https://console.groq.com/keys"),
+    ("NVIDIA_API_KEY", "NVIDIA NIM · deeper planner (optional)", "https://build.nvidia.com"),
+)
+NO_KEY_HELP = """
+No API key found. One free key runs the whole agent:
+
+  1. Open https://console.groq.com/keys (log in with Google is fine)
+  2. Click "Create API key" and copy it
+  3. Run this starter again and paste it when asked - or put it in .env as
+     GROQ_API_KEY=... and run again.
+
+Free, no card required. The NVIDIA key (https://build.nvidia.com) is optional
+and only improves the mission plan.
+""".strip()
+
+
+def is_configured():
+    """True when the agent has something to run with: a key, or an explicit choice."""
+    if (os.environ.get("TYPESAFE_API_KEY") or "").strip():
+        return True
+    if any(key_for(name) for name in DERIVATION_ORDER):
+        return True
+    for env in ROLE_ENV.values():
+        if (os.environ.get(env["provider"]) or "").strip() or (os.environ.get(env["base"]) or "").strip():
+            return True
+    return False
+
+
+def ensure_configured(prompt=input, notify=print, path=None, interactive=None):
+    """Ask for a free key when none is configured, and save it to .env.
+
+    This is the whole setup: one key, pasted once. Runs only on an interactive
+    terminal, so scripts, CI and tests are never blocked by it. Returns True
+    when the agent can run afterwards.
+    """
+    if is_configured():
+        return True
+    if interactive is None:
+        interactive = bool(getattr(sys.stdin, "isatty", lambda: False)())
+    if not interactive:
+        notify(NO_KEY_HELP)
+        return False
+    notify("")
+    notify("Jev needs one free API key. It is stored locally in .env and never leaves your machine.")
+    saved = {}
+    for variable, label, url in FREE_KEYS:
+        notify(f"  {label}: {url}")
+        value = ""
+        try:
+            value = (prompt(f"  Paste {variable} and press Enter (or just Enter to skip): ") or "").strip()
+        except (EOFError, KeyboardInterrupt):
+            value = ""
+        if value:
+            os.environ[variable] = value
+            saved[variable] = value
+    notify("")
+    if not saved:
+        notify(NO_KEY_HELP)
+        return False
+    target = _write_env(saved, path)
+    notify(f"Saved to {target}. Nothing else to configure.")
+    return True
+
+
+def _write_env(values, path=None):
+    """Persist keys into .env, replacing existing lines instead of duplicating them."""
+    target = Path(path or os.environ.get("JEV_ENV_FILE", ".env"))
+    try:
+        lines = target.read_text().splitlines() if target.exists() else []
+    except OSError:
+        lines = []
+    remaining = dict(values)
+    out = []
+    for line in lines:
+        stripped = line.lstrip()
+        name = line.split("=", 1)[0].strip() if "=" in line and not stripped.startswith("#") else ""
+        out.append(f"{name}={remaining.pop(name)}" if name in remaining else line)
+    out.extend(f"{name}={value}" for name, value in remaining.items())
+    try:
+        target.write_text("\n".join(out).rstrip("\n") + "\n")
+    except OSError:
+        pass  # the key still lives in the environment for this run
+    return target
+
+
 def resolve(role):
     """Build one provider config from the environment for the given role."""
     env = ROLE_ENV[role]
     raw = (os.environ.get(env["provider"]) or "").strip()
     base = (os.environ.get(env["base"]) or "").strip()
     key = (os.environ.get(env["key"]) or "").strip()
+    derived = derived_for(role)
+    if not raw and not base and not key and derived:
+        raw = derived[0]  # nothing configured for this role: use the free key that is present
+    if not raw and not base and not key:
+        raise ValueError(
+            NO_CONFIG_MESSAGE.format(
+                role=role, key=env["key"], provider=env["provider"], base=env["base"]
+            )
+        )
     name, preset = "", None
     if raw.startswith(("http://", "https://")):
         base, name, preset = (base or raw), "custom", PROVIDERS["custom"]
@@ -213,13 +390,21 @@ def resolve(role):
         key = "local"  # a self-hosted gateway on this machine needs no key; the header keeps the path uniform
     if not key:
         if preset and preset.get("key_env"):
-            extra = f" or one of {', '.join(preset['key_env'])}"
-        else:
-            extra = f" or set {env['provider']} to a named provider"
-        raise ValueError(f"{env['key']} is not set{extra}. No request was sent.")
+            options = " or ".join([env["key"], *preset["key_env"]])
+            raise ValueError(
+                f"No API key for the {role} role: set {options}. No request was sent. "
+                "One free key runs the whole agent (GROQ_API_KEY, https://console.groq.com/keys)."
+            )
+        raise ValueError(
+            f"{env['key']} is not set, and {env['provider']} is not a named provider. "
+            "No request was sent. One free key runs the whole agent "
+            "(GROQ_API_KEY, https://console.groq.com/keys)."
+        )
     model = (os.environ.get(env["model"]) or "").strip()
-    if not model and role == "text" and name == "deepseek":
-        model = DEFAULT_TEXT_MODEL
+    if not model:
+        table = DERIVED_MODELS.get(name)
+        if table:
+            model = table[role]  # the documented model for that provider and role
     if not model:
         hint = POLICY_HINT if role == "policy" else ""
         raise ValueError(f"{env['model']} is not set; no request was sent. {hint}".strip())

@@ -12,7 +12,25 @@ Three independent model roles drive the agent, and each one can use a different 
 
 If `TYPESAFE_API_KEY` is set, the policy uses Jev and `POLICY_*` is ignored. Otherwise the policy resolves from `POLICY_PROVIDER` / `POLICY_API_KEY` / `POLICY_BASE_URL` / `POLICY_MODEL`. The text helper always resolves from `TEXT_MODEL_*` variables (its legacy `TEXT_MODEL_BASE_URL` + `TEXT_MODEL` + `TEXT_MODEL_API_KEY` form keeps working).
 
-## Recommended split: fast executor + deep planner
+## Zero configuration: one key is enough (the default)
+
+`providers.selection_for(role)` resolves in one order: **whatever you wrote first, then the best
+model of whatever free key is present**. You only need to set the key:
+
+| Keys present | Planner | Executor + text helper |
+| --- | --- | --- |
+| `GROQ_API_KEY` only | `groq:openai/gpt-oss-120b` | `groq:openai/gpt-oss-20b` |
+| `NVIDIA_API_KEY` only | `nvidia:z-ai/glm-5.3` | `nvidia:openai/gpt-oss-20b` |
+| Both (or `DEEPSEEK_API_KEY` alone) | `nvidia:z-ai/glm-5.3` | `groq:openai/gpt-oss-20b` |
+
+With both keys the agent gets the measured-best split below *without a single line of config*; with
+one key that provider runs all three roles — including a real planner on the stronger model of that
+provider, not the executor's. Any explicit `*_PROVIDER` / `*_MODEL` still wins over the derivation,
+and choosing a provider without naming a model picks that provider's documented model (so a
+half-written config is never a dead end). The sidebar, the planner gate and the *Test setup* check
+all read this same resolution, so the panel can never disagree with what actually runs.
+
+## The measured-best split (what the defaults above encode)
 
 A slow, reasoning-heavy model plans once per task; a fast model executes every step. Two providers at once:
 
@@ -37,11 +55,9 @@ TEXT_MODEL_REASONING=low
 
 Without `PLANNER_*` configuration the agent keeps the original single-goal loop, so nothing changes for existing setups.
 
-### Only one key? Everything on NVIDIA NIM (`nvidia`, alias `nim`)
+### Pinning everything to one provider (`nvidia`, alias `nim`)
 
-NIM hosts a model for every role, so one `NVIDIA_API_KEY` is enough. It is the slower of the two
-free tiers per call (measured here: ~1-3 s for a plan, ~0.5-2 s per step, against ~0.3 s for
-`gpt-oss-20b` on Groq), so use it for all three roles only if you prefer a single key:
+The derivation above already does this for you when only that key is present; to pin it explicitly:
 
 ```bash
 PLANNER_PROVIDER=nvidia
@@ -216,7 +232,7 @@ JSONL, easy to inspect or reset by deleting the file.
 
 Keys live in exactly one place: your local `.env` (the sidebar's model config stores model *names*, never keys). The whole lifecycle:
 
-1. **Configure** — paste the key on its line in `.env` (`NVIDIA_API_KEY=...`, no quotes; the loader strips accidental quotes and BOMs). Or use the starters: the first run opens the file for you.
+1. **Configure** — one key is enough. Let the starter ask for it on the first run (it writes `.env` itself, `GROQ_API_KEY=...`, no quotes; the loader strips accidental quotes and BOMs), or paste it on that line by hand.
 2. **Validate** — press **Test setup** in the sidebar (or check the PR comments from the *Provider check* workflow). Each role shows 🟢 with latency, or the provider's exact error (401/403 = bad key, 404 = bad model id).
 3. **Rotate** — generate the fresh key at the provider (links in the table above), replace the line in `.env`, restart the host, press **Test setup** again. Nothing else to clean: no other file ever stored the old key.
 4. **Revoke** — delete the key at the provider's console, then remove (or comment) its line in `.env` and restart.
@@ -225,7 +241,7 @@ Guarantees: every error message, log line, and broadcast passes through a redact
 
 ## Troubleshooting
 
-- **`POLICY_API_KEY is not set or one of OPENROUTER_API_KEY...`** — provide the key in either form.
+- **`No API key for the policy role: set POLICY_API_KEY or OPENROUTER_API_KEY...`** — the message names the variable for each role; with a single free key the agent derives its own provider and this never appears. Provide the key in either form if you deliberately pinned a provider.
 - **`POLICY_MODEL is not set`** — the policy role has no default model; name the exact id your provider expects.
 - **HTTP 400 on `response_format`** — set `POLICY_JSON_MODE=off` (or the `TEXT_MODEL_JSON_MODE` equivalent).
 - **HTTP 401/403** — the key does not match the provider/base URL combination.
