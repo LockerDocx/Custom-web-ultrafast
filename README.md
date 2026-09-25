@@ -133,6 +133,7 @@ Configuration, presets and self-hosted gateways: [docs/providers.md](docs/provid
 | [docs/providers.md](docs/providers.md) · [docs/model-parameters.md](docs/model-parameters.md) | Models, keys, per-model parameters |
 | [docs/laya.md](docs/laya.md) (ES) | The local decision router |
 | [docs/evaluacion-a-produccion.md](docs/evaluacion-a-produccion.md) (ES) · [docs/calidad-a-escala.md](docs/calidad-a-escala.md) (ES) | Honest evaluation and the mission battery |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in every version, and what is still not measured |
 | [docs/](docs/README.md) | Complete index |
 
 ## Development

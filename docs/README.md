@@ -10,6 +10,13 @@ Everything the project documents, sorted by what you are trying to do. Spanish g
 | [getting-started-gui.md](getting-started-gui.md) | The same walkthrough in English, including how to publish your own copy from the GitHub web UI |
 | [setup-por-sistema.md](setup-por-sistema.md) **(ES)** | Setup **and daily use**, system by system (openSUSE/SUSE, Ubuntu/Debian/Mint, Fedora/RHEL/Rocky, Arch, Windows, macOS, snap/Flatpak Firefox): exact commands, how to verify, how to update and uninstall |
 
+## Project
+
+| Document | What it covers |
+| --- | --- |
+| [../CHANGELOG.md](../CHANGELOG.md) | Every version: what shipped, what was fixed, and what has not been measured yet |
+| [../AGENTS.md](../AGENTS.md) | The contracts a contributor must keep working |
+
 ## Requirements and hardware
 
 | Document | What it covers |
