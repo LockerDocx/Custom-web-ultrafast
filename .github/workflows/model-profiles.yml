@@ -12,7 +12,16 @@ name: Model profiles
 # instead of being scored zero for a reason nobody can see.
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      profiles:
+        description: "Comma-separated profiles (empty = all of them)"
+        required: false
+        default: ""
+      planner_budget:
+        description: "Extra tokens for the planner (the app asks for 1024); empty = unchanged"
+        required: false
+        default: ""
   push:
     paths:
       - ".github/workflows/model-profiles.yml"
@@ -22,20 +31,36 @@ permissions:
   contents: read
 
 jobs:
+  # The list of candidates comes from the script itself (or from the dispatch input), so the
+  # workflow can never drift away from the profiles that actually exist.
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.pick.outputs.list }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Which profiles to measure
+        id: pick
+        env:
+          ASKED: ${{ github.event.inputs.profiles }}
+        run: |
+          pip install -e . >/dev/null
+          ALL=$(python scripts/bench_profiles.py --list --names | paste -sd, -)
+          CHOSEN="${ASKED:-$ALL}"
+          echo "list=$(printf '%s' "$CHOSEN" | python -c 'import json,sys; print(json.dumps([p.strip() for p in sys.stdin.read().split(",") if p.strip()]))')" >> "$GITHUB_OUTPUT"
+
   profile:
+    needs: prepare
     name: profile ${{ matrix.profile }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        profile:
-          - nvidia-current
-          - nvidia-flash-none
-          - nvidia-flash-low
-          - nvidia-glm-none
-          - nvidia-hybrid
-          - groq-reference
+        profile: ${{ fromJSON(needs.prepare.outputs.list) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -58,7 +83,9 @@ jobs:
             echo "## Model profile: ${{ matrix.profile }}"
             echo
             python scripts/bench_profiles.py --profile "${{ matrix.profile }}" \
-              --routing-sample 12 --plans 3 --text-cases 4 --json "artifacts/profile-${{ matrix.profile }}.json"
+              --routing-sample 12 --plans 3 --text-cases 4 \
+              ${{ github.event.inputs.planner_budget && format('--planner-budget {0}', github.event.inputs.planner_budget) || '' }} \
+              --json "artifacts/profile-${{ matrix.profile }}.json"
           } | tee /tmp/report.md
           {
             echo "## Model profile: ${{ matrix.profile }}"

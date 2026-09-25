@@ -236,7 +236,17 @@ def run_profile(name, profile, args):
             )
         except ValueError as error:
             valid, steps, parsed = False, None, {"error": str(error)[:80]}
-        plans.append({"mission": mission, "valid": valid, "steps": steps, "raw": result["content"][:200]})
+        plans.append(
+            {
+                "mission": mission,
+                "valid": valid,
+                "steps": steps,
+                "raw": (result["content"] or "")[:400],
+                # A failed plan is worth the whole reply: a truncated JSON and a wrong shape look
+                # the same in a preview, and only one of them is the model's fault.
+                "raw_full": None if valid else (result["content"] or ""),
+            }
+        )
     report["quality"]["planner"] = {
         "valid": sum(1 for plan in plans if plan["valid"]),
         "total": len(plans),
@@ -379,14 +389,25 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--profile", required=False, help="which candidate to measure (see --list)")
     parser.add_argument("--list", action="store_true", help="list the candidates and exit")
+    parser.add_argument("--names", action="store_true", help="with --list: just the names, one per line")
     parser.add_argument("--routing-sample", type=int, default=12, help="routing battery cases per profile")
     parser.add_argument("--plans", type=int, default=3, help="planner missions per profile")
     parser.add_argument("--text-cases", type=int, default=4, help="field-filling cases per profile")
     parser.add_argument("--json", help="also write the raw measurements here")
+    parser.add_argument(
+        "--planner-budget",
+        type=int,
+        default=0,
+        help="override the planner's max_tokens (the app asks for 1024) for one experiment",
+    )
     parser.add_argument("--floor", type=float, default=0.0, help="exit non-zero below this routing accuracy")
     args = parser.parse_args()
 
     if args.list or not args.profile:
+        if args.list and args.names:
+            for name in PROFILES:
+                print(name)
+            return 0
         print("Profiles:\n")
         for name, profile in PROFILES.items():
             roles = ", ".join(f"{role}={spec[1]}({spec[2]})" for role, spec in profile["roles"].items())
@@ -395,6 +416,9 @@ def main():
     if args.profile not in PROFILES:
         print(f"Unknown profile '{args.profile}'. Try --list.", file=sys.stderr)
         return 2
+
+    if args.planner_budget:
+        BUDGETS["planner"] = args.planner_budget
 
     load_environment()  # the key file, exactly as the agent reads it
     report = render(run_profile(args.profile, PROFILES[args.profile], args))
