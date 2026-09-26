@@ -140,7 +140,14 @@ const base = {
     policy: provider("policy", "openai/gpt-oss-20b"),
     text: provider("text", "openai/gpt-oss-20b"),
   },
-  setup: { configured: true, keys: {}, free: [], selection: {}, env_file: "~/.config/jev-ultrafast/.env" },
+  setup: {
+    configured: true,
+    keys: {},
+    free: [],
+    detected: [],
+    selection: {},
+    env_file: "~/.config/jev-ultrafast/.env",
+  },
   sandbox: {},
   browserMode: "live",
   step_budget: 25,
@@ -260,6 +267,74 @@ report.readyAfterCheck = {
   buttonDisabled: el("ready-test").disabled === true,
   text: el("ready-text").innerHTML,
 };
+
+// 7e2. the key the panel asks for, and a key it does not: one card, one offer.
+await send({
+  type: "state",
+  state: {
+    ...base,
+    setup: {
+      configured: false,
+      keys: { NVIDIA_API_KEY: false, GROQ_API_KEY: true },
+      free: [
+        { variable: "NVIDIA_API_KEY", label: "NVIDIA NIM \u00b7 one key runs all three roles (recommended)", keys_url: "https://build.nvidia.com" },
+      ],
+      detected: [
+        { variable: "GROQ_API_KEY", label: "Groq", note: "its free tier is 8 000 tokens/minute and answers 429 mid-mission" },
+      ],
+      selection: {},
+      env_file: "~/.config/jev-ultrafast/.env",
+    },
+  },
+});
+report.setupOffer = {
+  rows: el("setup-rows").innerHTML,
+  detected: el("setup-detected").innerHTML,
+  detectedHidden: el("setup-detected").hidden,
+  status: el("setup-status").textContent,
+};
+// and when there is nothing extra, the line is gone instead of empty
+await send({
+  type: "state",
+  state: {
+    ...base,
+    setup: {
+      configured: true,
+      keys: { NVIDIA_API_KEY: true },
+      free: [
+        { variable: "NVIDIA_API_KEY", label: "NVIDIA NIM \u00b7 one key runs all three roles (recommended)", keys_url: "https://build.nvidia.com" },
+      ],
+      detected: [],
+      selection: { planner: ["nvidia", "z-ai/glm-5.3"] },
+      env_file: "~/.config/jev-ultrafast/.env",
+    },
+  },
+});
+report.setupClean = { detectedHidden: el("setup-detected").hidden, rows: el("setup-rows").innerHTML };
+
+// the same card with no extra key on the machine: no leftover line, and the key is still offered
+await send({
+  type: "state",
+  state: {
+    ...base,
+    setup: {
+      configured: false,
+      keys: { NVIDIA_API_KEY: false },
+      free: [
+        { variable: "NVIDIA_API_KEY", label: "NVIDIA NIM \u00b7 one key runs all three roles (recommended)", keys_url: "https://build.nvidia.com" },
+      ],
+      detected: [],
+      selection: {},
+      env_file: "~/.config/jev-ultrafast/.env",
+    },
+  },
+});
+report.setupPlain = {
+  detectedHidden: el("setup-detected").hidden,
+  detected: el("setup-detected").innerHTML,
+  rows: el("setup-rows").innerHTML,
+};
+await send({ type: "state", state: { ...base } });
 
 // 7f. the local decision engine has its own line, and it is never a model failure:
 // while it installs, and when it is simply absent, the agent still runs (only slower),

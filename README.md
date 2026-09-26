@@ -107,12 +107,12 @@ Method and raw evidence: [docs/performance.md](docs/performance.md) · [docs/fli
 | **Firefox** | 109 or newer (the add-on is loaded temporarily; the sidebar is the UI) |
 | **Python** | 3.11+ (3.11 / 3.12 / 3.13 tested) |
 | **Machine** | anything — the host process uses ~40 MB of RAM and no GPU; 8 GB is plenty |
-| **Keys** | one free Groq key. An optional free NVIDIA NIM key upgrades the planner to `z-ai/glm-5.3` |
+| **Keys** | one free NVIDIA NIM key, and it runs all three roles on `z-ai/glm-5.3` |
 | **Docker** | optional, only for the isolated browser (≈2 GB of disk) |
 
 ## Providers
 
-Any OpenAI-compatible or Anthropic-compatible endpoint can drive any role: Groq, NVIDIA NIM, DeepSeek, OpenRouter, Together, Mistral, xAI, Gemini, your own gateway, or a loopback server (`POLICY_BASE_URL`). The measured-best default arrangement is NVIDIA NIM planning and Groq executing; one key runs all three roles on its own. TypeSafe's Jev policy is still supported through `TYPESAFE_API_KEY` if you have one.
+Any OpenAI-compatible or Anthropic-compatible endpoint can drive any role: NVIDIA NIM, Groq, DeepSeek, OpenRouter, Together, Mistral, xAI, Gemini, your own gateway, or a loopback server (`POLICY_BASE_URL`). What a fresh install derives is one provider for the whole mission (NVIDIA `z-ai/glm-5.3` in all three roles): the faster NVIDIA-plans/Groq-executes split is available by naming the roles, and it is not the default because Groq's free tier is 8 000 tokens/minute and a long mission spends that mid-run. TypeSafe's Jev policy is still supported through `TYPESAFE_API_KEY` if you have one.
 
 Configuration, presets and self-hosted gateways: [docs/providers.md](docs/providers.md) · which parameters each model really accepts: [docs/model-parameters.md](docs/model-parameters.md).
 

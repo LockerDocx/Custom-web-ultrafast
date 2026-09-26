@@ -372,6 +372,20 @@ function renderSetup(setup) {
     return;
   }
   box.hidden = !(!setup.configured || setupOpen);
+  const found = $("setup-detected");
+  const detected = setup.detected || [];
+  if (found) {
+    found.hidden = detected.length === 0;
+    // Named, with the reason: a key that is on the machine but not the one the agent asks for
+    // must not look like a broken setup, and must not look like the one that is running.
+    found.innerHTML = detected
+      .map(
+        (item) =>
+          `Also on this machine: a <b>${escape(item.label)}</b> key (<code>${escape(item.variable)}</code>). ` +
+          `Not used — ${escape(item.note)}. NVIDIA runs all three roles.`,
+      )
+      .join("<br />");
+  }
   if (box.hidden) return;
   $("setup-rows").innerHTML = (setup.free || [])
     .map((item) => {

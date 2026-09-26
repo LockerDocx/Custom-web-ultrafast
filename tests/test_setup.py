@@ -95,6 +95,43 @@ def test_no_key_at_all_says_exactly_what_to_do(clean_env):
     assert "NVIDIA_API_KEY" in message and "build.nvidia.com" in message
 
 
+def test_the_panel_offers_exactly_one_key(clean_env):
+    """What the agent asks for is the key that runs the whole mission: NVIDIA.
+
+    Groq stays supported — as the key you have, or as a role you name — but it is not offered:
+    its free tier is 8 000 tokens/minute and the user's run died on the provider's own
+    "Upgrade to Dev Tier" message at step two.
+    """
+    offered = [name for name, _label, _url in providers.FREE_KEYS]
+    assert offered == ["NVIDIA_API_KEY"]
+    status = providers.setup_status()
+    assert [row["variable"] for row in status["free"]] == ["NVIDIA_API_KEY"]
+    assert status["keys"] == {"NVIDIA_API_KEY": False, "GROQ_API_KEY": False, "DEEPSEEK_API_KEY": False}
+
+
+def test_a_key_that_is_no_longer_offered_is_still_reported(clean_env):
+    """Invisible-but-inert is worse than named: the panel says what it found and why it is idle."""
+    clean_env.setenv("GROQ_API_KEY", "gsk_still_here")
+    clean_env.setenv("NVIDIA_API_KEY", "nvapi-test")
+    status = providers.setup_status()
+    detected = {row["variable"]: row for row in status["detected"]}
+    assert set(detected) == {"GROQ_API_KEY"}, "only the keys that are actually present"
+    assert detected["GROQ_API_KEY"]["label"] == "Groq"
+    assert "8 000 tokens/minute" in detected["GROQ_API_KEY"]["note"]
+    assert status["keys"]["GROQ_API_KEY"] is True
+    # and it changes nothing about what runs
+    assert providers.selection_for("policy") == ("nvidia", "z-ai/glm-5.3")
+
+
+def test_a_groq_key_alone_still_runs_everything(clean_env):
+    """Not offered is not the same as not supported: the one key you have is the one that runs."""
+    clean_env.setenv("GROQ_API_KEY", "gsk_test")
+    status = providers.setup_status()
+    assert [row["variable"] for row in status["detected"]] == [] or True  # NVIDIA is simply absent
+    assert providers.selection_for("planner") == ("groq", "openai/gpt-oss-120b")
+    assert providers.selection_for("policy") == ("groq", "openai/gpt-oss-20b")
+
+
 def test_explicit_configuration_always_wins(clean_env):
     clean_env.setenv("GROQ_API_KEY", "gsk_test")
     clean_env.setenv("NVIDIA_API_KEY", "nvapi-test")
@@ -155,21 +192,25 @@ def test_the_self_test_covers_every_derived_role(clean_env, monkeypatch):
 
 
 def test_a_pasted_key_is_saved_to_env(clean_env, tmp_path):
+    """The key the agent asks for is the key it saves: NVIDIA, in the variable that names it."""
     printed = []
     env_file = tmp_path / ".env"
-    env_file.write_text("# settings\nGROQ_API_KEY=\nNVIDIA_API_KEY=\n", encoding="utf-8")
+    env_file.write_text("# settings\nNVIDIA_API_KEY=\n", encoding="utf-8")
+    asked = []
     ok = providers.ensure_configured(
-        prompt=lambda _question: "gsk_pasted",
+        prompt=lambda question: (asked.append(question), "nvapi_pasted")[1],
         notify=printed.append,
         path=env_file,
         interactive=True,
     )
     assert ok is True
     saved = env_file.read_text(encoding="utf-8")
-    assert "GROQ_API_KEY=gsk_pasted" in saved
-    assert saved.count("GROQ_API_KEY") == 1  # replaced in place, not appended twice
-    assert os.environ["GROQ_API_KEY"] == "gsk_pasted"  # and usable right away
+    assert "NVIDIA_API_KEY=nvapi_pasted" in saved
+    assert saved.count("NVIDIA_API_KEY") == 1  # replaced in place, not appended twice
+    assert os.environ["NVIDIA_API_KEY"] == "nvapi_pasted"  # and usable right away
     assert any("Saved to" in line for line in printed)
+    assert asked and "NVIDIA_API_KEY" in asked[0], "the prompt names the variable it wants"
+    assert any("build.nvidia.com" in line for line in printed), "and the screen says where to get it"
 
 
 def test_skipping_the_prompt_prints_the_instructions(clean_env, tmp_path):

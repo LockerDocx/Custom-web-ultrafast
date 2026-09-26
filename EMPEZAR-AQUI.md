@@ -107,17 +107,17 @@ La clave es como una contraseña para que el asistente use una IA. Se consigue e
 3. **Pega aquí la clave** (esto es todo el setup): el panel te pide la clave en una tarjeta con un enlace para conseguirla gratis:
    ```
    🔑 One free key starts the agent
-   Groq · fast executor (recommended)        get one ↗
+   NVIDIA NIM · one key runs all three roles (recommended)   get one ↗
    [ pega aquí la clave........... ]         [ Save ]
    ```
    Pega la del PASO 2 y pulsa **Save**. Nada más: **no hay que abrir ni editar ningún archivo**, ni tocar la ventana del host.
-   Debajo verás qué queda configurado —con una clave de Groq, todo funciona, planificador incluido:
+   Debajo verás qué queda configurado —una sola clave cubre los tres papeles:
    ```
-   Ready — planner groq:openai/gpt-oss-120b · policy groq:openai/gpt-oss-20b · text groq:openai/gpt-oss-20b
+   Ready — planner nvidia:z-ai/glm-5.3 · policy nvidia:z-ai/glm-5.3 · text nvidia:z-ai/glm-5.3
    ```
-   *(¿Tienes también la clave de NVIDIA del PASO 2? Pégala en su casilla: el planificador pasará a `nvidia:z-ai/glm-5.3`.)*
+   *(Si en tu `.env` quedó una clave de Groq de antes, el panel la nombra: **"Also on this machine… Not used"**. No molesta, pero tampoco se usa: es la que se agotaba a mitad de misión con el aviso *Upgrade to Dev Tier*. Si quieres usarla en algún papel, se pide a mano con `POLICY_PROVIDER=groq` en `docs/providers.md`.)*
 4. **Revisa la conexión de las IAs**: el panel prueba cada modelo y te dice el resultado exacto:
-   - 🟢 `Executor · groq:openai/gpt-oss-20b 267 ms` = tu clave funciona ✓
+   - 🟢 `Executor · nvidia:z-ai/glm-5.3 1840 ms` = tu clave funciona ✓ (el número es lo que tardó de verdad)
    - 🔴 **algo rojo** = pulsa **"Test setup"** y lee el mensaje: dice EXACTAMENTE qué falla (clave mal pegada, sin saldo, modelo inexistente…). Si el problema es la clave, la tarjeta del punto 3 se abre sola para que pegues otra.
 5. Escribe una misión de prueba y pulsa **Run**:
    > Busca el artículo de la Wikipedia sobre la Torre Eiffel y ábrelo.
@@ -131,7 +131,7 @@ La clave es como una contraseña para que el asistente use una IA. Se consigue e
 
 ## 🎉 ¡Listo!
 
-Acabas de ver las dos IAs trabajando: el **planificador** (si pusiste clave NVIDIA) parte tu misión en pasos, y el **ejecutor rápido** (Groq) elige cada acción. Todo dentro de **tu Firefox real**.
+Acabas de ver las dos IAs trabajando: el **planificador** parte tu misión en pasos, y el **ejecutor** elige cada acción — los dos con tu única clave de NVIDIA (`z-ai/glm-5.3`). Todo dentro de **tu Firefox real**.
 
 **Ideas para probar:**
 - *Encuentra vuelos de ida de Barcelona a Roma el 20 de junio para 1 adulto y para cuando se vean los resultados*
@@ -210,16 +210,24 @@ El agente **no necesita gráfica ni modelos en tu ordenador**: pensar ocurre en 
 > agente navega por internet de todas formas, tener el modelo en casa no te salvaba de nada y solo
 > añadía instalaciones y lentitud (3-8 s por paso, frente a ~280 ms en la nube).
 
-## 🧠 Extra para curiosos: Laya, el «Jev» abierto (opcional)
+## 🧠 Laya: el motor de decisiones local (se instala solo)
 
-Existe un motor de decisión **gratis y de código abierto** (Laya, de Convai — la alternativa abierta al modelo Jev de pago) que este agente ya sabe usar: **clasifica tu misión en cualquier idioma** (¿va al navegador, o necesita búsqueda/archivos/terminal?) en milisegundos y en tu propio PC. Es opcional: sin él todo funciona igual (con las palabras clave de siempre).
+Laya es un motor de decisión **gratis, de código abierto y 100 % local** (de Convai — la alternativa abierta al modelo Jev de pago). Clasifica tu misión **en cualquier idioma** (¿va al navegador, o necesita búsqueda/archivos/terminal?) y elige el paquete de instrucciones que la guía, sin clave y sin salir de tu PC.
 
-1. Descarga los últimos cambios del proyecto (`git pull`) — verás 3 archivos nuevos: `install-laya.bat`, `install-laya.command`, `install-laya.sh`.
-2. **Haz doble clic en el de tu sistema** (Windows → `.bat` · macOS → `.command` · Linux → `.sh`). La primera vez hay que haber arrancado el starter al menos una vez.
-3. Espera: descarga ~1,3 GB (una sola vez) y verás "Done".
-4. **Reinicia el starter.** A partir de aquí, si escribes la misión en alemán, francés… también se enruta bien.
+**No tienes que instalarlo**: en el primer arranque normal el agente lo instala **solo**, en segundo plano, y te lo cuenta en su propia línea del panel:
 
-> Para desactivarlo: añade `JEV_LAYA=off` al `.env`. Análisis completo (números, límites, por qué aún no sustituye al navegador): `docs/laya.md`.
+```
+🟢 Local engine ready — ready (multilingual). It decides routing and skills on your machine: no key, no network.
+```
+
+- Mientras se instala verás `⏳ Local engine installing — installing in the background…`. El agente funciona ya, no espera a que termine.
+- Descarga ~1,3 GB una sola vez (los pesos) y luego no vuelve a tocar la red.
+- **No descarga nada** si el arranque no es normal (por ejemplo, en un servidor de integración continua o dentro de las pruebas): eso está en el código, no es una promesa.
+- Si no cabe en tu memoria, lo dice en esa misma línea en vez de morir cargándolo: necesita ~1,6 GB libres.
+- Para no usarlo: `JEV_LAYA=off` en el `.env`. Para que no se instale nunca: `JEV_LAYA_AUTO=off`.
+- Si alguna vez quieres reinstalarlo a mano: doble clic en `install-laya.bat` (Windows), `.command` (macOS) o `.sh` (Linux) — hacen exactamente lo mismo.
+
+> Análisis completo (números medidos, límites, por qué aún no sustituye al navegador): `docs/laya.md`.
 
 ## 🔧 Problemas comunes
 
@@ -236,26 +244,27 @@ Existe un motor de decisión **gratis y de código abierto** (Laya, de Convai �
 | Estaba en la pestaña de inicio y di Run | No pasa nada: abre DuckDuckGo automáticamente y trabaja allí |
 | `Python 3.11 or newer is required` | El mensaje ya te da el comando de tu sistema (zypper/apt/dnf/pacman) o el enlace de python.org |
 | La ventana negra se cierra al instante | En el instalador de Python marca **"Add python.exe a PATH"**, reinstala y repite |
-| Solo tengo clave de NVIDIA, no de Groq | **No hay que hacer nada**: pégala y el agente se configura solo para usarla en los tres papeles (`nvidia:z-ai/glm-5.3` planifica) |
+| ¿Y si solo tengo una clave? | **No hay que hacer nada**: una sola clave (NVIDIA, o Groq si es la que tienes) configura los tres papeles sola. Con las dos, manda NVIDIA (`z-ai/glm-5.3` en todo) |
 | Quiero cambiar el modelo | Panel **⚙️ Models & parameters** → desplegable → elegir (se guarda solo). Sin panel: `docs/providers.md` |
 | El desplegable de modelos sale **vacío** | Pulsa **"Refresh catalogue"**. Si sigue vacío: falta la clave de ese proveedor en `.env` (cada desplegable solo lista proveedores con clave) |
 | *"Missing library for .pdf files"* al analizar un PDF | Cierra la ventana negra y vuelve a arrancar con el **starter nuevo** (instala el soporte de PDF/Word/Excel solo). Si persiste: en la carpeta del proyecto ejecuta `pip install -e ".[documents]"` y reinicia |
 | No aparece el aviso 🔐 pero el comando no se ejecuta | Es lo esperado: sin respuesta en 2 minutos se considera "Deny". Vuelve a lanzar la misión y pulsa **Approve** cuando aparezca |
 | La sección **Steps** se queda mucho en "working…" | Las misiones con búsqueda web tardan más (varias llamadas al modelo). El botón **Stop** funciona igual |
-| Instalé Laya y va igual que antes | Laya no cambia lo que ves: enruta misiones y elige skills por dentro (en cualquier idioma). Comprueba que reiniciaste el starter tras instalarlo; para desactivarlo: `JEV_LAYA=off` |
+| Laya (el motor de decisiones local) | **Se instala solo** en el primer arranque normal (en segundo plano; el panel lo cuenta en su propia línea). Decide el enrutado y los paquetes de skills en cualquier idioma, sin clave y sin red. Para no usarlo: `JEV_LAYA=off` |
 
 ## ❓ Preguntas rápidas
 
-- **¿Cuesta dinero?** No. Groq y NVIDIA tienen capas gratuitas generosas para este uso.
+- **¿Cuesta dinero?** No. La clave de NVIDIA tiene capa gratuita de sobra para este uso (y la de Groq también, con un límite de 8 000 tokens por minuto que en misiones largas se agota).
 - **¿Necesito una gráfica o instalar un modelo local?** No. El agente ya viene configurado para
-  pensar en la nube gratis (Groq + NVIDIA): en tu PC solo corren Firefox y un proceso de ~40 MB.
+  pensar en la nube gratis (NVIDIA): en tu PC solo corren Firefox y un proceso de ~40 MB.
   Los modelos locales se retiraron en septiembre de 2026 (el agente navega por internet igual, así
   que no servían para funcionar sin conexión). Lo único que corre en tu PC es el enrutador de
-  decisiones opcional: `docs/laya.md`.
-- **Solo tengo una clave, ¿vale?** Sí: con la de Groq o con la de NVIDIA funciona todo
-  (`docs/providers.md` → *Zero configuration: one key is enough*). Con las dos se reparte: NVIDIA para el
-  planificador y Groq para el ejecutor, que es lo más rápido.
-- **¿Mi clave está segura?** Sí: se guarda solo en TU ordenador (el archivo `.env`) y solo viaja a Groq/NVIDIA cuando el agente piensa. Nunca llega a las webs que visitas ni a la extensión.
+  decisiones local, que **se instala solo** en el primer arranque: `docs/laya.md`.
+- **Solo tengo una clave, ¿vale?** Sí: con una clave (NVIDIA, o Groq si es la que tienes) funciona todo
+  (`docs/providers.md` → *Zero configuration: one key is enough*). Con las dos manda NVIDIA para los tres
+  papeles; el reparto NVIDIA+Groq existe (es el más rápido por llamada) pero hay que pedirlo a mano, porque
+  el plan gratuito de Groq se agota a mitad de misión.
+- **¿Mi clave está segura?** Sí: se guarda solo en TU ordenador (el archivo `.env`) y solo viaja a NVIDIA cuando el agente piensa. Nunca llega a las webs que visitas ni a la extensión.
 - **¿Puede descontrolarse mi navegador?** No: solo actúa en la pestaña donde lo lanzaste, hay botón Stop, y un máximo de acciones por tarea.
 - **¿Funciona en todas las webs?** En la mayoría. Algunas con protecciones anti-bot muy agresivas pueden resistirse.
 - **¿En Chrome?** Este manual es para Firefox. El proyecto también funciona con Chrome para usuarios avanzados (`README.md`).

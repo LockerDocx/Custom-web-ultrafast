@@ -4,7 +4,8 @@
 >
 > 1. **Los LLM locales ya no se soportan.** Ollama, LM Studio, llama.cpp y Jan se retiraron del
 >    agente (no están en los presets ni en el catálogo).
-> 2. **Laya se queda**, porque no es un modelo sustituto: es un enrutador de decisiones local.
+> 2. **Laya se queda, y se instala solo**, porque no es un modelo sustituto: es un enrutador de
+>    decisiones local que el agente usa antes de gastar la primera llamada a la nube.
 
 ## 1. Por qué fuera los LLM locales
 

@@ -6,7 +6,7 @@ Guía definitiva: qué haces **una vez** (setup) y qué haces **cada día** (uso
 - **Parte B** — tu sistema: openSUSE/SUSE · Ubuntu/Debian/Mint · Fedora/RHEL/Rocky · Arch/Manjaro · Windows · macOS.
 - **Parte C** — actualizar, mover, desinstalar, y los problemas típicos de cada sistema.
 
-> **Resumen si tienes prisa:** descargar el ZIP → conseguir una clave gratis de Groq → **un doble clic** (solo la primera vez) → cargar el `.xpi` en `about:debugging` → pegar la clave en el panel lateral. Desde ese momento, **abrir el panel arranca el agente solo**.
+> **Resumen si tienes prisa:** descargar el ZIP → conseguir una clave gratis de NVIDIA → **un doble clic** (solo la primera vez) → cargar el `.xpi` en `about:debugging` → pegar la clave en el panel lateral. Desde ese momento, **abrir el panel arranca el agente solo**.
 
 ---
 

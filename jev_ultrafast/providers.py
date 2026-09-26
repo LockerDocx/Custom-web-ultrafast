@@ -341,9 +341,20 @@ def planner_enabled():
 # three roles and does not run out mid-mission. Groq is still supported and still the fastest
 # per step, but its free tier is 8 000 tokens per minute and the provider's own message is an
 # "upgrade to Dev Tier" — reported as a dead run, not as a fast one.
+# One key, and it is the only one the panel asks for. Asked, not required: a Groq or DeepSeek
+# key still works when it is the one you have, and any mix is available by naming the roles
+# yourself — this tuple is about what the agent *offers* on a fresh install, which is the key
+# that runs the whole mission without the free tier running out halfway.
 FREE_KEYS = (
-    ("NVIDIA_API_KEY", "NVIDIA NIM · runs all three roles (recommended)", "https://build.nvidia.com"),
-    ("GROQ_API_KEY", "Groq · fastest per step, 8k tokens/min free tier (optional)", "https://console.groq.com/keys"),
+    ("NVIDIA_API_KEY", "NVIDIA NIM · one key runs all three roles (recommended)", "https://build.nvidia.com"),
+)
+
+# Keys the agent used to recommend and no longer does. If one is already on the machine it is
+# shown in the panel as detected-and-not-used: an inert key the user cannot see is worse than
+# one that is named, with the reason.
+OPTIONAL_KEYS = (
+    ("GROQ_API_KEY", "Groq", "its free tier is 8 000 tokens/minute and answers 429 mid-mission"),
+    ("DEEPSEEK_API_KEY", "DeepSeek", "used only when you name it for a role, or when it is your only key"),
 )
 NO_KEY_HELP = """
 No API key found. One free key runs the whole agent:
@@ -462,12 +473,20 @@ def setup_status():
     Carries booleans and the derived selection, never a key value, so it is safe
     to broadcast on every state update.
     """
+    keys = [name for name, _label, _url in FREE_KEYS] + [name for name, _label, _why in OPTIONAL_KEYS]
     return {
         "configured": is_configured(),
         # the sidebar asks "is this variable filled", not "which provider is keyed"
-        "keys": {name: bool((os.environ.get(name) or "").strip()) for name, _label, _url in FREE_KEYS},
+        "keys": {name: bool((os.environ.get(name) or "").strip()) for name in keys},
         "typesafe": bool((os.environ.get("TYPESAFE_API_KEY") or "").strip()),
         "free": [{"variable": name, "label": label, "keys_url": url} for name, label, url in FREE_KEYS],
+        # Present but not offered: the panel says so instead of leaving the user wondering why
+        # a key they pasted months ago is doing nothing.
+        "detected": [
+            {"variable": name, "label": label, "note": note}
+            for name, label, note in OPTIONAL_KEYS
+            if (os.environ.get(name) or "").strip()
+        ],
         "selection": {role: list(selection_for(role)) for role in SETUP_ROLES},
         # shown in the sidebar: a key "not found" is usually a key in another file
         "env_file": env_file_display(),

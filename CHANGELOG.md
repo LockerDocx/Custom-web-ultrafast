@@ -22,6 +22,12 @@ cloud call.
 
 ### Added
 
+- **The key card asks for one key: NVIDIA.** Groq is not offered any more (its free tier is
+  8 000 tokens/minute and answers `429` mid-mission), and a Groq or DeepSeek key that is already in
+  the environment is *named* in the card — "Also on this machine: a **Groq** key (`GROQ_API_KEY`).
+  Not used — its free tier is 8 000 tokens/minute and answers 429 mid-mission." — instead of being
+  left invisible and inert. Both stay fully supported when they are the key you have, or when a role
+  names them.
 - **Laya is installed by default, in the background, on the first start.** It answers the two
   decisions the agent makes before any model call — which loop a mission needs, and which
   procedural package should guide it — in any language, locally, with no key. Be precise about

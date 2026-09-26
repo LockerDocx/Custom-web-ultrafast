@@ -83,6 +83,24 @@ def test_the_progress_bar_never_invents_a_percentage(panel):
     assert panel["barDone"]["done"] is True
 
 
+def test_the_panel_asks_for_one_key_and_names_the_ones_it_does_not_use(panel):
+    """One offer, and no silent leftovers: a Groq key on the machine is visible and explained."""
+    offered = text(panel["setupOffer"]["rows"])
+    assert "NVIDIA NIM" in offered and "GET ONE" in offered.upper()
+    assert "GROQ" not in offered.upper(), "the panel must not offer the key whose free tier runs out"
+
+    detected = text(panel["setupOffer"]["detected"])
+    assert panel["setupOffer"]["detectedHidden"] is False
+    assert "GROQ_API_KEY" in detected, "a key that is on the machine is named, not invisible"
+    assert "Not used" in detected
+    assert "8 000 tokens/minute" in detected, "and the reason travels with it"
+    assert "NVIDIA runs all three roles" in detected
+
+    # Nothing extra on the machine: the line is gone, the offer stays.
+    assert panel["setupPlain"]["detectedHidden"] is True and panel["setupPlain"]["detected"] == ""
+    assert "NVIDIA NIM" in text(panel["setupPlain"]["rows"])
+
+
 def test_the_local_engine_is_shown_and_is_never_a_model_failure(panel):
     """Laya has its own line: it installs by default, and it never reds the readiness dot.
 

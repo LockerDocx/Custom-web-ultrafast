@@ -48,11 +48,14 @@ and paste your one free key in the panel:
 
 ```
 🔑 One free key starts the agent
-Groq · fast executor (recommended)                get one ↗
-[ paste your key… ]                               [ Save ]
+NVIDIA NIM · one key runs all three roles (recommended)      get one ↗
+[ paste your key… ]                                          [ Save ]
 ```
 
-Pressing **Save** writes `GROQ_API_KEY` to `.env`, exports it immediately and re-tests every role, so
+A Groq key already in `.env` is not offered and not used: the card names it (*"Also on this machine… Not
+used"*) with the reason, so a key that is idle cannot be mistaken for a broken setup.
+
+Pressing **Save** writes `NVIDIA_API_KEY` to `.env`, exports it immediately and re-tests every role, so
 the panel goes straight to `Ready — planner … · policy …`. No restart, no file editing; the key is
 never sent anywhere except the provider you chose. Paste a second key later (the **🔑 API keys**
 button in *Models & parameters*) to upgrade the planner to `z-ai/glm-5.3`. (Prefer editing files?
