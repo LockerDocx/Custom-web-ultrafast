@@ -22,10 +22,15 @@ cloud call.
 
 ### Added
 
-- **Laya is installed by default, in the background, on the first start.** Without it every
-  routing and skill decision is an LLM call on a free tier: the screenshots of a real broken run
-  show steps of 800-1 500 ms against the ~33 ms a local decision takes, and the same run ends on
-  a rate limit. The install runs in a thread while the agent is already usable, reports what it
+- **Laya is installed by default, in the background, on the first start.** It answers the two
+  decisions the agent makes before any model call — which loop a mission needs, and which
+  procedural package should guide it — in any language, locally, with no key. Be precise about
+  what that is worth: without Laya those decisions are **already local** (a keyword router), so
+  this is quality, not speed. The CI battery with the real weights measures it: **Laya decides on
+  its own in 6 of 14 missions**, abstains on the rest (its calibrated confidence stays below the
+  gate), and the keyword fallback answers those — **14/14 correct together, 195 ms per decision
+  on a 2-core CPU**. What it adds over keywords is language, and what it costs the mission is
+  nothing: the install runs in a thread while the agent is already usable, reports what it
   is doing in the sidebar (its own line under the model row — never the readiness dot: the agent
   runs without it, only slower), and records the outcome next to the key file so a machine that
   is offline does not pay for the attempt at every launch. `JEV_LAYA=off` means "do not use it",

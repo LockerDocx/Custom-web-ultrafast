@@ -750,7 +750,8 @@ function renderReady(state) {
  * The local decision engine, in its own line under the model row.
  *
  * It is installed by default and it is not a model connection, so it never turns the
- * readiness dot red: the agent runs without it, only slower (one cloud call per decision).
+ * readiness dot red: the agent runs without it, deciding those two things with the keyword
+ * router instead (also local, and English-and-Spanish only).
  */
 function renderLaya(state) {
   const box = $("ready-laya");
@@ -776,8 +777,8 @@ function renderLaya(state) {
           ? "Local engine installed, not loaded yet"
           : "Local engine not installed";
   const tail = laya.ready || laya.installing
-    ? " It answers the routing and skill decisions on your machine."
-    : " The agent works without it; every decision costs one cloud call instead.";
+    ? " It decides routing and skills on your machine: no key, no network."
+    : " The agent works without it: the keyword router decides instead.";
   box.innerHTML = `${dot} ${lead} — ${escape(words)}.${tail}`;
 }
 

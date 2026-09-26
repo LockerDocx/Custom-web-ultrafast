@@ -638,9 +638,9 @@ class TaskRunner:
             pass
         from . import laya_install, laya_local
 
-        # Laya is installed by default: it answers the routing and skill decisions locally
-        # (~33 ms) instead of spending a free-tier call on each one. Nothing blocks on it —
-        # the install runs in the background and reports what it is doing in the sidebar.
+        # Laya is installed by default: it answers the routing and skill decisions in any
+        # language, locally (195 ms per decision measured on a 2-core CPU). Nothing blocks
+        # on it — the install runs in the background and reports what it is doing in the panel.
         laya_install.ensure_async(on_event=self._audit_event, on_done=self._laya_done)
         laya_local.warm()  # already-installed case: preload the weights right away
 

@@ -96,7 +96,7 @@ def test_the_local_engine_is_shown_and_is_never_a_model_failure(panel):
 
     ready = text(panel["layaReady"]["text"])
     assert "Local engine" in ready and "ready" in ready
-    assert "on your machine" in ready, "and it says where the decisions happen"
+    assert "no key, no network" in ready, "and it says where the decisions happen"
     assert panel["layaReady"]["bad"] is False
 
     missing = text(panel["layaMissing"]["text"])

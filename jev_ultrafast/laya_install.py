@@ -1,11 +1,17 @@
 """Install Laya for the user, once, in the background — it is on by default.
 
-Why it is default-on and not an extra: Laya answers the routing and skill-picking
-decisions locally (33 ms on GPU, ~117 ms on a 2-core CPU, measured in CI) instead of
-spending a free-tier LLM call on each of them. Without it every decision is a cloud
-request, and on a free tier those are the difference between a run that finishes and a
-run that dies on HTTP 429 — the failure mode users actually hit. So the agent installs
-it for you on first start; nothing about the install is hidden, and it can be declined:
+Why it is default-on and not an extra: the two decisions Laya answers — which loop a
+mission needs, and which procedural package should guide it — are *already* local without
+it (a keyword router), so this is a quality choice, not a speed one, and the honest
+numbers are in the CI battery: with real weights Laya decides on its own in 6 of 14
+missions (browser/es, browser/de, browser/fr, and the skill picks), abstains on the rest
+because its calibrated confidence stays below the gate, and the keyword fallback answers
+those — 14/14 correct together, 195 ms per decision on a 2-core CPU, no key, no network
+after the weights are downloaded. What it adds over pure keywords is language: the
+keyword lists are English-and-Spanish, decided per line, while Laya reads the mission.
+
+Downloading it is one thing, so the agent does it for you on the first normal start;
+nothing about the install is hidden, and it can be declined:
 
     JEV_LAYA=off          don't use Laya at all (the installer is not run either)
     JEV_LAYA_AUTO=off     keep using Laya if it is there, but never install it
