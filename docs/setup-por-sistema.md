@@ -57,14 +57,13 @@ Guía definitiva: qué haces **una vez** (setup) y qué haces **cada día** (uso
 
 ## Paso 2 · La clave gratis
 
-El agente necesita una clave de IA (gratis). La más fácil, **Groq**:
+El agente necesita una clave de IA (gratis). Se consigue en **NVIDIA** y **esa sola clave cubre los tres papeles** con `z-ai/glm-5.3`:
 
-1. Abre **https://console.groq.com/keys**
-2. Entra con tu cuenta (vale la de Google: **Continue with Google**)
-3. **Create API Key** → nombre cualquiera (p. ej. `jev`) → **Create API Key**
-4. Copia el texto que empieza por **`gsk_...`** (botón de copiar 📋)
+1. Abre **https://build.nvidia.com** → *Login* (vale la cuenta de Google)
+2. Tu perfil → **API Keys** → **Generate API Key**
+3. Copia el texto que empieza por **`nvapi-...`** (botón de copiar 📋)
 
-> 🧠 **Opcional**: si además consigues una clave **gratis de NVIDIA** en **https://build.nvidia.com** (Login → tu perfil → *API Keys*), el planificador pasa a un modelo más potente (`z-ai/glm-5.3`). **Con solo la de Groq ya funciona todo**, planificador incluido.
+> ⚡ **Opcional**: la clave de **Groq** (https://console.groq.com/keys) es más rápida por llamada, pero su plan gratuito son **8 000 tokens por minuto** y el ejecutor los gasta a mitad de misión (error 429). **Con la de NVIDIA ya funciona todo.**
 
 ## Paso 3 · El doble clic (una sola vez)
 

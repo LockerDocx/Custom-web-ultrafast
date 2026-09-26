@@ -244,10 +244,21 @@ def _is_loopback_url(base_url):
 # get started. Quality is not traded away — these are the measured-best
 # arrangements of the free tiers (docs/providers.md):
 #
-#   both keys → NVIDIA plans (deep, once per mission) + Groq executes (~280 ms/step)
-#   one key   → that provider runs all three roles, with its strongest planner
+#   NVIDIA key present → NVIDIA runs all three roles, and nothing is mixed in.
+#     Groq's free tier is 8 000 tokens per minute and the executor burns that in a
+#     couple of steps, so a mixed setup started failing mid-run with HTTP 429 and the
+#     provider's "upgrade to Dev Tier" message. A free key that expires mid-mission is
+#     worse than a slower one, so the mix is opt-in now: set the constants you want.
+#   Groq only         → Groq runs all three roles (the fastest measured per step).
+#   DeepSeek only     → DeepSeek runs all three.
+#
+# Measured on NVIDIA, two independent runs of the same prompts (scripts/bench_profiles.py):
+#   z-ai/glm-5.3        executor 2.3 s and 5.2 s median (n=12 each), text 1.6 s and 98 s
+#   openai/gpt-oss-20b  executor 36 s and 45 s median (n=11-12), worst 180 s
+# so the executor and the text writer default to glm-5.3 on that provider: 10x faster on the
+# role that is called on every step, at the same measured quality (routing 12/12, 0 dangerous).
 DERIVED_MODELS = {
-    "nvidia": {"planner": "z-ai/glm-5.3", "policy": "openai/gpt-oss-20b", "text": "openai/gpt-oss-20b"},
+    "nvidia": {"planner": "z-ai/glm-5.3", "policy": "z-ai/glm-5.3", "text": "z-ai/glm-5.3"},
     "groq": {"planner": "openai/gpt-oss-120b", "policy": "openai/gpt-oss-20b", "text": "openai/gpt-oss-20b"},
     "deepseek": {"planner": "deepseek-chat", "policy": "deepseek-chat", "text": "deepseek-chat"},
 }
@@ -259,7 +270,7 @@ ROLE_LABELS = {"planner": "Planner", "policy": "Executor", "text": "Text writer"
 
 NO_CONFIG_MESSAGE = (
     "{role} has no model yet, so the agent cannot run. One free key covers all three roles: paste it in "
-    "the sidebar (GROQ_API_KEY, free in 2 minutes - https://console.groq.com/keys) or set {key} in .env."
+    "the sidebar (NVIDIA_API_KEY, free - https://build.nvidia.com) or set {key} in .env."
 )
 
 
@@ -274,13 +285,16 @@ def key_for(provider_name):
 
 
 def derived_provider(role):
-    """The provider a role would use when the user configured nothing, or None."""
-    present = [name for name in DERIVATION_ORDER if key_for(name)]
-    if not present:
-        return None
-    if role == "planner" and "nvidia" in present:
-        return "nvidia"  # the deep planner: called once per mission
-    return "groq" if "groq" in present else present[0]
+    """The provider a role would use when the user configured nothing, or None.
+
+    The first provider in DERIVATION_ORDER that has a key runs *every* role. One key, one
+    provider, one failure mode: mixing a second free tier in mid-run is what produced
+    HTTP 429s on the executor while the planner was fine.
+    """
+    for name in DERIVATION_ORDER:
+        if key_for(name):
+            return name
+    return None
 
 
 def derived_for(role):
@@ -323,20 +337,25 @@ def planner_enabled():
 
 
 # ── the only setup step ─────────────────────────────────────────────────────
+# The panel shows these in this order: the NVIDIA key first, because one NVIDIA key runs all
+# three roles and does not run out mid-mission. Groq is still supported and still the fastest
+# per step, but its free tier is 8 000 tokens per minute and the provider's own message is an
+# "upgrade to Dev Tier" — reported as a dead run, not as a fast one.
 FREE_KEYS = (
-    ("GROQ_API_KEY", "Groq · fast executor (recommended)", "https://console.groq.com/keys"),
-    ("NVIDIA_API_KEY", "NVIDIA NIM · deeper planner (optional)", "https://build.nvidia.com"),
+    ("NVIDIA_API_KEY", "NVIDIA NIM · runs all three roles (recommended)", "https://build.nvidia.com"),
+    ("GROQ_API_KEY", "Groq · fastest per step, 8k tokens/min free tier (optional)", "https://console.groq.com/keys"),
 )
 NO_KEY_HELP = """
 No API key found. One free key runs the whole agent:
 
-  1. Open https://console.groq.com/keys (log in with Google is fine)
-  2. Click "Create API key" and copy it
+  1. Open https://build.nvidia.com, sign in, and open API Keys (free, no card)
+  2. Generate one and copy it: it starts with nvapi-
   3. Paste it in the agent sidebar in Firefox (it asks on first open), or here
-     when this starter asks, or in .env as GROQ_API_KEY=... and run again.
+     when this starter asks, or in .env as NVIDIA_API_KEY=... and run again.
 
-Free, no card required. The NVIDIA key (https://build.nvidia.com) is optional
-and only improves the mission plan.
+That one key runs the planner, the executor and the text helper (z-ai/glm-5.3).
+A Groq key (https://console.groq.com/keys) is optional: faster per call, but its
+free tier is 8 000 tokens per minute and a long mission spends that mid-run.
 """.strip()
 
 
@@ -502,12 +521,12 @@ def resolve(role):
             raise ValueError(
                 f"No API key for the {ROLE_LABELS.get(role, role)} role: set {options}. "
                 "No request was sent. One free key runs the whole agent - paste it in the "
-                "agent sidebar, or GROQ_API_KEY in .env (https://console.groq.com/keys)."
+                "agent sidebar, or NVIDIA_API_KEY in .env (https://build.nvidia.com)."
             )
         raise ValueError(
             f"{env['key']} is not set, and {env['provider']} is not a named provider. "
             "No request was sent. One free key runs the whole agent "
-            "(GROQ_API_KEY, https://console.groq.com/keys)."
+            "(NVIDIA_API_KEY, https://build.nvidia.com)."
         )
     model = (os.environ.get(env["model"]) or "").strip()
     if not model:

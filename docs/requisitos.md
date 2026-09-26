@@ -47,7 +47,7 @@ Extraído del propio código (no de suposiciones): `pyproject.toml`, `extension/
 | Función | Requisito | Si falta |
 | --- | --- | --- |
 | **Leer PDF/Word/Excel** (`parse_document`) | `pip install -e ".[documents]"` → pypdf, python-docx, openpyxl | la herramienta avisa de que no puede leer ese formato |
-| **Motor de decisión local** (Laya) | `install-laya.*` → `laya>=0.3,<1` | se usa el enrutado por palabras clave (o `JEV_LAYA=off` para forzarlo) |
+| **Motor de decisión local** (Laya) | `laya>=0.3,<1` — **se instala solo** en el primer arranque normal (`JEV_LAYA_AUTO=off` para no instalarlo; nunca descarga nada en CI ni en las pruebas) | se usa el enrutado por palabras clave (o `JEV_LAYA=off` para desactivarlo) |
 | **Navegador aislado (Neko)** | **Docker** + daemon accesible; imagen `ghcr.io/m1k1o/neko/chromium:latest` (~2 GB); puertos libres `8088` (WebRTC) y `9223` (CDP); contenedor con `--shm-size 2g` | la app lo dice claro: *«Docker was not found on this machine»*, y sigue funcionando en modo pestaña real |
 | **Que el sandbox sea *conducible*** | la imagen debe aceptar `NEKO_BROWSER_ARGS=--remote-debugging-port=9222 --remote-debugging-address=0.0.0.0` | si nunca responde, la sesión se marca **«manual»**: se ve por WebRTC, pero el agente no la conduce |
 | **Vía suelta `jev` (GUI con Chrome)** | Chrome/Chromium con depuración remota (`chrome://inspect` → *Allow*); `BH_CHROME_PATH` si está en una ruta rara | la vía **Firefox + extensión no lo necesita**: la página la lee la propia extensión |

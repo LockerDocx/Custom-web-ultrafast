@@ -3,6 +3,7 @@
 import json
 import math
 import os
+import re
 import time
 
 import httpx
@@ -66,6 +67,66 @@ class _SharedClient:
 CLIENT = _SharedClient()
 
 
+# A rate limit is not a broken key and not a slow endpoint: the provider is telling us to come
+# back later, and it usually says how much later. Until this was honoured, a run died on
+# "Please try again in 1.319999999s" because the retries were 0.5 s and 1 s apart — the agent
+# gave up a third of a second before the provider would have answered.
+RATE_LIMIT_STATUS = {429, 529, 503}
+RATE_LIMIT_ATTEMPTS = 4
+RATE_LIMIT_WAIT_CAP = 30.0  # never make the user wait longer than this without asking
+_WAIT_SAID = r"(?:try again|retry|retry_after|available again)[^0-9]{0,24}"
+_AMOUNT = r"([0-9]+(?:\.[0-9]+)?)\s*(ms|milliseconds?|s|sec|seconds?|m|min|minutes?)"
+_RETRY_HINT = re.compile(_WAIT_SAID + _AMOUNT, re.IGNORECASE)
+
+
+def suggested_wait(response, attempt=0):
+    """How long the provider itself asked us to wait, or None if it did not say.
+
+    Reads `Retry-After` first (the standard header) and then the provider's own message, which
+    is where Groq puts it ("Please try again in 1.32s"). Capped: a cap is a promise that the
+    agent will not sit silent for minutes; the cap is reported in the message when it is hit.
+    """
+    headers = getattr(response, "headers", None)
+    raw = ""
+    try:
+        raw = (headers or {}).get("retry-after") or ""
+    except Exception:  # noqa: BLE001 - a stub response in a test has no headers
+        raw = ""
+    if str(raw).strip():
+        try:
+            return min(float(str(raw).strip()), RATE_LIMIT_WAIT_CAP)
+        except ValueError:
+            pass
+    text = ""
+    try:
+        text = response.text or ""
+    except Exception:  # noqa: BLE001 - same: a stub may not have .text
+        text = ""
+    match = _RETRY_HINT.search(text[:500])
+    if not match:
+        return None
+    amount, unit = float(match.group(1)), match.group(2).lower()
+    if unit.startswith("ms"):
+        seconds = amount / 1000.0
+    elif unit.startswith("m"):
+        seconds = amount * 60.0
+    else:
+        seconds = amount
+    return min(seconds + 0.25, RATE_LIMIT_WAIT_CAP)  # a hair of slack: clocks are not in step
+
+
+def rate_limit_error(response, waited):
+    """The message a rate limit deserves: capacity, not a bad key, and what to do about it."""
+    detail = redact(" ".join((response.text or "").split()))[:300]
+    return RuntimeError(
+        f"Model provider rate limit (HTTP {response.status_code}) — this is capacity, not a key "
+        f"problem: the free tier is spent for now and the agent waited {waited:.1f} s in total. "
+        f"What to do: press Run again in a moment, or move this role to a key with more room "
+        f"(POLICY_PROVIDER / POLICY_MODEL, TEXT_MODEL_PROVIDER / TEXT_MODEL). No action was "
+        f"executed. Provider said: {detail}"
+    )
+
+
 def _no_answer(error, seconds):
     """The error a user sees when nothing came back: what happened, and that the key is fine."""
     if isinstance(error, httpx.TimeoutException):
@@ -82,20 +143,30 @@ def _no_answer(error, seconds):
 
 def post_json(url, key, body, headers=None):
     seconds = timeout_seconds()
-    for attempt in range(ATTEMPTS):
+    waited = 0.0
+    attempt = 0
+    # A rate limit gets one more try than a wire failure: waiting is the whole point of it.
+    limit = max(ATTEMPTS, RATE_LIMIT_ATTEMPTS)
+    while attempt < limit:
+        attempt += 1
         try:
             response = CLIENT.post(url, json=body, headers=headers or {"Authorization": f"Bearer {key}"})
         except httpx.HTTPError as error:
             # A model that is being woken up, or a blip on the wire: the same tries the
             # streaming path gives before giving up. Retrying cannot duplicate work here —
             # nothing was sent and accepted.
-            if attempt < ATTEMPTS - 1:
-                time.sleep(0.5 * 2**attempt)
+            if attempt < ATTEMPTS:
+                time.sleep(0.5 * 2 ** (attempt - 1))
                 continue
             raise _no_answer(error, seconds) from None
-        if response.status_code in {429, 529, 503} and attempt < 2:
-            time.sleep(0.5 * 2**attempt)
-            continue
+        if response.status_code in RATE_LIMIT_STATUS:
+            hint = suggested_wait(response, attempt)
+            pause = hint if hint is not None else 0.5 * 2 ** (attempt - 1)
+            if attempt < RATE_LIMIT_ATTEMPTS:
+                time.sleep(pause)
+                waited += pause
+                continue
+            raise rate_limit_error(response, waited)
         if response.is_error:
             # Include the provider's own message so the exact cause is visible in the sidebar.
             detail = redact(" ".join(response.text.split()))[:300]
@@ -119,16 +190,25 @@ def post_stream(url, key, body, headers=None, on_delta=None):
     """
     request_headers = headers or {"Authorization": f"Bearer {key}"}
     seconds = timeout_seconds()
-    for attempt in range(ATTEMPTS):
+    waited = 0.0
+    attempt = 0
+    limit = max(ATTEMPTS, RATE_LIMIT_ATTEMPTS)
+    while attempt < limit:
+        attempt += 1
         parts = []
         usage = {}
         model_id = None
         served = False
         try:
             with CLIENT.stream("POST", url, json=body, headers=request_headers) as response:
-                if response.status_code in {429, 529, 503} and attempt < 2:
-                    time.sleep(0.5 * 2**attempt)
-                    continue
+                if response.status_code in RATE_LIMIT_STATUS:
+                    hint = suggested_wait(response, attempt)
+                    pause = hint if hint is not None else 0.5 * 2 ** (attempt - 1)
+                    if attempt < RATE_LIMIT_ATTEMPTS:
+                        time.sleep(pause)
+                        waited += pause
+                        continue
+                    raise rate_limit_error(response, waited)
                 if response.is_error:
                     detail = redact(" ".join(response.read().decode("utf-8", "replace").split()))[:300]
                     raise RuntimeError(
@@ -151,8 +231,8 @@ def post_stream(url, key, body, headers=None, on_delta=None):
         except httpx.HTTPError as error:
             if served:
                 raise RuntimeError("Model stream failed mid-response; no action executed.") from None
-            if attempt < ATTEMPTS - 1:
-                time.sleep(0.5 * 2**attempt)
+            if attempt < ATTEMPTS:
+                time.sleep(0.5 * 2 ** (attempt - 1))
                 continue
             raise _no_answer(error, seconds) from None
     raise RuntimeError("Model unavailable")

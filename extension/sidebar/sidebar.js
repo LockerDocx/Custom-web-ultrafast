@@ -41,6 +41,7 @@ function render() {
   renderSetup(state.setup);
   renderError(state.error);
   renderReady(state);
+  renderLaya(state);
   syncRun(state);
 }
 
@@ -743,6 +744,41 @@ function renderReady(state) {
     parts.push(`<b>${names} did not answer.</b> The model is configured — the endpoint is slow or unreachable. Press Test setup to try again.`);
   }
   $("ready-text").innerHTML = parts.join(" ") + " " + file;
+}
+
+/**
+ * The local decision engine, in its own line under the model row.
+ *
+ * It is installed by default and it is not a model connection, so it never turns the
+ * readiness dot red: the agent runs without it, only slower (one cloud call per decision).
+ */
+function renderLaya(state) {
+  const box = $("ready-laya");
+  const laya = state && state.laya;
+  if (!laya) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const words = String(laya.status || "");
+  let dot = "•";
+  if (laya.installing) dot = "⏳";
+  else if (laya.ready) dot = "🟢";
+  else if (laya.installed) dot = "🟡";
+  else if (!laya.enabled) dot = "⚪";
+  const lead = !laya.enabled
+    ? "Local engine <b>off</b> (you asked for that)"
+    : laya.ready
+      ? "Local engine <b>ready</b>"
+      : laya.installing
+        ? "Local engine <b>installing</b>"
+        : laya.installed
+          ? "Local engine installed, not loaded yet"
+          : "Local engine not installed";
+  const tail = laya.ready || laya.installing
+    ? " It answers the routing and skill decisions on your machine."
+    : " The agent works without it; every decision costs one cloud call instead.";
+  box.innerHTML = `${dot} ${lead} — ${escape(words)}.${tail}`;
 }
 
 function setActivityView(view) {

@@ -1,4 +1,9 @@
 @echo off
+rem Manual installer for the local decision engine (Laya).
+rem
+rem The agent installs it by itself on the first normal start; this is the hand-run path
+rem for when that could not happen (offline start, failed download, or a reinstall).
+rem Both run the same code, so the CPU-torch choice and the messages are identical.
 setlocal
 cd /d "%~dp0"
 if not exist ".venv\Scripts\python.exe" (
@@ -6,14 +11,5 @@ if not exist ".venv\Scripts\python.exe" (
   pause
   exit /b 1
 )
-echo Installing Laya ^(open decision engine, ~1.3 GB download^)...
-".venv\Scripts\python" -m pip install --quiet -e ".[laya]"
-if errorlevel 1 (
-  echo.
-  echo  [!] Installation failed - check your internet connection.
-  pause
-  exit /b 1
-)
-echo.
-echo Done. Laya is optional and runs 100% locally - restart the host to use it.
+".venv\Scripts\python" -m jev_ultrafast.laya_install
 pause

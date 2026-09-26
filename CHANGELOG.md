@@ -15,6 +15,52 @@ Chrome, with TypeSafe's hosted policy and the Mercury text model. They are label
 appear. This build drives Firefox with Groq/NVIDIA and has not been measured yet.
 
 
+## [0.12.3] — 2026-09-26
+
+The version that stops a run from dying of capacity, and stops every decision from costing a
+cloud call.
+
+### Added
+
+- **Laya is installed by default, in the background, on the first start.** Without it every
+  routing and skill decision is an LLM call on a free tier: the screenshots of a real broken run
+  show steps of 800-1 500 ms against the ~33 ms a local decision takes, and the same run ends on
+  a rate limit. The install runs in a thread while the agent is already usable, reports what it
+  is doing in the sidebar (its own line under the model row — never the readiness dot: the agent
+  runs without it, only slower), and records the outcome next to the key file so a machine that
+  is offline does not pay for the attempt at every launch. `JEV_LAYA=off` means "do not use it",
+  `JEV_LAYA_AUTO=off|retry|force` controls the install itself, and **nothing is downloaded in CI
+  or inside the test suite** — that is a gate in the code, not a promise in a document (a
+  background install during a test run took the machine's memory down here, which is how the
+  gate got written).
+- **`install-laya.sh` / `.command` / `.bat` now run the same code as the automatic path**, so
+  the CPU-torch choice on Linux and Windows (the CUDA build on PyPI is ~2.5 GB) and the wording
+  of every message are identical by construction.
+
+### Fixed
+
+- **A rate limit no longer kills a run: the agent waits for as long as the provider asked.**
+  Groq answers a spent free tier with `429` and the sentence "Please try again in 1.319999999s";
+  the retries were 0.5 s and 1 s apart, so the agent gave up a third of a second before the
+  provider would have answered. It now reads `Retry-After` first and the provider's own words
+  second, waits that long (plus 0.25 s of slack, capped at 30 s), gets one more attempt than a
+  wire failure, and if it still runs out says so: *this is capacity, not a key problem*, how long
+  it waited in total, and what to do. `tests/test_rate_limits.py` pins the wording and the timing.
+- **The local engine refuses to load where it would be killed.** The multilingual checkpoint is
+  644 MB of weights plus torch, and loading it on a 2 GB machine gets the process OOM-killed —
+  not a failure Python can catch. The loader now asks for 1.6 GB of free memory first (on Linux
+  what the kernel reports as available) and, if there is not enough, says exactly that in the
+  sidebar instead of dying.
+- **One key now means one provider.** With both keys present the agent no longer plans on NVIDIA
+  and executes on Groq: that mix is the one that failed mid-mission with `429` and the
+  provider's "upgrade to Dev Tier" message. NVIDIA runs all three roles (measured: executor 2.3 s
+  median against 36 s), Groq is still first-class when it is the key you have, and any mix stays
+  available by setting `POLICY_*` / `TEXT_MODEL_*` by hand.
+- **The HTTP client's timeout is no longer frozen by whoever used it first.** Setting an
+  attribute on the shared client left a bound method pointing at the client of that moment, so
+  `JEV_HTTP_TIMEOUT` stopped being read and a test inherited a 17 s patience it never asked for.
+  Tests now replace the client whole, which is what the module always documented.
+
 ## [0.12.2] — 2026-09-25
 
 The version that answered a speed question with a measurement, and fixed what the measurement found.

@@ -83,6 +83,32 @@ def test_the_progress_bar_never_invents_a_percentage(panel):
     assert panel["barDone"]["done"] is True
 
 
+def test_the_local_engine_is_shown_and_is_never_a_model_failure(panel):
+    """Laya has its own line: it installs by default, and it never reds the readiness dot.
+
+    The agent runs without the local engine — only slower, one cloud call per decision — so
+    the dot that answers "can it run at all?" must stay green either way.
+    """
+    installing = text(panel["layaInstalling"]["text"])
+    assert "Local engine" in installing and "installing" in installing
+    assert "installing in the background" in installing, "the panel says what is happening"
+    assert panel["layaInstalling"]["bad"] is False, "an install in flight is not a failure"
+
+    ready = text(panel["layaReady"]["text"])
+    assert "Local engine" in ready and "ready" in ready
+    assert "on your machine" in ready, "and it says where the decisions happen"
+    assert panel["layaReady"]["bad"] is False
+
+    missing = text(panel["layaMissing"]["text"])
+    assert "not installed" in missing
+    assert panel["layaMissing"]["bad"] is False, "no local engine is not 'cannot run'"
+    assert panel["layaMissing"]["dot"] == "🟢", "the readiness verdict is about the models"
+    assert "JEV_LAYA_AUTO=off" in missing, "the reason is the user's own switch, and it is shown"
+
+    off = text(panel["layaOff"]["text"])
+    assert "off (you asked for that)" in off
+
+
 def test_the_tools_and_errors_leave_a_trace(panel):
     """Nothing that happened is silent: the log keeps level, time and message."""
     log = panel["logView"]["html"]
@@ -212,4 +238,4 @@ def test_a_role_without_a_model_says_so_in_the_panels_words(clean_env):
     message = str(error.value)
     assert "POLICY_API_KEY" in message, "the user needs to know which variable is missing"
     assert providers.ROLE_LABELS["policy"] in message, "the role must be named as the panel names it"
-    assert "console.groq.com" in message, "and where the free key comes from"
+    assert "build.nvidia.com" in message, "and where the free key comes from"

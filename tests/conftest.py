@@ -10,6 +10,11 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# The agent installs its local decision engine on a normal start; a test run must never
+# download a gigabyte (it did once, and the machine ran out of memory). Any test that wants
+# to exercise the installer sets its own value.
+os.environ.setdefault("JEV_LAYA_AUTO", "off")
+
 
 @pytest.fixture(autouse=True)
 def hermetically_restore_the_environment():

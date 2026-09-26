@@ -17,22 +17,33 @@ If `TYPESAFE_API_KEY` is set, the policy uses Jev and `POLICY_*` is ignored. Oth
 `providers.selection_for(role)` resolves in one order: **whatever you wrote first, then the best
 model of whatever free key is present**. You only need to set the key:
 
-| Keys present | Planner | Executor + text helper |
-| --- | --- | --- |
-| `GROQ_API_KEY` only | `groq:openai/gpt-oss-120b` | `groq:openai/gpt-oss-20b` |
-| `NVIDIA_API_KEY` only | `nvidia:z-ai/glm-5.3` | `nvidia:openai/gpt-oss-20b` |
-| Both (or `DEEPSEEK_API_KEY` alone) | `nvidia:z-ai/glm-5.3` | `groq:openai/gpt-oss-20b` |
+| Keys present | Planner | Executor | Text helper |
+| --- | --- | --- | --- |
+| `NVIDIA_API_KEY` only (recommended) | `nvidia:z-ai/glm-5.3` | `nvidia:z-ai/glm-5.3` | `nvidia:z-ai/glm-5.3` |
+| `GROQ_API_KEY` only | `groq:openai/gpt-oss-120b` | `groq:openai/gpt-oss-20b` | `groq:openai/gpt-oss-20b` |
+| Both keys, or `DEEPSEEK_API_KEY` alone | `nvidia:z-ai/glm-5.3` | `nvidia:z-ai/glm-5.3` | `nvidia:z-ai/glm-5.3` |
 
-With both keys the agent gets the measured-best split below *without a single line of config*; with
-one key that provider runs all three roles — including a real planner on the stronger model of that
-provider, not the executor's. Any explicit `*_PROVIDER` / `*_MODEL` still wins over the derivation,
+With one key that provider runs all three roles — the planner included, on the stronger model of
+that provider rather than the executor's. **With both keys present nothing is mixed**: the first
+provider in `DERIVATION_ORDER` that has a key for *every* role runs the whole mission.
+
+That rule has a measured reason. The split this page used to recommend as the default — NVIDIA
+planning, Groq executing — is the fastest arrangement on paper and the one that died in practice:
+Groq's free tier is **8 000 tokens per minute**, the executor burns that in a couple of steps, and
+the run ends with `HTTP 429` and the provider's "upgrade to Dev Tier" message. A key that expires
+mid-mission is worse than a slower key that lasts. The split is still available, it is just opt-in:
+write the `POLICY_*` / `TEXT_MODEL_*` constants and you get exactly it (see below). Any explicit `*_PROVIDER` / `*_MODEL` still wins over the derivation,
 and choosing a provider without naming a model picks that provider's documented model (so a
 half-written config is never a dead end). The sidebar, the planner gate and the *Test setup* check
 all read this same resolution, so the panel can never disagree with what actually runs.
 
-## The measured-best split (what the defaults above encode)
+## The split, if you want it (opt-in, with its cost)
 
-A slow, reasoning-heavy model plans once per task; a fast model executes every step. Two providers at once:
+A slow, reasoning-heavy model plans once per task; a fast model executes every step. Two providers at
+once — **and one warning**: the fast half is Groq's free tier, which gives you 8 000 tokens per
+minute. On a mission long enough to spend that, this configuration stops mid-run with `HTTP 429`;
+when it does, the message now says it is capacity, not your key. If you would rather not think about
+it, the defaults above are the version that finishes:
 
 ```bash
 # Fast executor · GPT-OSS-20B on Groq (free tier, very low latency)
@@ -64,7 +75,8 @@ prompts and token budgets the agent itself uses, each candidate on its own CI jo
 | Candidate (one free key) | Planner | Executor | Text writer | Quality checks |
 | --- | --- | --- | --- | --- |
 | **Groq only** (the fast anchor) | 1.4 s | **0.4 s** | **0.26 s** | plans 3/3 · routing 12/12 · values 4/4 |
-| NVIDIA only, defaults (`glm-5.3` plans, `gpt-oss-20b` executes) | 30 s | 36 s | 9 s | plans 2-3/3 · routing 12/12 · values 4/4 |
+| NVIDIA only, old defaults (`glm-5.3` plans, `gpt-oss-20b` executes) | 30 s | 36 s | 9 s | plans 2-3/3 · routing 12/12 · values 4/4 |
+| NVIDIA only, **current defaults** (`glm-5.3` everywhere) | 37 s | **2-5 s** | 1.6-98 s | plans 2/3 · routing 12/12 · values 4/4 |
 | NVIDIA only, `z-ai/glm-5.3-flash` with thinking off | **85 s** | 43 s | 42 s | plans 2/2 · routing 12/12 · values 4/4 |
 | NVIDIA only, `z-ai/glm-5.3` with thinking off | 37 s | 2-52 s | 1.6-98 s | plans 2/3 · routing 12/12 · values 4/4 |
 
@@ -72,7 +84,9 @@ Read it as medians of a handful of calls, and read the spread: NVIDIA NIM's free
 prompt in 1.6 s once and in 98 s on another run, and once did not answer for 60 s at all (the retry then
 reports it honestly instead of blaming the key). **Smaller model and thinking off did not make NVIDIA
 faster — the queue is the cost, not the parameters.** If you want a snappy agent and you are on one free
-key, the Groq key is the lever; NVIDIA is worth keeping for the planner when you have both.
+key, the Groq key is the lever — provided you stay under its 8 000 tokens per minute; the current
+defaults instead keep one provider (NVIDIA) for the whole mission, which is slower per step and
+finishes.
 
 Reproduce it: `python scripts/bench_profiles.py --list`, then
 `python scripts/bench_profiles.py --profile nvidia-flash-none` with your key in `.env`. `--floor 0.8` makes
@@ -216,7 +230,7 @@ Everything is fail-safe: if the package is missing, the weights cannot load, or 
 | `JEV_LAYA=off` | disable Laya participation (keywords only) |
 | `LAYA_CHECKPOINT` | `multilingual` (default, 322M, 100+ languages), `english` (421M), or `typed-decisions` |
 
-Install: `pip install -e ".[laya]"` (or double-click `install-laya.bat` / `.command` / `.sh`). The «Laya check» CI workflow replays a multilingual battery with the real weights and reports the accuracy on the PR.
+It is **installed by default** on the first start (background, `JEV_LAYA_AUTO=off` to decline, nothing is downloaded in CI or inside the test suite), and `pip install -e ".[laya]"` — or double-clicking `install-laya.bat` / `.command` / `.sh` — does the same by hand. The «Laya check» CI workflow replays a multilingual battery with the real weights and reports the accuracy on the PR.
 
 ## The sidebar catalogue and parameters (MVP-1)
 

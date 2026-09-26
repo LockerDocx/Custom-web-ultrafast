@@ -26,6 +26,14 @@ import threading
 CONFIDENCE_GATE = 0.75
 CHECKPOINTS = ("multilingual", "english", "typed-decisions")
 
+# Measured on a 2-core / 2 GB container: the multilingual checkpoint is 644 MB of weights and
+# torch adds ~350 MB on top, and loading it where there is not room gets the process killed by
+# the OOM killer — which is not a failure Python can catch. So the load asks first. On Linux
+# the number is what the kernel says is actually available; on other systems it is total RAM,
+# which is the only figure available without a dependency, and 4 GB is the floor.
+MIN_FREE_MB = 1600
+MIN_TOTAL_MB = 4096
+
 _engine = None
 _engine_lock = threading.Lock()
 _load_error = None  # why the weights could not load (shown once in logs/diagnostics)
@@ -71,7 +79,7 @@ def status():
         return "off (JEV_LAYA=off)"
     if _engine is not None:
         return f"ready ({os.environ.get('LAYA_CHECKPOINT', 'multilingual')})"
-    if _load_error:  # installed but the weights could not load (network, disk…)
+    if _load_error:  # installed but the weights did not load (memory, network, disk…)
         return _load_error
     if not available():
         return "not installed (pip install -e \".[laya]\")"
@@ -90,6 +98,13 @@ def engine():
             return _engine
         if _load_error:
             return None
+        room, where = enough_memory()
+        if not room:
+            # Same refusal as warm(), for every caller: a killed process is not a fallback.
+            _load_error = (
+                f"not loaded: needs about {MIN_FREE_MB / 1024.0:.1f} GB of free memory and this machine has {where}"
+            )
+            return None
         try:
             import laya
         except ImportError:
@@ -106,10 +121,58 @@ def engine():
     return _engine
 
 
+def free_memory_mb():
+    """Available RAM in MiB, or None when this system does not tell us (Linux: /proc/meminfo)."""
+    try:
+        with open("/proc/meminfo", encoding="ascii", errors="replace") as handle:
+            for line in handle:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) / 1024.0
+    except OSError:
+        return None
+    return None
+
+
+def total_memory_mb():
+    """Total RAM in MiB where a cheap read exists (macOS `hw.memsize`), else None."""
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, timeout=5, check=False
+        ).stdout.strip()
+        return int(out) / (1024.0 * 1024.0) if out.isdigit() else None
+    except Exception:  # noqa: BLE001 - any failure means "we do not know", never a blocker
+        return None
+
+
+def enough_memory():
+    """(bool, where the number came from). Refusing to load beats being killed loading."""
+    free = free_memory_mb()
+    if free is not None:
+        return free >= MIN_FREE_MB, f"{free / 1024.0:.1f} GB of RAM available"
+    total = total_memory_mb()
+    if total is not None:
+        return total >= MIN_TOTAL_MB, f"{total / 1024.0:.1f} GB of RAM"
+    return True, "RAM unknown"
+
+
 def warm():
-    """Preload the weights in the background so the first decision is fast."""
-    if available():
-        threading.Thread(target=engine, daemon=True).start()
+    """Preload the weights in the background so the first decision is fast.
+
+    Skips — visibly, with the number that decided it — when there is not enough RAM:
+    a killed process is worse than a slower decision answered by the model.
+    """
+    global _load_error
+    if not available():
+        return
+    room, where = enough_memory()
+    if not room:
+        _load_error = (
+            f"not loaded: needs about {MIN_FREE_MB / 1024.0:.1f} GB of free memory and there are {where}"
+        )
+        return
+    threading.Thread(target=engine, daemon=True).start()
 
 
 def _decide(state, questions, question_id, valid):

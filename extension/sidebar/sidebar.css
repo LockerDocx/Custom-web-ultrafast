@@ -336,6 +336,8 @@ button.probe { font-size: 11px; padding: 3px 10px; }
 .ready.checking { border-left-color: var(--accent); }
 .ready.checking #ready-test { opacity: 0.5; }
 .ready-dot { flex: none; }
+/* The local engine gets its own line: it is not a model connection and must not read as one. */
+.ready-laya { flex-basis: 100%; margin-top: 4px; font-size: 11px; opacity: 0.85; }
 #ready-text { flex: 1; min-width: 0; }
 #ready-text code { color: var(--text); }
 #ready-test { flex: none; padding: 3px 10px; font-size: 11px; }

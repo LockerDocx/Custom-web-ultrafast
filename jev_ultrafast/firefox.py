@@ -636,9 +636,25 @@ class TaskRunner:
             apply_saved_config()
         except Exception:  # noqa: BLE001 - a broken config file must never block startup
             pass
-        from . import laya_local
+        from . import laya_install, laya_local
 
-        laya_local.warm()  # preload the optional open decision engine, if installed
+        # Laya is installed by default: it answers the routing and skill decisions locally
+        # (~33 ms) instead of spending a free-tier call on each one. Nothing blocks on it —
+        # the install runs in the background and reports what it is doing in the sidebar.
+        laya_install.ensure_async(on_event=self._audit_event, on_done=self._laya_done)
+        laya_local.warm()  # already-installed case: preload the weights right away
+
+    def _laya_done(self, ok, detail):
+        """The install finished (or declined to run): warm it and refresh the panel.
+
+        Never overtakes the welcome message — the sidebar connects after the host starts.
+        """
+        if ok:
+            from . import laya_local
+
+            laya_local.warm()
+        if getattr(self, "_greeted", False):
+            self._broadcast()
 
     def greet(self):
         """A sidebar connected and received its welcome; background probes may start."""
@@ -674,6 +690,7 @@ class TaskRunner:
         return {"available": self.docker_available, "reason": reason, "session": session}
 
     def current_state(self):
+        from . import laya_install
         from . import providers as provider_layer
         from .orchestrator import MAX_ORCHESTRATOR_STEPS
 
@@ -701,6 +718,9 @@ class TaskRunner:
             "step_budget": MAX_ORCHESTRATOR_STEPS,
             "sandbox": self.sandbox_state(),
             "setup": provider_layer.setup_status(),
+            # The local decision engine, with the same words the log uses. Default-on: it is
+            # the difference between a couple of local decisions and a cloud call per step.
+            "laya": laya_install.state(),
         }
         if self.mode == "orchestrated":
             # The orchestrated view; the live browser sub-view rides under "browser".

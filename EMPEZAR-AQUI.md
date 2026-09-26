@@ -49,15 +49,14 @@ Si algo falla, mira la tabla de [problemas comunes](#-problemas-comunes) al fina
 
 ## 🟦 PASO 2 — Conseguir tu clave API gratuita (2 minutos)
 
-La clave es como una contraseña para que el asistente use una IA. La más fácil de conseguir es la de **Groq** (gratis):
+La clave es como una contraseña para que el asistente use una IA. Se consigue en **NVIDIA** (gratis) y **esa sola clave hace funcionar los tres papeles** del agente con el modelo `z-ai/glm-5.3`:
 
-1. Abre **https://console.groq.com/keys**
-2. Inicia sesión (puedes usar tu cuenta de **Google**: botón "Continue with Google")
-3. Pulsa **"Create API Key"** → dale un nombre cualquiera (por ejemplo `jev`) → **Create API Key**
-4. Aparece un texto que empieza por `gsk_...` → **cópialo** con el botón de copiar 📋
-5. ⚠️ Guárdala en un sitio seguro. **Nunca la compartas ni la pegues en webs raras.**
+1. Abre **https://build.nvidia.com** → *Login* (puedes crear la cuenta con Google)
+2. Icono de tu perfil → **API Keys** → **Generate API Key**
+3. Aparece un texto que empieza por `nvapi-...` → **cópialo** con el botón de copiar 📋
+4. ⚠️ Guárdala en un sitio seguro. **Nunca la compartas ni la pegues en webs raras.**
 
-> 🧠 **Opcional:** con la clave de **NVIDIA** (también gratis) el "cerebro planificador" pasa a ser un modelo más profundo (`z-ai/glm-5.3`). Se consigue en **https://build.nvidia.com** → botón *Login* → icono de tu perfil → **Get API Key**. **Si no la pones, no pasa nada: con tu clave de Groq ya funciona todo**, planificador incluido.
+> ⚡ **Opcional:** la clave de **Groq** (https://console.groq.com/keys) responde en unas décimas de segundo, pero su plan gratuito son **8 000 tokens por minuto** y un misión larga los gasta a mitad de camino (error 429). **Con la de NVIDIA ya funciona todo**; la de Groq es para quien quiera velocidad y sepa dosificarla.
 
 ---
 

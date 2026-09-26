@@ -61,20 +61,26 @@ def test_one_groq_key_runs_all_three_roles(clean_env):
     assert provider["model"] == "openai/gpt-oss-20b" and provider["base_url"].startswith("https://api.groq.com")
 
 
-def test_both_free_keys_get_the_measured_best_split(clean_env):
+def test_both_keys_are_not_mixed(clean_env):
+    """Both keys present: NVIDIA runs all three roles, nothing is mixed in.
+
+    A mixed setup (NVIDIA planning, Groq executing) failed the way free tiers fail: the executor
+    burned Groq's 8 000 tokens per minute in a couple of steps and the run died mid-mission with
+    HTTP 429 and the provider's "upgrade to Dev Tier" message. A slower key that lasts beats a
+    fast one that expires before the mission ends, so mixing is opt-in: write POLICY_* yourself.
+    """
     clean_env.setenv("GROQ_API_KEY", "gsk_test")
     clean_env.setenv("NVIDIA_API_KEY", "nvapi-test")
-    # NVIDIA plans once per mission; Groq executes every step (~280 ms).
     assert providers.selection_for("planner") == ("nvidia", "z-ai/glm-5.3")
-    assert providers.selection_for("policy") == ("groq", "openai/gpt-oss-20b")
-    assert providers.selection_for("text") == ("groq", "openai/gpt-oss-20b")
+    assert providers.selection_for("policy") == ("nvidia", "z-ai/glm-5.3")
+    assert providers.selection_for("text") == ("nvidia", "z-ai/glm-5.3")
 
 
 def test_one_nvidia_key_runs_all_three_roles(clean_env):
     clean_env.setenv("NVIDIA_API_KEY", "nvapi-test")
     assert providers.selection_for("planner") == ("nvidia", "z-ai/glm-5.3")
-    assert providers.selection_for("policy") == ("nvidia", "openai/gpt-oss-20b")
-    assert providers.selection_for("text") == ("nvidia", "openai/gpt-oss-20b")
+    assert providers.selection_for("policy") == ("nvidia", "z-ai/glm-5.3")
+    assert providers.selection_for("text") == ("nvidia", "z-ai/glm-5.3")
     assert providers.resolve("text")["name"] == "nvidia"
 
 
@@ -86,7 +92,7 @@ def test_no_key_at_all_says_exactly_what_to_do(clean_env):
     message = str(error.value)
     assert "One free key covers all three roles" in message
     assert providers.ROLE_LABELS["policy"] in message  # named the way the panel names it
-    assert "GROQ_API_KEY" in message and "console.groq.com/keys" in message
+    assert "NVIDIA_API_KEY" in message and "build.nvidia.com" in message
 
 
 def test_explicit_configuration_always_wins(clean_env):
@@ -95,16 +101,16 @@ def test_explicit_configuration_always_wins(clean_env):
     clean_env.setenv("POLICY_PROVIDER", "deepseek")
     clean_env.setenv("POLICY_MODEL", "deepseek-reasoner")
     assert providers.selection_for("policy") == ("deepseek", "deepseek-reasoner")
-    # and a role left alone still derives
-    assert providers.selection_for("text") == ("groq", "openai/gpt-oss-20b")
+    # and a role left alone still derives (from the key present, not from the one configured)
+    assert providers.selection_for("text") == ("nvidia", "z-ai/glm-5.3")
 
 
 def test_a_provider_alone_implies_its_documented_models(clean_env):
     """Choosing a provider without a model must not be a dead end."""
     clean_env.setenv("NVIDIA_API_KEY", "nvapi-test")
     clean_env.setenv("POLICY_PROVIDER", "nvidia")
-    assert providers.selection_for("policy") == ("nvidia", "openai/gpt-oss-20b")
-    assert providers.resolve("policy")["model"] == "openai/gpt-oss-20b"
+    assert providers.selection_for("policy") == ("nvidia", "z-ai/glm-5.3")
+    assert providers.resolve("policy")["model"] == "z-ai/glm-5.3"
 
 
 def test_an_explicit_provider_without_a_key_still_fails_loudly(clean_env):
@@ -121,9 +127,9 @@ def test_the_sidebar_shows_what_actually_runs(clean_env):
     selection = parameters.current_selection()
     assert selection["planner"]["provider"] == "nvidia"
     assert selection["planner"]["model"] == "z-ai/glm-5.3"
-    assert selection["policy"]["provider"] == "groq"
+    assert selection["policy"]["provider"] == "nvidia"
     assert selection["policy"]["schema"]["parameters"]  # the real per-model surface
-    assert parameters.model_for("text") == ("groq", "openai/gpt-oss-20b")
+    assert parameters.model_for("text") == ("nvidia", "z-ai/glm-5.3")
 
 
 def test_the_planner_runs_out_of_the_box(clean_env):
@@ -183,7 +189,7 @@ def test_no_prompt_when_nothing_is_interactive(clean_env, tmp_path, capsys):
         prompt=lambda question: called.append(question), notify=print, path=tmp_path / ".env", interactive=False
     )
     assert ok is False and called == []
-    assert "GROQ_API_KEY" in capsys.readouterr().out
+    assert "NVIDIA_API_KEY" in capsys.readouterr().out
 
 
 def test_an_already_configured_agent_is_never_asked(clean_env, tmp_path):
@@ -226,8 +232,8 @@ def test_a_key_saved_from_one_folder_is_found_from_any_other(tmp_path, monkeypat
     assert providers.is_configured() is True
     # and one NVIDIA key is enough for all three roles
     assert providers.selection_for("planner") == ("nvidia", "z-ai/glm-5.3")
-    assert providers.selection_for("policy") == ("nvidia", "openai/gpt-oss-20b")
-    assert providers.selection_for("text") == ("nvidia", "openai/gpt-oss-20b")
+    assert providers.selection_for("policy") == ("nvidia", "z-ai/glm-5.3")
+    assert providers.selection_for("text") == ("nvidia", "z-ai/glm-5.3")
 
 
 def test_the_key_file_lives_next_to_the_code_whatever_the_cwd_is(tmp_path, monkeypatch):

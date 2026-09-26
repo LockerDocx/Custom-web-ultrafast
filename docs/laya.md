@@ -90,9 +90,9 @@ desviaban misiones reales; (2) **GPT-OSS-20B ejecuta y Laya solo clasifica cuand
 | --- | --- |
 | **¿Self-hosted?** | **Sí, 100 %.** Los pesos (Apache 2.0) se descargan una vez de Hugging Face a `~/.cache/huggingface`. Después: cero red, cero clave, cero coste |
 | **Disco** | ~1,3 GB de pesos + torch (200 MB-1 GB; el instalador de Linux usa el build CPU, 10× más pequeño que el de CUDA) |
-| **RAM** | **~1 GB** en uso; convive con Firefox en un PC de 8 GB |
+| **RAM** | **~1 GB** en uso; convive con Firefox en un PC de 8 GB. El cargador **pide 1,6 GB libres** antes de cargar los pesos: en una máquina con menos memoria el proceso moriría por OOM y eso no se puede atrapar, así que se niega y lo dice en el panel |
 | **CPU / GPU** | cualquier x86-64 con AVX2 (190 ms/decisión medidos en 2 núcleos); si detecta GPU CUDA o Apple Silicon, la usa sola (32,8 ms) |
-| **Instalar** | `./install-laya.sh` · `.bat` · `.command` (doble clic), o `pip install -e ".[laya]"` |
+| **Instalar** | **Se instala solo** en el primer arranque (en segundo plano, y solo si el arranque lo hace una persona: en CI o dentro de las pruebas no descarga nada). Después tienes `./install-laya.sh` · `.bat` · `.command` o `pip install -e ".[laya]"` |
 | **Desactivar** | `JEV_LAYA=off` en el `.env` → vuelve el enrutado por palabras clave |
 
 ## 6. El camino al executor 100 % abierto

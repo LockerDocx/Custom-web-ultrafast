@@ -144,6 +144,7 @@ const base = {
   sandbox: {},
   browserMode: "live",
   step_budget: 25,
+  laya: { enabled: true, installed: true, ready: true, installing: false, status: "ready (multilingual)" },
 };
 
 const report = {};
@@ -259,6 +260,43 @@ report.readyAfterCheck = {
   buttonDisabled: el("ready-test").disabled === true,
   text: el("ready-text").innerHTML,
 };
+
+// 7f. the local decision engine has its own line, and it is never a model failure:
+// while it installs, and when it is simply absent, the agent still runs (only slower),
+// so the readiness dot must stay green.
+await send({
+  type: "state",
+  state: { ...base, laya: { enabled: true, installed: false, ready: false, installing: true, status: "installing in the background\u2026" } },
+});
+report.layaInstalling = {
+  hidden: el("ready-laya").hidden,
+  text: el("ready-laya").innerHTML,
+  bad: el("ready").classList.contains("bad"),
+};
+await send({
+  type: "state",
+  state: { ...base, laya: { enabled: true, installed: true, ready: true, installing: false, status: "ready (multilingual)" } },
+});
+report.layaReady = { text: el("ready-laya").innerHTML, bad: el("ready").classList.contains("bad") };
+await send({
+  type: "state",
+  state: {
+    ...base,
+    laya: { enabled: true, installed: false, ready: false, installing: false, status: "installing is off (JEV_LAYA_AUTO=off)" },
+  },
+});
+report.layaMissing = {
+  text: el("ready-laya").innerHTML,
+  bad: el("ready").classList.contains("bad"),
+  dot: el("ready-dot").textContent,
+};
+// and with the engine off on purpose the line says so instead of pretending it is broken
+await send({
+  type: "state",
+  state: { ...base, laya: { enabled: false, installed: false, ready: false, installing: false, status: "off (JEV_LAYA=off)" } },
+});
+report.layaOff = { text: el("ready-laya").innerHTML, bad: el("ready").classList.contains("bad") };
+await send({ type: "state", state: { ...base } }); // back to the ready state for the next blocks
 
 // 8. an error is never silent
 await send({ type: "error", message: "Groq rejected the key (401)" });

@@ -125,7 +125,7 @@ fi
 
 echo "Host starting. KEEP THIS WINDOW OPEN while you use the sidebar."
 echo ""
-echo "Paste your free API key in the sidebar - it will ask (2 minutes at https://console.groq.com/keys)."
+echo "Paste your free API key in the sidebar - it will ask (2 minutes at https://build.nvidia.com)."
 echo ""
 echo "Now in Firefox:"
 echo "  1. Type about:debugging in the address bar and press Enter"
