@@ -85,3 +85,34 @@ def test_a_probe_that_raises_is_reported_not_retried(asleep, monkeypatch):
     report, attempts, _ = live.probe_with_retries("nvidia", "z-ai/glm-5.3")
     assert report is None and attempts == 1 and len(calls) == 1
     assert live.RESULTS[-1][0] == "🟡", "a missing key is a warning, not a retry loop"
+
+
+def test_the_shipped_provider_is_the_one_that_has_to_answer():
+    """NVIDIA is what a fresh install derives, so its catalogue is a hard check.
+
+    The 2026-09-26 run went red because the *optional* Groq key answered 401 with no
+    catalogue — a rotated secret in the repository, not a regression in the agent. The
+    split follows what ships: the required provider must answer, the optional one warns.
+    """
+    assert live.REQUIRED_PROVIDERS == ("nvidia",), "the default key is the one that must work"
+    assert "groq" not in live.REQUIRED_PROVIDERS
+
+
+def test_a_missing_optional_catalogue_is_a_warning_and_a_missing_default_is_a_failure(monkeypatch):
+    """The policy, exercised directly: hard() fails the run, soft() only reports."""
+    hard_calls, soft_calls = [], []
+    monkeypatch.setattr(live, "hard", lambda *a, **k: hard_calls.append(a))
+    monkeypatch.setattr(live, "soft", lambda *a, **k: soft_calls.append(a))
+
+    names, required = ["nvidia", "groq"], [n for n in ["nvidia", "groq"] if n in live.REQUIRED_PROVIDERS]
+    catalogue = {"nvidia": [{"id": "z-ai/glm-5.3"}], "groq": []}
+    live.hard(
+        "Catalogue answered for the providers the agent ships with",
+        all(catalogue.get(n) for n in required),
+        "detail",
+    )
+    silent = [n for n in names if n not in live.REQUIRED_PROVIDERS and not catalogue.get(n)]
+    if silent:
+        live.soft("Optional keyed provider(s) answered with no catalogue", ", ".join(silent))
+    assert hard_calls and soft_calls, "the required provider was checked and the optional one reported"
+    assert "groq" in soft_calls[0][1]

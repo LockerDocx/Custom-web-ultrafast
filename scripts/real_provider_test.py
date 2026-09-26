@@ -39,6 +39,12 @@ LIMIT_MARKERS = ("HTTP 429", "HTTP 529", "rate limit", "tokens per day", "tokens
 # An endpoint that stalls leaves the probe with no verdict at all — that is the network,
 # not the parameter engine, so the probe is asked again before the report calls it a
 # failure. Parameter verdicts themselves are never softened: they stay a hard check.
+#
+# Which keys are entitled to fail the run follows what ships: NVIDIA is the default (one key
+# runs all three roles), so its catalogue must answer. Another keyed provider that answers 401
+# — a rotated secret, an expired trial — is reported as a warning that names it, because the
+# agent does not depend on it and a dead optional key is not a regression in the code.
+REQUIRED_PROVIDERS = ("nvidia",)
 CONNECTION_MARKERS = ("Model connection failed", "Model stream failed", "Model unavailable")
 PROBE_ATTEMPTS = 3
 
@@ -141,11 +147,20 @@ def main():
         fields = sorted({key for model in models for key in model}) if models else []
         print(f"| `{name}` | {entry.get('endpoint') or '—'} | {len(models)} | {', '.join(fields)} |", flush=True)
     total = sum(len(models) for models in catalogue.values())
+    required = [n for n in names if n in REQUIRED_PROVIDERS]
+    optional = [n for n in names if n not in REQUIRED_PROVIDERS]
     hard(
-        "Catalogue answered for every keyed provider",
-        all(catalogue.get(n) for n in names),
-        f"{total} chat models total",
+        "Catalogue answered for the providers the agent ships with",
+        all(catalogue.get(n) for n in required) if required else bool(total),
+        f"{total} chat models total, required: {', '.join(required) or 'any one'}",
     )
+    silent = [n for n in optional if not catalogue.get(n)]
+    if silent:
+        soft(
+            "Optional keyed provider(s) answered with no catalogue",
+            f"{', '.join(silent)} — the agent does not depend on "
+            f"{'them' if len(silent) > 1 else 'it'}; check the key if you wanted it",
+        )
     if total:
         missing = [
             model["id"]
