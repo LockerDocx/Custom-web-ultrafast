@@ -2,8 +2,10 @@ name: Real provider test
 
 # Real-provider test of the per-model parameter engine (MVP-1): discovery,
 # per-model surfaces, live probe, role wiring and one real request per role —
-# all against the live Groq and NVIDIA endpoints. Keys come from repository
-# secrets (NVIDIA_API_KEY / GROQ_API_KEY); the run is skipped without them.
+# all against the live NVIDIA endpoint, on exactly the defaults a fresh install derives.
+# Keys come from repository secrets (NVIDIA_API_KEY, optionally GROQ_API_KEY); the run is
+# skipped without them. A 401 from the optional Groq key is reported, not fatal: the key
+# that has to work is NVIDIA's.
 #
 # Run it from the Actions tab (workflow_dispatch) or with a push to either file.
 
@@ -33,14 +35,16 @@ jobs:
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          # The shipped defaults: one NVIDIA key runs all three roles on the model that was
+          # measured fastest on the role called at every step. This used to exercise the
+          # NVIDIA-plans/Groq-executes split, which is no longer what a fresh install derives
+          # (Groq's 8 000 tokens per minute are spent mid-mission).
           PLANNER_PROVIDER: nvidia
           PLANNER_MODEL: z-ai/glm-5.3
-          POLICY_PROVIDER: groq
-          POLICY_MODEL: openai/gpt-oss-20b
-          POLICY_REASONING: low
-          TEXT_MODEL_PROVIDER: groq
-          TEXT_MODEL: openai/gpt-oss-20b
-          TEXT_MODEL_REASONING: low
+          POLICY_PROVIDER: nvidia
+          POLICY_MODEL: z-ai/glm-5.3
+          TEXT_MODEL_PROVIDER: nvidia
+          TEXT_MODEL: z-ai/glm-5.3
         run: |
           if [ -z "$NVIDIA_API_KEY" ] && [ -z "$GROQ_API_KEY" ]; then
             echo "No provider secrets configured (NVIDIA_API_KEY / GROQ_API_KEY)."

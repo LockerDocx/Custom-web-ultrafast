@@ -26,13 +26,26 @@ def clean_env(monkeypatch, tmp_path):
 
 
 @pytest.fixture
+def in_a_virtualenv(monkeypatch):
+    """The shipped install is a virtualenv (the starter creates one); CI's runner is not.
+
+    Without this the suite would answer a different question on every machine: the installer
+    deliberately refuses to touch a system Python, so "would it install?" depends on where
+    the tests happen to run.
+    """
+    monkeypatch.setattr(sys, "prefix", "/opt/agent/.venv")
+    monkeypatch.setattr(sys, "base_prefix", "/usr")
+    return monkeypatch
+
+
+@pytest.fixture
 def not_installed(monkeypatch):
     monkeypatch.setattr(laya_install.laya_local, "available", lambda: False)
     monkeypatch.setattr(laya_install.laya_local, "_engine", None, raising=False)
     return monkeypatch
 
 
-def test_laya_is_installed_by_default(clean_env, not_installed):
+def test_laya_is_installed_by_default(clean_env, not_installed, in_a_virtualenv):
     wanted, why = laya_install.wanted()
     assert wanted is True, f"Laya must install itself out of the box; instead: {why}"
     assert laya_install.auto_policy() == "on"
@@ -55,14 +68,14 @@ def test_the_cpu_build_of_torch_is_asked_for_on_linux_and_windows(clean_env, mon
     assert len(laya_install.pip_steps()) == 1, "macOS wheels need no special index"
 
 
-def test_installing_is_never_attempted_twice(clean_env, not_installed):
+def test_installing_is_never_attempted_twice(clean_env, not_installed, in_a_virtualenv):
     laya_install._record("installed", "done earlier")
     wanted, why = laya_install.wanted()
     assert wanted is False
     assert "install-laya.sh" in why, "the user still needs a way to reinstall by hand"
 
 
-def test_a_failed_install_is_not_retried_on_every_start(clean_env, not_installed):
+def test_a_failed_install_is_not_retried_on_every_start(clean_env, not_installed, in_a_virtualenv):
     """A machine that is offline would otherwise pay for the attempt at every launch."""
     laya_install._record("failed", "no internet")
     assert laya_install.wanted()[0] is False
@@ -70,7 +83,7 @@ def test_a_failed_install_is_not_retried_on_every_start(clean_env, not_installed
     assert laya_install.wanted()[0] is True
 
 
-def test_the_user_can_decline(clean_env, not_installed):
+def test_the_user_can_decline(clean_env, not_installed, in_a_virtualenv):
     clean_env.setenv("JEV_LAYA_AUTO", "off")
     wanted, why = laya_install.wanted()
     assert wanted is False and "JEV_LAYA_AUTO=off" in why
@@ -131,7 +144,7 @@ def test_an_install_that_does_not_import_is_a_failure(clean_env, not_installed, 
     assert laya_install.recorded()["outcome"] == "failed"
 
 
-def test_a_successful_install_says_so_and_warms_the_engine(clean_env, not_installed, monkeypatch):
+def test_a_successful_install_says_so_and_warms_the_engine(clean_env, not_installed, in_a_virtualenv, monkeypatch):
     warmed = []
     class Installed:
         returncode = 0
@@ -218,7 +231,7 @@ def test_an_unknown_machine_is_not_talked_out_of_loading(clean_env, monkeypatch)
     assert laya_local.enough_memory() == (True, "RAM unknown")
 
 
-def test_no_install_happens_in_tests_or_ci(clean_env, not_installed, monkeypatch):
+def test_no_install_happens_in_tests_or_ci(clean_env, not_installed, in_a_virtualenv, monkeypatch):
     """Measured: a background install during the test suite took the machine down.
 
     The policy question ("would a normal start install it?") still answers yes; what the

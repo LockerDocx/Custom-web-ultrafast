@@ -5,6 +5,10 @@ name: Single key check
 # the environment and once with only the Groq key, with every model/role override removed so
 # the derivation has to do the work. A role that cannot run is red and fails the job.
 #
+# The NVIDIA job is the one that has to be green (that key runs all three roles by default).
+# The Groq job is informational: Groq stays supported and is the fastest measured per call, but
+# its free tier is 8 000 tokens per minute, so it is no longer what a fresh install derives.
+#
 # Added after 2026-09-25: a user with a single NVIDIA NIM key saw two roles red with
 # "Model connection failed" — the endpoint had been left 25 s without answering three times,
 # which is a free tier waking up, not a bad key. The device that proves the single-key setup
@@ -42,6 +46,10 @@ jobs:
   groq-only:
     name: one Groq key only
     runs-on: ubuntu-latest
+    # Groq is the optional key now: NVIDIA is the one that ships as the default, and a key
+    # that has been rotated or expired in the repository secrets says nothing about the code.
+    # The job still runs and still reports — it just does not paint `main` red on its own.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
